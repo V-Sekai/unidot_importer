@@ -1,0 +1,39 @@
+diff --git a/editor/import/scene_importer_mesh.cpp b/editor/import/scene_importer_mesh.cpp
+index 46eb4e4fdc..55b9d4a9a6 100644
+--- a/editor/import/scene_importer_mesh.cpp
++++ b/editor/import/scene_importer_mesh.cpp
+@@ -224,6 +224,7 @@ Ref<ArrayMesh> EditorSceneImporterMesh::get_mesh() {
+ 
+ 	if (mesh.is_null()) {
+ 		mesh.instance();
++		mesh->set_name(get_name());
+ 		for (int i = 0; i < blend_shapes.size(); i++) {
+ 			mesh->add_blend_shape(blend_shapes[i]);
+ 		}
+diff --git a/editor/progress_dialog.cpp b/editor/progress_dialog.cpp
+index 0b6a3798b3..edd2fde92b 100644
+--- a/editor/progress_dialog.cpp
++++ b/editor/progress_dialog.cpp
+@@ -207,7 +207,7 @@ bool ProgressDialog::task_step(const String &p_task, const String &p_state, int
+ 		DisplayServer::get_singleton()->process_events();
+ 	}
+ 
+-	Main::iteration(); // this will not work on a lot of platforms, so it's only meant for the editor
++	////////Main::iteration(); // this will not work on a lot of platforms, so it's only meant for the editor
+ 	return cancelled;
+ }
+ 
+diff --git a/modules/gltf/gltf_document.cpp b/modules/gltf/gltf_document.cpp
+index 0a4d4055b4..9fdedc3f8a 100644
+--- a/modules/gltf/gltf_document.cpp
++++ b/modules/gltf/gltf_document.cpp
+@@ -2464,6 +2464,9 @@ Error GLTFDocument::_parse_meshes(Ref<GLTFState> state) {
+ 		const Dictionary &extras = d.has("extras") ? (Dictionary)d["extras"] : Dictionary();
+ 		Ref<EditorSceneImporterMesh> import_mesh;
+ 		import_mesh.instance();
++		if (d.has("name")) {
++			import_mesh->set_name(d["name"]);
++		}
+ 		for (int j = 0; j < primitives.size(); j++) {
+ 			Dictionary p = primitives[j];
+ 

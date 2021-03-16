@@ -1,0 +1,117 @@
+extends Reference
+
+const BLOCKSIZE: int = 512
+
+var buffer: PackedByteArray = PackedByteArray()
+var offset: int = 0
+
+class StringFile:
+	var _s: String = ""
+	var _offset: int = 0
+	var _eof: bool = false
+	var _path: String = ""
+	func init(s: String):
+		_s = s
+		_offset = 0
+		_eof = false
+
+	func get_path() -> String:
+		return _path
+
+	func set_path(path: String):
+		_path = path
+
+	func get_backing_string() -> String:
+		return _s
+
+	func get_line() -> String:
+		if _eof:
+			return ""
+		var eol: int = _s.find("\n", _offset)
+		if eol == -1:
+			_eof = true
+			var reteof: String = _s.substr(_offset)
+			_offset = 0
+			return reteof
+
+		var new_offset: int = eol + 1
+		if _s.substr(eol - 1, eol) == "\r":
+			eol -= 1
+		var ret: String = _s.substr(_offset, eol - _offset)
+		_offset = new_offset
+		return ret
+
+	func get_error():
+		if _eof:
+			return ERR_FILE_EOF
+		else:
+			return OK
+
+	func close():
+		pass
+
+func init_with_buffer(new_buffer: PackedByteArray):
+	buffer = new_buffer
+	return self
+
+class TarHeader extends Reference:
+	var size: int = 0
+	var filename: String = ""
+	var buffer: PackedByteArray = PackedByteArray()
+	var offset: int = 0
+	var gd4hack_StringFile: Object = null
+
+	func get_data() -> PackedByteArray:
+		# ALERT! Subarray is **inclusive** start and end index
+		return buffer.subarray(offset, offset + size - 1)
+
+	func get_string() -> String:
+		return get_data().get_string_from_utf8()
+
+	func get_stringfile() -> Object:
+		var sf = gd4hack_StringFile.new()
+		sf.init(get_data().get_string_from_utf8())
+		sf.set_path(filename)
+		return sf
+
+#func get_buffer(size: int) -> PackedByteArray:
+#	if offset + size > len(buffer):
+#		return PackedByteArray()
+#	var ret: PackedByteArray = PackedByteArray()
+#	ret.append_array(buffer.subarray(offset, offset + size - 1))
+#	offset += size
+#	return ret
+
+static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
+	var idx:int = offset
+	var end:int = offset + xlen
+	var n: int = 0
+	if header[offset] == 128 or header[offset] == 255:
+		# GNU format, untested?
+		while idx < end:
+			n = (n << 8) + header[idx]
+			idx += 1
+		if header[offset] == 255:
+			n = -((1 << (8 * (xlen - 1))) - n)
+		return n
+	while idx < end and header[idx] != 0:
+		n = (n << 3) + (header[idx] - 48)
+		idx += 1
+	return n
+
+func read_header() -> TarHeader:
+	if self.offset + BLOCKSIZE > len(self.buffer):
+		return null
+	var header_obj = TarHeader.new()
+	header_obj.gd4hack_StringFile = StringFile
+	var idx: int = 0
+	while idx < 100 and self.buffer[self.offset + idx] != 0:
+		idx += 1
+	# ALERT! Subarray is **inclusive** start and end index
+	header_obj.filename = self.buffer.subarray(self.offset + 0, self.offset + idx - 1).get_string_from_utf8()
+	header_obj.size = nti(self.buffer, self.offset + 124, 12)
+	self.offset += BLOCKSIZE
+	header_obj.buffer = self.buffer
+	header_obj.offset = self.offset
+	self.offset += ((header_obj.size - 1 + BLOCKSIZE) & ~(BLOCKSIZE - 1))
+	return header_obj
