@@ -1,7 +1,6 @@
 @tool
 extends Reference
 
-
 func to_classname(utype: int) -> String:
 	var ret = utype_to_classname.get(utype, "")
 	if ret == "":
@@ -72,6 +71,14 @@ class GodotNodeState extends Reference:
 		state.body = body
 		return state
 
+	func state_with_owner(new_owner: Node3D) -> GodotNodeState:
+		var state: GodotNodeState = GodotNodeState.new()
+		state.owner = new_owner
+		state.meta = meta
+		state.database = database
+		state.body = body
+		return state
+
 # Unity types follow:
 ### ================ BASE OBJECT TYPE ================
 class UnityObject extends Reference:
@@ -106,8 +113,9 @@ class UnityObject extends Reference:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		new_parent.add_child(new_node)
-		new_node.owner = state.owner
+		if new_parent != null:
+			new_parent.add_child(new_node)
+			new_node.owner = state.owner
 		return new_node
 
 	func create_godot_resource() -> Resource:
@@ -290,13 +298,16 @@ class UnityGameObject extends UnityObject:
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
 			ret.transform = transform.godot_transform
-			new_parent.add_child(ret)
-			ret.owner = state.owner
+			if new_parent != null:
+				new_parent.add_child(ret)
+				ret.owner = state.owner
 			state = state.state_with_body(ret as StaticBody3D)
 		if ret == null:
 			ret = transform.create_godot_node(state, new_parent)
 		ret.name = name
-
+		if new_parent == null:
+			# We are the root (of a Prefab). Become the owner.
+			state = state.state_with_owner(ret)
 		var skip_first: bool = true
 
 		for component_ref in components:
@@ -335,8 +346,9 @@ class UnityComponent extends UnityObject:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		new_parent.add_child(new_node)
-		new_node.owner = state.owner
+		if new_parent != null:
+			new_parent.add_child(new_node)
+			new_node.owner = state.owner
 		new_node.editor_description = str(self)
 		return new_node
 
@@ -364,9 +376,10 @@ class UnityBehaviour extends UnityComponent:
 class UnityTransform extends UnityComponent:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node3D:
 		var new_node: Node3D = Node3D.new()
-		new_parent.add_child(new_node)
+		if new_parent != null:
+			new_parent.add_child(new_node)
+			new_node.owner = state.owner
 		new_node.transform = godot_transform
-		new_node.owner = state.owner
 		return new_node
 
 	var localPosition: Vector3:
@@ -526,8 +539,9 @@ class UnityRigidbody extends UnityComponent:
 			new_node = rigid
 
 		new_node.name = type
-		new_parent.add_child(new_node)
-		new_node.owner = state.owner
+		if new_parent != null:
+			new_parent.add_child(new_node)
+			new_node.owner = state.owner
 		return new_node
 
 	var isKinematic: bool:
@@ -550,8 +564,9 @@ class UnityMeshRenderer extends UnityRenderer:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
 		new_node.name = type
-		new_parent.add_child(new_node)
-		new_node.owner = state.owner
+		if new_parent != null:
+			new_parent.add_child(new_node)
+			new_node.owner = state.owner
 		new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(mesh)
 		return new_node

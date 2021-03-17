@@ -3,6 +3,8 @@ extends Resource
 
 const static_storage: GDScript = preload("./static_storage.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
+const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
 
 const ASSET_TYPE_YAML = 1
 const ASSET_TYPE_MODEL = 2
@@ -10,8 +12,6 @@ const ASSET_TYPE_TEXTURE = 3
 const ASSET_TYPE_PREFAB = 4
 const ASSET_TYPE_SCENE = 5
 const ASSET_TYPE_UNKNOWN = 6
-
-const UNITYIMP_MATERIAL_REMAP_SCRIPT: String = "./post_import_unity_model.gd"
 
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" +
@@ -124,6 +124,75 @@ class MaterialHandler extends YamlHandler:
 		pkgasset.parsed_meta.rename(new_pathname)
 		ResourceSaver.save(pkgasset.pathname, mat)
 
+class AnimationHandler extends YamlHandler:
+	func write_godot_asset(pkgasset, temp_path):
+		pass # We don't want to dump out invalid .anim files since Godot reuses this extension.
+		#var anim: Animation = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id].create_godot_resource()
+		#var new_pathname: String = pkgasset.pathname.get_basename() + ".anim"
+		#pkgasset.pathname = new_pathname
+		#pkgasset.parsed_meta.rename(new_pathname)
+		#ResourceSaver.save(pkgasset.pathname, mat)
+
+class SceneHandler extends YamlHandler:
+
+	func customComparison(a, b):
+		if typeof(a) != typeof(b):
+			return typeof(a) < typeof(b)
+		elif a.transform != null && b.transform != null:
+			return a.transform.rootOrder < b.transform.rootOrder
+		else:
+			return b.fileID < a.fileID
+
+	func smallestTransform(a, b):
+		if typeof(a) != typeof(b):
+			return typeof(a) < typeof(b)
+		elif a.transform != null && b.transform != null:
+			return a.transform.fileID < b.transform.fileID
+		else:
+			return b.fileID < a.fileID
+
+	func write_godot_asset(pkgasset, temp_path):
+		var is_prefab = pkgasset.pathname.get_extension() != "unity"
+		var new_pathname: String = pkgasset.pathname.get_basename() + (".prefab.tscn" if is_prefab else ".tscn")
+		pkgasset.pathname = new_pathname
+		pkgasset.parsed_meta.rename(new_pathname)
+
+		var arr: Array = [].duplicate()
+
+		for asset in pkgasset.parsed_asset.assets.values():
+			if asset.type == "GameObject" and asset.toplevel:
+				arr.push_back(asset)
+
+		if arr.is_empty():
+			printerr("Scene " + new_pathname + " has no nodes.")
+			return
+		var scene_contents: Node3D = null
+		if is_prefab:
+			if len(arr) > 1:
+				printerr("Prefab " + new_pathname + " has multiple roots. picking lowest.")
+			arr.sort_custom(smallestTransform)
+			arr = [arr[0]]
+		else:
+			scene_contents = Node3D.new()
+			scene_contents.name = "RootNode"
+
+		var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.database, pkgasset.parsed_meta, scene_contents)
+
+		arr.sort_custom(customComparison)
+		for asset in arr:
+			# print(str(asset) + " position " + str(asset.transform.godot_transform))
+			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
+			if is_prefab:
+				scene_contents = new_root
+
+		var packed_scene: PackedScene = PackedScene.new()
+		print(str(scene_contents.get_child_count()))
+		packed_scene.pack(scene_contents)
+		print(packed_scene)
+		var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		print(pi.get_child_count())
+		ResourceSaver.save(pkgasset.pathname, packed_scene)
+
 class FbxHandler extends AssetHandler:
 	var STUB_GLB_FILE: PackedByteArray = PackedByteArray([])
 	func create_with_constant(stub_file: PackedByteArray):
@@ -137,7 +206,10 @@ class FbxHandler extends AssetHandler:
 		print("I am an FBX " + str(path))
 		var output_path: String = path.get_basename() + ".glb"
 		var stdout = [].duplicate()
-		var ret = OS.execute("addons/unityimp/FBX2glTF.exe", [
+		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("FBX2glTF.exe")
+		if addon_path.begins_with("res://"):
+			addon_path = addon_path.substr(6)
+		var ret = OS.execute(addon_path, [
 			"--pbr-metallic-roughness",
 			"--fbx-temp-dir", tmpdir + "/FBX_TEMP",
 			"--normalize-weights", "1",
@@ -173,7 +245,7 @@ class FbxHandler extends AssetHandler:
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			printerr("Failed to load .import config file for " + pkgasset.pathname)
 			return
-		cfile.set_value("params", "nodes/custom_script", UNITYIMP_MATERIAL_REMAP_SCRIPT)
+		cfile.set_value("params", "nodes/custom_script", post_import_material_remap_script.resource_path)
 		cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
 		cfile.set_value("params", "meshes/light_baking", 0)
@@ -216,8 +288,8 @@ var file_handlers: Dictionary = {
 	"hdr": image_handler, # Godot unsupported?
 	#"dds": null, # Godot unsupported?
 	############"asset": YamlHandler.new(), # Generic file format
-	"unity": YamlHandler.new(), # Unity Scenes
-	"prefab": YamlHandler.new(), # Prefabs (sub-scenes)
+	"unity": SceneHandler.new(), # Unity Scenes
+	"prefab": SceneHandler.new(), # Prefabs (sub-scenes)
 	"mask": YamlHandler.new(), # Avatar Mask for animations
 	############"mesh": YamlHandler.new(), # Mesh data, sometimes .asset
 	"ht": YamlHandler.new(), # Human Template??
@@ -227,7 +299,8 @@ var file_handlers: Dictionary = {
 	"physicmaterial": YamlHandler.new(), # Physics Material
 	"overridecontroller": YamlHandler.new(), # Animator Override Controller
 	"controller": YamlHandler.new(), # Animator Controller
-	"anim": YamlHandler.new(), # Animation
+	"anim": AnimationHandler.new(), # Animation... # TODO: This should be by type (.asset), not extension
+	# ALSO: animations can be contained inside other assets, such as controllers. we need to recognize this and extract them.
 	"default": AssetHandler.new()
 }
 

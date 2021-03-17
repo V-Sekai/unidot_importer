@@ -4,10 +4,22 @@ A Unity compatibility layer and unitypackage importer for Godot.
 
 ## Features
 
-- Direct importers for Unity filetypes (such as .unity). This will be removed and changed to a .tscn translator at import time.
+- Translates unity filetypes (such as .unity, .mat, etc) to Godot native scene or resource types.
 - Implementation of an asset database for unity assets by GUID
 - Unitypackage importer and translation shim.
 - The Godot FBX importer is not yet feature complete. We rely on automatic FBX to glTF translation during unitypackage import using FBX2glTF.
+
+Note that scripts and shaders will need to be ported by hand. After porting, it will be possible to make a mapping from the unity scripts/shaders to Godot equivalents.
+
+Many import settings that exist in Unity are not implemented in Godot, for example recompute tangents or specific texture compression settings.
+
+Canvas / UI is not implemented.
+
+## Unsupported
+
+- Shader porting: a system will be added to create mappings of equivalent Godot shaders, but porting must be done by hand.
+- C# Script porting
+- 
 
 ## Installation notes:
 
@@ -22,3 +34,9 @@ A Unity compatibility layer and unitypackage importer for Godot.
 3. Finally, enable the Unidot-Importer plugin in Project Settings -> Plugins tab -> Unidot
 
 4. Access the importer through Project -> Tools -> Import Unity Package...
+
+## A final note:
+
+This tool is designed to assist with importing or translating source assets made for Unity Engine, and assumes text serialization (such as within a .unitypackage archive) as well as typical asset conventions (for example, an assumption that most files contain only one asset).
+
+Unidot solely translates existing usable source assets into equivalent Godot source assets. There are no plans to add functionality for decompiling binary assets or ripping unity content. That is not a goal of this project.
