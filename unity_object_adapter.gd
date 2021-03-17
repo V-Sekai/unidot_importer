@@ -49,6 +49,19 @@ class GodotNodeState extends Reference:
 	var database: Resource = null # asset_database instance
 	var meta: Resource = null # asset_database.AssetMeta instance
 	
+	func add_child(child: Node, new_parent: Node3D, fileID: int):
+		if owner != null:
+			new_parent.add_child(child)
+			child.owner = owner
+		if fileID != 0:
+			add_fileID(child, fileID)
+
+	func add_fileID(child: Node, fileID: int):
+		if owner != null:
+			meta.fileid_to_nodepath[fileID] = owner.get_path_to(child)
+		else:
+			meta.fileid_to_nodepath[fileID] = NodePath(".")
+	
 	func init_node_state(database: Resource, meta: Resource, root_node: Node3D) -> GodotNodeState:
 		self.database = database
 		self.meta = meta
@@ -113,9 +126,7 @@ class UnityObject extends Reference:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		if new_parent != null:
-			new_parent.add_child(new_node)
-			new_node.owner = state.owner
+		state.add_child(new_node, new_parent, fileID)
 		return new_node
 
 	func create_godot_resource() -> Resource:
@@ -286,32 +297,38 @@ class UnityGameObject extends UnityObject:
 		var ret: Node3D = null
 		var components = keys.get("m_Component")
 		var has_collider: bool = false
+		var extra_fileID: Array = [fileID]
+		var transform: UnityTransform = self.transform
+
 		for component_ref in components:
 			var component = meta.lookup(component_ref.get("component"))
 			# Some components take priority and must be created here.
 			if component.type == "Rigidbody":
-				ret = component.create_physics_body(state, new_parent)
+				ret = component.create_physics_body(state, new_parent, name)
 				ret.transform = transform.godot_transform
+				extra_fileID.push_back(transform.fileID)
 				state = state.state_with_body(ret as CollisionObject3D)
 			if component.is_collider:
+				extra_fileID.push_back(component.fileID)
 				has_collider = true
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
-			ret.transform = transform.godot_transform
-			if new_parent != null:
-				new_parent.add_child(ret)
-				ret.owner = state.owner
-			state = state.state_with_body(ret as StaticBody3D)
-		if ret == null:
-			ret = transform.create_godot_node(state, new_parent)
+		else:
+			ret = Node3D.new()
 		ret.name = name
+		state.add_child(ret, new_parent, transform.fileID)
+		ret.transform = transform.godot_transform
+		state = state.state_with_body(ret as StaticBody3D)
 		if new_parent == null:
 			# We are the root (of a Prefab). Become the owner.
 			state = state.state_with_owner(ret)
+		for ext in extra_fileID:
+			state.add_fileID(ret, ext)
 		var skip_first: bool = true
 
 		for component_ref in components:
 			if skip_first:
+				#Is it a fair assumption that Transform is always the first component???
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.get("component"))
@@ -346,9 +363,7 @@ class UnityComponent extends UnityObject:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		if new_parent != null:
-			new_parent.add_child(new_node)
-			new_node.owner = state.owner
+		state.add_child(new_node, new_parent, fileID)
 		new_node.editor_description = str(self)
 		return new_node
 
@@ -376,9 +391,7 @@ class UnityBehaviour extends UnityComponent:
 class UnityTransform extends UnityComponent:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node3D:
 		var new_node: Node3D = Node3D.new()
-		if new_parent != null:
-			new_parent.add_child(new_node)
-			new_node.owner = state.owner
+		state.add_child(new_node, new_parent, fileID)
 		new_node.transform = godot_transform
 		return new_node
 
@@ -419,14 +432,13 @@ class UnityRectTransform extends UnityTransform:
 class UnityCollider extends UnityBehaviour:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
-		state.body.add_child(new_node)
+		state.add_child(new_node, state.body, fileID)
 		var cur_node = new_parent
 		var xform = Transform(self.basis, self.center)
 		while cur_node != state.body:
 			xform = cur_node.transform * xform
 			cur_node = cur_node.parent
 		new_node.transform = xform
-		new_node.owner = state.owner
 		new_node.shape = self.shape
 		new_node.name = self.type
 		return new_node
@@ -529,7 +541,7 @@ class UnityRigidbody extends UnityComponent:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		return null
 
-	func create_physics_body(state: GodotNodeState, new_parent: Node3D) -> Node:
+	func create_physics_body(state: GodotNodeState, new_parent: Node3D, name: String) -> Node:
 		var new_node: Node3D;
 		if isKinematic:
 			var kinematic: KinematicBody3D = KinematicBody3D.new()
@@ -538,10 +550,8 @@ class UnityRigidbody extends UnityComponent:
 			var rigid: RigidBody3D = RigidBody3D.new()
 			new_node = rigid
 
-		new_node.name = type
-		if new_parent != null:
-			new_parent.add_child(new_node)
-			new_node.owner = state.owner
+		new_node.name = name # Not type: This replaces the usual transform node.
+		state.add_child(new_node, new_parent, fileID)
 		return new_node
 
 	var isKinematic: bool:
@@ -564,11 +574,14 @@ class UnityMeshRenderer extends UnityRenderer:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
 		new_node.name = type
-		if new_parent != null:
-			new_parent.add_child(new_node)
-			new_node.owner = state.owner
+		state.add_child(new_node, new_parent, fileID)
 		new_node.editor_description = str(self)
-		new_node.mesh = meta.get_godot_resource(mesh)
+		new_node.mesh = meta.get_godot_resource(self.mesh)
+
+		var mf: UnityMeshFilter = gameObject.meshFilter
+		if mf != null:
+			state.add_fileID(new_node, mf.fileID)
+
 		return new_node
 		
 	var mesh: Array: # UnityRef
@@ -622,9 +635,8 @@ class UnityLight extends UnityBehaviour:
 		if keys.get("useColorTemperature"):
 			printerr("Color Temperature not implemented.")
 		light.name = type
-		new_parent.add_child(light)
+		state.add_child(light, new_parent, fileID)
 		light.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))
-		light.owner = state.owner
 		light.light_color = color
 		light.set_param(Light3D.PARAM_ENERGY, intensity)
 		light.set_param(Light3D.PARAM_INDIRECT_ENERGY, bounceIntensity)
