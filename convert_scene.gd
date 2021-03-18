@@ -69,13 +69,20 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if scene_contents == null:
 				assert(is_prefab)
 				scene_contents = new_root
+				node_state = node_state.state_with_owner(scene_contents)
 			else:
 				assert(not is_prefab)
 
+	for asset in pkgasset.parsed_asset.assets.values():
+		if str(asset.type) == "SkinnedMeshRenderer":
+			var ret: Node = asset.create_skinned_mesh(node_state)
+			if ret != null:
+				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
+
 	var packed_scene: PackedScene = PackedScene.new()
-	print(str(scene_contents.get_child_count()))
+	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	packed_scene.pack(scene_contents)
-	print(packed_scene)
-	var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
-	print(pi.get_child_count())
+	#print(packed_scene)
+	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+	#print(pi.get_child_count())
 	return packed_scene

@@ -56,13 +56,13 @@ class Skelley extends Reference:
 	var bone0_parents: Dictionary = {}.duplicate()
 	
 	func initialize(bone0: UnityTransform):
-		var current_parent: UnityTransform = bone0.parent
+		var current_parent: UnityTransform = bone0
 		var tmp: Array = [].duplicate()
+		intermediates[current_parent.uniq_key] = current_parent
+		intermediate_bones.push_back(current_parent)
 		while current_parent != null:
 			tmp.push_back(current_parent)
-			print("Adding bone0_parents " + current_parent.name + ":" + current_parent.uniq_key)
 			bone0_parents[current_parent.uniq_key] = current_parent
-			intermediates[current_parent.uniq_key] = current_parent
 			current_parent = current_parent.parent
 		# reverse list
 		for i in range(len(tmp)):
@@ -72,7 +72,6 @@ class Skelley extends Reference:
 		bones.push_back(bone)
 		var added_bones: Array = [].duplicate()
 		var current_parent: UnityTransform = bone
-		print("Checking bone0_parents " + current_parent.name + ":" + current_parent.uniq_key)
 		while current_parent != null and not bone0_parents.has(current_parent.uniq_key):
 			if intermediates.has(current_parent.uniq_key):
 				return added_bones
@@ -90,7 +89,6 @@ class Skelley extends Reference:
 			return added_bones
 		if bone0_parent_list.is_empty():
 			return added_bones
-		current_parent = current_parent.parent
 		while bone0_parent_list[-1] != current_parent:
 			bone0_parents.erase(bone0_parent_list[-1].uniq_key)
 			bone0_parent_list.pop_back()
@@ -120,8 +118,10 @@ class Skelley extends Reference:
 			if len(child.gameObject.components) > 1:
 				var rb: UnityRigidbody = child.gameObject.rigidbody
 				if rb != null: #### and not rb.isKinematic:
+					print("Found physical bone: " + str(child.uniq_key))
 					physical_bones[child.uniq_key] = rb
 				else:
+					print("Found bone attach: " + str(child.uniq_key))
 					bone_attachments[child.uniq_key] = child.gameObject
 			# TODO: We might also want to include prefab instances here. If something is a prefab, we should not include it in the skeleton!
 			if skel_parents.has(child.uniq_key):
@@ -131,8 +131,10 @@ class Skelley extends Reference:
 				add_nodes_recursively(skel_parents, child)
 
 	func construct_final_bone_list(skel_parents: Dictionary):
+		var par_transform: UnityTransform = parent_transform
+		var par_key: String = par_transform.uniq_key
 		for bone in intermediate_bones:
-			if bone.parent == self.parent_transform:
+			if bone.parent.uniq_key == par_key:
 				root_bones.push_back(bone)
 		for bone in root_bones:
 			self.add_nodes_recursively(skel_parents, bone)
@@ -270,13 +272,17 @@ static func initialize_skelleys(assets: Array, node_state: GodotNodeState) -> Ar
 						skelleys.erase(this_id) # We merged two skeletons.
 						this_id = new_id
 					skel_ids[uniq_key] = this_id
-			print(str(skel_ids))
 
 	var skelleys_with_no_parent = [].duplicate()
 
 	# If skelley_parents contains your node, add Skelley.skeleton as a child to it for each item in the list.
 	for skel_id in skelleys:
 		var skelley: Skelley = skelleys[skel_id]
+		var par_transform: UnityTransform = skelley.parent_transform
+		for bone in skelley.bones:
+			if bone == par_transform:
+				par_transform = par_transform.parent
+				skelley.bone0_parent_list.pop_back()
 		if skelley.parent_transform == null:
 			skelleys_with_no_parent.push_back(skelley)
 		else:
@@ -413,11 +419,11 @@ class UnityMaterial extends UnityObject:
 	func create_godot_resource() -> Material:
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
-		print(str(floatProperties))
+		#print(str(floatProperties))
 		var texProperties = get_tex_properties()
-		print(str(texProperties))
+		#print(str(texProperties))
 		var colorProperties = get_color_properties()
-		print(str(colorProperties))
+		#print(str(colorProperties))
 		var ret = StandardMaterial3D.new()
 		ret.albedo_tex_force_srgb = true # Nothing works if this isn't set to true explicitly. Stupid default.
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.white)
@@ -510,12 +516,11 @@ class UnityGameObject extends UnityObject:
 		state.add_fileID_to_skeleton_bone(self.name, fileID)
 		state.add_fileID_to_skeleton_bone(self.name, transform.fileID)
 		if skelley.bone_attachments.has(transform.uniq_key):
-			var ba: BoneAttachment3D = BoneAttachment3D.new()
-			ba.name = self.name
-			ba.bone_name = self.name
-			state.add_child(ba, skelley.godot_skeleton, fileID)
+			ret = BoneAttachment3D.new()
+			ret.name = self.name
+			state.add_child(ret, skelley.godot_skeleton, fileID)
 			state.add_fileID(ret, transform.fileID)
-			ret = ba
+			(ret as BoneAttachment3D).bone_name = self.name
 		elif skelley.physical_bones.has(transform.uniq_key):
 			ret = self.rigidbody.create_physical_bone(state, skelley, name)
 			state.add_fileID(ret, fileID)
@@ -592,10 +597,8 @@ class UnityGameObject extends UnityObject:
 				var component = meta.lookup(component_ref.get("component"))
 				component.create_godot_node(state, ret)
 
-		print("Look for a skeleton at " + transform.uniq_key + " in " + str(state.skelley_parents.keys()))
 		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 		for new_skelley in list_of_skelleys:
-			print("Found skeleton at " + transform.uniq_key +" : " + str(new_skelley))
 			ret.add_child(new_skelley.godot_skeleton)
 			new_skelley.godot_skeleton.owner = state.owner
 
@@ -890,17 +893,17 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		if len(bones) == 0:
 			return create_godot_node_orig(state, new_parent)
 		else:
+			return null
 
-			print("input bone key: " + str(bones[0]) + "/" + str(meta))
-			print("input bone key: " + str(bones[0]) + "DD" + str(state.meta))
-			print("input bone key: " + str(bones[0]) + "/" + str(meta) + "_" + str(meta.lookup))
-			print("input bone key: " + str(bones[0]) + "/" + str(meta) + "_" + str(state.meta.lookup))
-			var first_bone_key: String = meta.lookup(bones[0]).uniq_key
-			print("Resulting bone key: " + str(first_bone_key))
-			var ret: MeshInstance3D = create_godot_node_orig(state, state.uniq_key_to_skelley.get(first_bone_key).godot_skeleton)
-			# ret.skeleton = NodePath("..") # default?
-			# skin??
-			return ret
+	func create_skinned_mesh(state: GodotNodeState) -> Node:
+		if len(bones) == 0:
+			return null
+		var first_bone_key: String = meta.lookup(bones[0]).uniq_key
+		var gdskel = state.uniq_key_to_skelley.get(first_bone_key).godot_skeleton
+		var ret: MeshInstance3D = create_godot_node_orig(state, gdskel)
+		# ret.skeleton = NodePath("..") # default?
+		# TODO: skin??
+		return ret
 
 	var bones: Array:
 		get:
