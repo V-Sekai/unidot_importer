@@ -276,7 +276,7 @@ func _editor_filesystem_scan_check(path_count_unused:int = 0):
 	#	self.call_deferred("_editor_filesystem_scan_check")
 
 func _done_preprocessing_assets():
-	print("I FINISHED PREPROCESSING EVERYTHING!!")
+	print("Finished all preprocessing!!")
 	self.import_worker.stop_all_threads_and_wait()
 	print("Joined.")
 	asset_database.save()

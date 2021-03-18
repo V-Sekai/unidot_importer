@@ -44,7 +44,7 @@ func init_with_filename(source_file):
 			printerr("Invalid member of .unitypackage: " + str(header.filename))
 			continue
 		if not guid_to_pkgasset.has(fnparts[0]):
-			print("Discovered Asset " + fnparts[0])
+			# print("Discovered Asset " + fnparts[0])
 			guid_to_pkgasset[fnparts[0]] = UnityPackageAsset.new()
 		var pkgasset: UnityPackageAsset = guid_to_pkgasset[fnparts[0]]
 		pkgasset.guid = fnparts[0]
@@ -58,7 +58,7 @@ func init_with_filename(source_file):
 				printerr("Asset " + pkgasset.guid + ": Illegal path " + path)
 				guids_to_remove.append(pkgasset.guid)
 			else:
-				print("Asset " + pkgasset.guid + ": " + path)
+				# print("Asset " + pkgasset.guid + ": " + path)
 				path_to_pkgasset[path] = pkgasset
 				paths.push_back(path)
 		if fnparts[1] == 'preview.png':

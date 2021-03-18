@@ -69,6 +69,7 @@ class AssetHandler:
 		var dres = Directory.new()
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
+		pkgasset.meta.rename(pkgasset.pathname)
 		dres.rename(temp_path, pkgasset.pathname)
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -181,6 +182,9 @@ class FbxHandler extends AssetHandler:
 		fres.open("res://" + pkgasset.pathname, File.WRITE)
 		print("Writing stub model to " + pkgasset.pathname)
 		fres.store_buffer(STUB_GLB_FILE)
+		fres.close()
+		print("Renaming model file from " + str(pkgasset.parsed_meta.path) + " to " + pkgasset.pathname)
+		pkgasset.parsed_meta.rename(pkgasset.pathname)
 		return true
 
 	func write_godot_asset(pkgasset: Object, temp_path: String):
