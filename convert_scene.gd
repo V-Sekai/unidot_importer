@@ -1,8 +1,6 @@
 @tool
 extends Resource
 
-const static_storage: GDScript = preload("./static_storage.gd")
-const asset_database_class: GDScript = preload("./asset_database.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 
 func customComparison(a, b):
@@ -21,7 +19,11 @@ func smallestTransform(a, b):
 	else:
 		return b.fileID < a.fileID
 
+
 func pack_scene(pkgasset, is_prefab) -> PackedScene:
+	#for asset in pkgasset.parsed_asset.assets.values():
+	#	if asset.type == "GameObject" and asset.toplevel:
+	#		pass
 
 	var arr: Array = [].duplicate()
 
@@ -40,16 +42,35 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		arr = [arr[0]]
 	else:
 		scene_contents = Node3D.new()
-		scene_contents.name = "RootNode"
+		scene_contents.name = "RootNode3D"
 
 	var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.database, pkgasset.parsed_meta, scene_contents)
+	var skelleys_with_no_parent: Array = object_adapter_class.initialize_skelleys(pkgasset.parsed_asset.assets.values(), node_state)
+
+	if len(skelleys_with_no_parent) == 1:
+		scene_contents = skelleys_with_no_parent[0].godot_skeleton
+		scene_contents.name = "RootSkeleton"
+		node_state = node_state.state_with_owner(scene_contents)
+	elif len(skelleys_with_no_parent) > 1:
+		assert(not is_prefab)
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
-		# print(str(asset) + " position " + str(asset.transform.godot_transform))
-		var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
-		if is_prefab:
-			scene_contents = new_root
+		var skel: Reference = node_state.uniq_key_to_skelley.get(asset.transform.uniq_key, null)
+		if skel != null:
+			if len(skelleys_with_no_parent) > 1:
+				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
+				scene_contents.add_child(skel.godot_skeleton)
+				skel.owner = scene_contents
+			asset.create_skeleton_bone(node_state, skel)
+		else:
+			# print(str(asset) + " position " + str(asset.transform.godot_transform))
+			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
+			if scene_contents == null:
+				assert(is_prefab)
+				scene_contents = new_root
+			else:
+				assert(not is_prefab)
 
 	var packed_scene: PackedScene = PackedScene.new()
 	print(str(scene_contents.get_child_count()))
