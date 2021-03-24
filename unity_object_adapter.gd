@@ -43,9 +43,6 @@ class Skelley extends Reference:
 	
 	var root_bones: Array = [].duplicate()
 	
-	var physical_bones: Dictionary = {}.duplicate()
-	var bone_attachments: Dictionary = {}.duplicate()
-	
 	var uniq_key_to_bone: Dictionary = {}.duplicate()
 	var godot_skeleton: Skeleton3D = Skeleton3D.new()
 	
@@ -63,7 +60,7 @@ class Skelley extends Reference:
 		while current_parent != null:
 			tmp.push_back(current_parent)
 			bone0_parents[current_parent.uniq_key] = current_parent
-			current_parent = current_parent.parent
+			current_parent = current_parent.parent_no_stripped
 		# reverse list
 		for i in range(len(tmp)):
 			bone0_parent_list.push_back(tmp[-1 - i])
@@ -78,14 +75,20 @@ class Skelley extends Reference:
 			intermediates[current_parent.uniq_key] = current_parent
 			intermediate_bones.push_back(current_parent)
 			added_bones.push_back(current_parent)
-			current_parent = current_parent.parent
+			current_parent = current_parent.parent_no_stripped
 		if current_parent == null:
-			printerr("No common ancestor for skeleton " + bone.name + " containing " + bones[0].name)
+			if bone.is_stripped:
+				printerr("Warning: No common ancestor for skeleton with stripped bone: " + bone.meta.guid + "/" + str(bone.fileID))
+				return added_bones
+			printerr("No common ancestor for skeleton " + bone.name)
+			return added_bones
+		if current_parent.is_stripped or (current_parent.parent == null and bone.is_stripped):
+			printerr("Warning: Skeleton contains stripped bone: " + current_parent.meta.guid + "/" + str(current_parent.fileID))
 			return added_bones
 		if current_parent.parent == null:
 			bone0_parents.clear()
 			bone0_parent_list.clear()
-			printerr("Warning: Skeleton parented at root " + bone.name + " containing " + bones[0].name + " at " + current_parent.name)
+			printerr("Warning: Skeleton parented at root " + bone.name + " at " + current_parent.name)
 			return added_bones
 		if bone0_parent_list.is_empty():
 			return added_bones
@@ -109,32 +112,38 @@ class Skelley extends Reference:
 			return bone0_parent_list[-1]
 
 	func add_nodes_recursively(skel_parents: Dictionary, bone_transform: UnityTransform):
+		if bone_transform.is_stripped:
+			printerr("Not able to add skeleton nodes from a stripped transform!")
+			return
 		for child_ref in bone_transform.children_refs:
 			var child: UnityTransform = bone_transform.meta.lookup(child_ref)
 			# not skel_parents.has(child.uniq_key):
 			if not intermediates.has(child.uniq_key):
 				intermediates[child.uniq_key] = child
 				intermediate_bones.push_back(child)
-			if len(child.gameObject.components) > 1:
-				var rb: UnityRigidbody = child.gameObject.rigidbody
-				if rb != null: #### and not rb.isKinematic:
-					print("Found physical bone: " + str(child.uniq_key))
-					physical_bones[child.uniq_key] = rb
-				else:
-					print("Found bone attach: " + str(child.uniq_key))
-					bone_attachments[child.uniq_key] = child.gameObject
+			#if len(child.gameObject.components) > 1:
+			#	var rb: UnityRigidbody = child.gameObject.rigidbody
+			#	if rb != null: #### and not rb.isKinematic:
+			#		print("Found physical bone: " + str(child.uniq_key))
+			#		physical_bones[child.uniq_key] = rb
+			#	else:
+			#		print("Found bone attach: " + str(child.uniq_key))
+			#		bone_attachments[child.uniq_key] = child.gameObject
 			# TODO: We might also want to include prefab instances here. If something is a prefab, we should not include it in the skeleton!
 			if skel_parents.has(child.uniq_key):
-				bone_attachments[child.uniq_key] = child.gameObject
+				pass #bone_attachments[child.uniq_key] = child.gameObject
 				# We will not recurse: everything underneath this is part of a separate skeleton.
 			else:
 				add_nodes_recursively(skel_parents, child)
 
 	func construct_final_bone_list(skel_parents: Dictionary):
 		var par_transform: UnityTransform = parent_transform
+		if par_transform == null:
+			printerr("Final bone list transform is null!")
+			return
 		var par_key: String = par_transform.uniq_key
 		for bone in intermediate_bones:
-			if bone.parent.uniq_key == par_key:
+			if bone.parent_no_stripped == null or bone.parent.uniq_key == par_key:
 				root_bones.push_back(bone)
 		for bone in root_bones:
 			self.add_nodes_recursively(skel_parents, bone)
@@ -151,7 +160,10 @@ class Skelley extends Reference:
 		idx = 0
 		for bone in bones:
 			godot_skeleton.add_bone(bone.name)
-			godot_skeleton.set_bone_parent(idx, uniq_key_to_bone.get(bone.parent.uniq_key, -1))
+			if bone.parent_no_stripped == null:
+				godot_skeleton.set_bone_parent(idx, -1)
+			else:
+				godot_skeleton.set_bone_parent(idx, uniq_key_to_bone.get(bone.parent.uniq_key, -1))
 			godot_skeleton.set_bone_rest(idx, bone.godot_transform)
 			idx += 1
 	# Skelley rules:
@@ -166,16 +178,36 @@ static func create_node_state(database: Resource, meta: Resource, root_node: Nod
 	return state
 
 
+class PrefabState extends Reference:
+	# Prefab_instance_id -> array[UnityTransform objects]
+	var child_transforms_by_stripped_id: Dictionary = {}.duplicate()
+	var transforms_by_parented_prefab: Dictionary = {}.duplicate()
+	#var transforms_by_parented_prefab_source_obj: Dictionary = {}.duplicate()
+	var components_by_stripped_id: Dictionary = {}.duplicate()
+	var gameobjects_by_parented_prefab: Dictionary = {}.duplicate()
+	#var gameobjects_by_parented_prefab_source_obj: Dictionary = {}.duplicate()
+
+	# Dictionary from parent_transform uniq_key -> array of UnityPrefabInstance
+	var prefab_parents: Dictionary = {}.duplicate()
+	var prefab_instance_paths: Array = [].duplicate()
+
 class GodotNodeState extends Reference:
 	var owner: Node = null
 	var body: CollisionObject3D = null
 	var database: Resource = null # asset_database instance
 	var meta: Resource = null # asset_database.AssetMeta instance
 
+	# Closest thing Godot 4 has to a "using" statement
+	class PrefabStateInner extends PrefabState:
+		pass
+
 	# Dictionary from parent_transform uniq_key -> array of convert_scene.Skelley
 	var skelley_parents: Dictionary = {}.duplicate()
 	# Dictionary from any transform uniq_key -> convert_scene.Skelley
 	var uniq_key_to_skelley: Dictionary = {}.duplicate()
+
+	var prefab_state: PrefabState = null
+	#var root_nodepath: Nodepath = Nodepath("/")
 
 	func duplicate():
 		var state: GodotNodeState = GodotNodeState.new()
@@ -185,28 +217,40 @@ class GodotNodeState extends Reference:
 		state.meta = meta
 		state.skelley_parents = skelley_parents
 		state.uniq_key_to_skelley = uniq_key_to_skelley
+		state.prefab_state = prefab_state
 		return state
-	
+
 	func add_child(child: Node, new_parent: Node3D, fileID: int):
+		# meta. # FIXME???
 		if owner != null:
+			assert(new_parent != null)
 			new_parent.add_child(child)
 			child.owner = owner
+		if new_parent == null:
+			assert(owner == null)
+			# We are the root (of a Prefab). Become the owner.
+			self.owner = child
+		else:
+			assert(owner != null)
 		if fileID != 0:
 			add_fileID(child, fileID)
 
 	func add_fileID_to_skeleton_bone(bone_name: String, fileID: int):
 		meta.fileid_to_skeleton_bone[fileID] = bone_name
-	
+
 	func add_fileID(child: Node, fileID: int):
 		if owner != null:
+			print("Add fileID " + str(fileID) + " " + str(owner.name) + " to " + str(child.name))
 			meta.fileid_to_nodepath[fileID] = owner.get_path_to(child)
-		else:
-			meta.fileid_to_nodepath[fileID] = NodePath(".")
+		# FIXME??
+		#else:
+		#	meta.fileid_to_nodepath[fileID] = root_nodepath
 	
 	func init_node_state(database: Resource, meta: Resource, root_node: Node3D) -> GodotNodeState:
 		self.database = database
 		self.meta = meta
 		self.owner = root_node
+		self.prefab_state = PrefabStateInner.new()
 		return self
 	
 	func state_with_body(new_body: CollisionObject3D) -> GodotNodeState:
@@ -223,6 +267,11 @@ class GodotNodeState extends Reference:
 		var state: GodotNodeState = duplicate()
 		state.owner = new_owner
 		return state
+
+	#func state_with_nodepath(additional_nodepath) -> GodotNodeState:
+	#	var state: GodotNodeState = duplicate()
+	#	state.root_nodepath = NodePath(str(root_nodepath) + str(asdditional_nodepath) + "/")
+	#	return state
 
 
 static func initialize_skelleys(assets: Array, node_state: GodotNodeState) -> Array:
@@ -281,7 +330,7 @@ static func initialize_skelleys(assets: Array, node_state: GodotNodeState) -> Ar
 		var par_transform: UnityTransform = skelley.parent_transform
 		for bone in skelley.bones:
 			if bone == par_transform:
-				par_transform = par_transform.parent
+				par_transform = par_transform.parent_no_stripped
 				skelley.bone0_parent_list.pop_back()
 		if skelley.parent_transform == null:
 			skelleys_with_no_parent.push_back(skelley)
@@ -310,6 +359,11 @@ class UnityObject extends Reference:
 	var utype: int = 0 # Not set in .meta files
 	var _cache_uniq_key: String = ""
 
+	# Some components or game objects within a prefab are "stripped" dummy objects.
+	# Setting the stripped flag is not required...
+	# and properties of prefabbed objects seem to have no effect anyway.
+	var is_stripped: bool = false
+
 	var uniq_key: String:
 		get:
 			if _cache_uniq_key.is_empty():
@@ -337,6 +391,10 @@ class UnityObject extends Reference:
 		get:
 			return null
 
+	var gameObject: UnityGameObject:
+		get:
+			return null
+
 	# Belongs in UnityComponent, but we haven't implemented all types yet.
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
@@ -347,6 +405,34 @@ class UnityObject extends Reference:
 	func create_godot_resource() -> Resource:
 		return null
 
+	# Prefab source properties: Component and GameObject sub-types only:
+	# UNITY 2018+:
+	#  m_CorrespondingSourceObject: {fileID: 100176, guid: ca6da198c98777940835205234d6323d, type: 3}
+	#  m_PrefabInstance: {fileID: 2493014228082835901}
+	#  m_PrefabAsset: {fileID: 0}
+	# (m_PrefabAsset is always(?) 0 no matter what. I guess we can ignore it?
+
+	# UNITY 2017-:
+	#  m_PrefabParentObject: {fileID: 4504365477183010, guid: 52b062a91263c0844b7557d84ca92dbd, type: 2}
+	#  m_PrefabInternal: {fileID: 15226381}
+	var prefab_source_object: Array:
+		get:
+			# new: m_CorrespondingSourceObject; old: m_PrefabParentObject
+			return keys.get("m_CorrespondingSourceObject", keys.get("m_PrefabParentObject", [null, 0, "", 0]))
+
+	var prefab_instance: Array:
+		get:
+			# new: m_PrefabInstance; old: m_PrefabInternal
+			return keys.get("m_PrefabInstance", keys.get("m_PrefabInternal", [null, 0, "", 0]))
+	
+	var is_prefab_reference: bool:
+		get:
+			if not is_stripped:
+				assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
+			else:
+				assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+			return (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+
 
 ### ================ ASSET TYPES ================
 # FIXME: All of these are native Godot types. I'm not sure if these types are needed or warranted.
@@ -356,7 +442,7 @@ class UnityMesh extends UnityObject:
 class UnityMaterial extends UnityObject:
 
 	func get_float_properties() -> Dictionary:
-		var flts = keys.get("m_SavedProperties").get("m_Floats")
+		var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
 		var ret = {}.duplicate()
 		for dic in flts:
 			for key in dic:
@@ -364,7 +450,7 @@ class UnityMaterial extends UnityObject:
 		return ret
 
 	func get_color_properties() -> Dictionary:
-		var cols = keys.get("m_SavedProperties").get("m_Colors")
+		var cols = keys.get("m_SavedProperties", {}).get("m_Colors", [])
 		var ret = {}.duplicate()
 		for dic in cols:
 			for key in dic:
@@ -372,7 +458,7 @@ class UnityMaterial extends UnityObject:
 		return ret
 
 	func get_tex_properties() -> Dictionary:
-		var texs = keys.get("m_SavedProperties").get("m_TexEnvs")
+		var texs = keys.get("m_SavedProperties", {}).get("m_TexEnvs", [])
 		var ret = {}.duplicate()
 		for dic in texs:
 			for key in dic:
@@ -505,34 +591,220 @@ class UnityRenderTexture extends UnityTexture:
 class UnityCustomRenderTexture extends UnityRenderTexture:
 	pass
 
+
+class UnityPrefabInstance extends UnityObject:
+
+	# When you see a PrefabInstance, load() the scene.
+	# If it is_prefab_reference but not the root, log an error.
+
+	# For all Transform in scene, find transforms whose parent has is_prefab_reference=true. These subtrees must be mapped from PrefabInstance.
+
+	# TODO: Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...
+
+	# For all PrefabInstance in scene, make map from m_TransformParent 
+	# Note also: a PrefabInstance with m_TransformParent=0 in a prefab defines a "Prefab Variant". In Godot terms, this is an "inhereted" or instanced scene.
+	# COMPLICATED!!!
+
+	# Rules about skeletons: If any skinned mesh has bones, which are part of a prefab instance, mark all bones as belonging to that prefab instance (no consideration is made as to whether they link two separate skeletons together.)
+	# Then, repeat one more time and makwe sure no overlap
+	# all transforms are marked as parented to the prefab.
+
+	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
+	func create_godot_node(xstate: GodotNodeState, new_parent: Node3D) -> Node3D:
+		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
+		var state: Object = xstate
+		var target_prefab_meta = meta.lookup_meta(source_prefab)
+		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
+		if packed_scene == null:
+			printerr("Failed to instantiate prefab with guid " + meta.guid + "/" + str(fileID))
+			return null
+		print("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
+		var instanced_scene: Node3D = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		instanced_scene.filename = packed_scene.resource_path
+		state.add_child(instanced_scene, new_parent, fileID)
+		print("Prefab " + str(packed_scene.resource_path) + " ------------")
+		print(str(target_prefab_meta.fileid_to_nodepath))
+		print(str(target_prefab_meta.prefab_fileid_to_nodepath))
+		print(str(target_prefab_meta.fileid_to_skeleton_bone))
+		print(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
+		print(" ------------")
+		var ps: PrefabState = state.prefab_state
+		ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
+		var nodepath_bone_to_stripped_gameobject: Dictionary = {}.duplicate()
+		var gameobject_fileid_to_attachment: Dictionary = {}.duplicate()
+		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(fileID, []):
+			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
+			var par: UnityGameObject = gameobject_asset
+			var source_obj_ref = par.prefab_source_object
+			assert(target_prefab_meta.guid == source_obj_ref[2])
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
+					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
+					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
+			nodepath_bone_to_stripped_gameobject[str(target_nodepath) + "/" + str(target_skel_bone)] = gameobject_asset
+			var target_parent_obj = instanced_scene.get_node(target_nodepath)
+			var attachment: Node3D = target_parent_obj
+			if target_skel_bone != "" or target_parent_obj is BoneAttachment3D:
+				var godot_skeleton: Skeleton3D = target_parent_obj as Skeleton3D
+				attachment = null
+				for comp in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
+					if comp.type == "Rigidbody":
+						attachment = self.rigidbody.create_physical_bone(state, godot_skeleton, target_skel_bone)
+						state.add_fileID(attachment, gameobject_asset.fileID)
+						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
+						#state.fileid_to_nodepath[transform_asset.fileID] = gameobject_asset.fileID
+				if attachment == null:
+					# Will not include the Transform.
+					if len(ps.components_by_stripped_id.get(gameobject_asset.fileID, [])) >= 1:
+						attachment = BoneAttachment3D.new()
+						attachment.name = target_parent_obj.name
+						attachment.bone_name = target_skel_bone
+						state.add_child(attachment, godot_skeleton, gameobject_asset.fileID)
+						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
+			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
+				component.create_godot_node(state, attachment)
+					
+		for transform_asset in ps.transforms_by_parented_prefab.get(fileID, []):
+			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
+			var par: UnityTransform = transform_asset
+			var source_obj_ref = par.prefab_source_object
+			print("Checking object " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			assert(target_prefab_meta.guid == source_obj_ref[2])
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
+					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
+					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
+			var gameobject_asset: UnityGameObject = nodepath_bone_to_stripped_gameobject.get(str(target_nodepath) + "/" + str(target_skel_bone), null)
+			print("Get target node " + str(target_nodepath) + " bone " + target_skel_bone + " from " + str(instanced_scene.filename))
+			var target_parent_obj = instanced_scene.get_node(target_nodepath)
+			var attachment: Node3D = target_parent_obj
+			var already_has_attachment: bool = false
+			print("Found object: " + str(target_parent_obj.name))
+			if gameobject_asset != null and state.gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
+				print("We already got one! " + str(gameobject_asset.fileID) + " " + str(target_skel_bone))
+				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
+				state.add_fileID(attachment, transform_asset.fileID)
+				already_has_attachment = true
+			elif !already_has_attachment and (target_skel_bone != "" or len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
+				var godot_skeleton: Skeleton3D = target_parent_obj as Skeleton3D
+				attachment = BoneAttachment3D.new()
+				attachment.name = target_skel_bone
+				attachment.bone_name = target_skel_bone
+				print("Made a new attachment! " + str(target_skel_bone))
+				state.add_child(attachment, godot_skeleton, transform_asset.fileID)
+			print("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
+
+			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
+			for new_skelley in list_of_skelleys:
+				attachment.add_child(new_skelley.godot_skeleton)
+				new_skelley.godot_skeleton.owner = state.owner
+
+			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
+				if child_transform.is_prefab_reference:
+					var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
+					prefab_instance.create_godot_node(state, attachment)
+				else:
+					var child_game_object: UnityGameObject = child_transform.gameObject
+					if child_game_object.is_prefab_reference:
+						printerr("child gameObject is a prefab reference! " + child_game_object.meta.guid + "/" + int(child_game_object.fileID))
+					var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
+					if new_skelley != null:
+						child_game_object.create_skeleton_bone(state, new_skelley.godot_skeleton)
+					else:
+						child_game_object.create_godot_node(state, attachment)
+
+		# TODO: detect skeletons which overlap with existing prefab, and add bones to them.
+		# TODO: implement modifications:
+		# I think we should separate out the **CREATION OF STRUCTURE** from the **SETTING OF STATE**
+		# If we do this, prefab modification properties would work the same way as normal properties:
+		# prefab:
+		#    instantiate scene
+		#    assign property modifications
+		# top-level (scene):
+		#    build structure with create_godot_nodes
+		#    now we have what is basically an instantiated scene.
+		#    assign property modifications
+
+		#calculate_prefab_nodepaths(state, instanced_scene, target_fileid, target_prefab_meta)
+		#for target_fileid in target_prefab_meta.fileid_to_nodepath:
+		#	var stripped_id = int(target_fileid)^fileID
+		#	prefab_fileid_to_nodepath = 
+		#stripped_id_to_nodepath
+		#for mod in self.modifications:
+		#	# TODO: Assign godot properties for each modification
+		#	pass
+		return instanced_scene
+
+	var parent_ref: Array: # UnityRef
+		get:
+			return keys.get("m_Modification", {}).get("m_TransformParent", [null,0,"",0])
+
+	var parent_no_stripped: Array: # UnityRef
+		get:
+			return meta.lookup(parent_ref)
+
+	var parent: Array: # UnityRef
+		get:
+			return meta.lookup(parent_ref)
+
+	var toplevel: bool:
+		get:
+			return not is_legacy_parent_prefab and parent_ref[1] == 0
+
+	var modifications: Array:
+		get:
+			return keys.get("m_Modification", {}).get("m_Modifications", [])
+
+	var removed_components: Array:
+		get:
+			return keys.get("m_Modification", {}).get("m_RemovedComponents", [])
+
+	var source_prefab: Array: # UnityRef
+		get:
+			# new: m_SourcePrefab; old: m_ParentPrefab
+			return keys.get("m_SourcePrefab", keys.get("m_ParentPrefab", [null, 0, "", 0]))
+
+	var is_legacy_parent_prefab: bool:
+		get:
+			# Legacy prefabs will stick one of these at the root of the Prefab file. It serves no purpose
+			# the legacy "prefab parent" object has a m_RootGameObject reference, but you can determine that
+			# the same way modern prefabs do, the only GameObject whose Transform has m_Father == null
+			return keys.get("m_IsPrefabParent", false)
+
+class UnityPrefabLegacyUnused extends UnityPrefabInstance:
+	# I think this will never exist in practice, but it's here anyway:
+	# Old Unity's "Prefab" used utype 1001 which is now "PrefabInstance", not 1001480554.
+	# so those objects should instantiate UnityPrefabInstance anyway.
+	pass
+
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
 
-	func create_skeleton_bone(xstate: GodotNodeState, skelley: Skelley):
+	func create_skeleton_bone(xstate: GodotNodeState, godot_skeleton: Skeleton3D):
 		var state: Object = xstate
 		# Instead of a transform, this sets the skeleton transform position maybe?, etc. etc. etc.
 		var transform: UnityTransform = self.transform
 		var ret: Node3D = null
-		state.add_fileID_to_skeleton_bone(self.name, fileID)
-		state.add_fileID_to_skeleton_bone(self.name, transform.fileID)
-		if skelley.bone_attachments.has(transform.uniq_key):
-			ret = BoneAttachment3D.new()
-			ret.name = self.name
-			state.add_child(ret, skelley.godot_skeleton, fileID)
-			state.add_fileID(ret, transform.fileID)
-			(ret as BoneAttachment3D).bone_name = self.name
-		elif skelley.physical_bones.has(transform.uniq_key):
-			ret = self.rigidbody.create_physical_bone(state, skelley, name)
+		if self.rigidbody != null:
+			ret = self.rigidbody.create_physical_bone(state, godot_skeleton, name)
 			state.add_fileID(ret, fileID)
 			state.add_fileID(ret, transform.fileID)
+		elif len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
+			ret = BoneAttachment3D.new()
+			ret.name = self.name
+			state.add_child(ret, godot_skeleton, fileID)
+			state.add_fileID(ret, transform.fileID)
+			(ret as BoneAttachment3D).bone_name = self.name
 		else:
-			state.add_fileID(skelley.godot_skeleton, fileID)
-			state.add_fileID(skelley.godot_skeleton, transform.fileID)
+			state.add_fileID(godot_skeleton, fileID)
+			state.add_fileID(godot_skeleton, transform.fileID)
+			state.add_fileID_to_skeleton_bone(self.name, fileID)
+			state.add_fileID_to_skeleton_bone(self.name, transform.fileID)
 		if ret != null:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 			for new_skelley in list_of_skelleys:
-				ret.add_child(new_skelley.godot_skeleton)
-				new_skelley.godot_skeleton.owner = state.owner
+				ret.add_child(godot_skeleton)
+				godot_skeleton.owner = state.owner
 
 		var skip_first: bool = true
 
@@ -546,14 +818,20 @@ class UnityGameObject extends UnityObject:
 				component.create_godot_node(state, ret)
 
 		for child_ref in transform.children_refs:
-			var child_transform = meta.lookup(child_ref)
-			var child_game_object = child_transform.gameObject
-			var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
-			if new_skelley != null:
-				child_game_object.create_skeleton_bone(state, new_skelley)
+			var child_transform: UnityTransform = meta.lookup(child_ref)
+			if child_transform.is_prefab_reference:
+				var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
+				prefab_instance.instance(state, ret)
 			else:
-				assert(ret != null)
-				child_game_object.create_godot_node(state, ret)
+				var child_game_object: UnityGameObject = child_transform.gameObject
+				if child_game_object.is_prefab_reference:
+					printerr("child gameObject is a prefab reference! " + child_game_object.meta.guid + "/" + int(child_game_object.fileID))
+				var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
+				if new_skelley != null:
+					child_game_object.create_skeleton_bone(state, new_skelley.godot_skeleton)
+				else:
+					assert(ret != null)
+					child_game_object.create_godot_node(state, ret)
 
 	func create_godot_node(xstate: GodotNodeState, new_parent: Node3D) -> Node3D:
 		var state: Object = xstate
@@ -574,17 +852,17 @@ class UnityGameObject extends UnityObject:
 			if component.is_collider:
 				extra_fileID.push_back(component.fileID)
 				has_collider = true
+		var is_staticbody: bool = false
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
+			is_staticbody = true
 		else:
 			ret = Node3D.new()
 		ret.name = name
 		state.add_child(ret, new_parent, transform.fileID)
 		ret.transform = transform.godot_transform
-		state = state.state_with_body(ret as StaticBody3D)
-		if new_parent == null:
-			# We are the root (of a Prefab). Become the owner.
-			state = state.state_with_owner(ret)
+		if is_staticbody:
+			state = state.state_with_body(ret as StaticBody3D)
 		for ext in extra_fileID:
 			state.add_fileID(ret, ext)
 		var skip_first: bool = true
@@ -603,23 +881,45 @@ class UnityGameObject extends UnityObject:
 			new_skelley.godot_skeleton.owner = state.owner
 
 		for child_ref in transform.children_refs:
-			var child_transform = meta.lookup(child_ref)
-			var child_game_object = child_transform.gameObject
-			var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
-			if new_skelley != null:
-				child_game_object.create_skeleton_bone(state, new_skelley)
+			var child_transform: UnityTransform = meta.lookup(child_ref)
+			if child_transform.is_prefab_reference:
+				var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
+				prefab_instance.instance(state, ret)
 			else:
-				child_game_object.create_godot_node(state, ret)
+				var child_game_object: UnityGameObject = child_transform.gameObject
+				if child_game_object.is_prefab_reference:
+					printerr("child gameObject is a prefab reference! " + child_game_object.meta.guid + "/" + int(child_game_object.fileID))
+				var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
+				if new_skelley != null:
+					child_game_object.create_skeleton_bone(state, new_skelley.godot_skeleton)
+				else:
+					child_game_object.create_godot_node(state, ret)
 
 		return ret
 
-	var components: Array:
+	var components: Variant: # Array:
 		get:
+			if is_stripped:
+				printerr("Attempted to access the component array of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				# FIXME: Stripped objects do not know their name.
+				return 12345.678 # ???? 
 			return keys.get("m_Component")
 
-	var transform: UnityTransform:
+	var transform: Variant: # UnityTransform:
 		get:
-			return meta.lookup(components[0].get("component"))
+			if is_stripped:
+				printerr("Attempted to access the transform of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				# FIXME: Stripped objects do not know their name.
+				return 12345.678 # ???? 
+			if typeof(components) != TYPE_ARRAY:
+				printerr("guid " + meta.guid + " id " + str(fileID) + " has component array: " + str(components))
+			elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
+				printerr("guid " + meta.guid + " id " + str(fileID) + " has invalid first component: " + str(components))
+			elif len(components[0].get("component", [])) < 3:
+				printerr("guid " + meta.guid + " id " + str(fileID) + " has invalid component: " + str(components))
+			else:
+				return meta.lookup(components[0].get("component"))
+			return null
 
 	var meshFilter: UnityMeshFilter:
 		get:
@@ -635,13 +935,32 @@ class UnityGameObject extends UnityObject:
 				if component.type == "Rigidbody":
 					return component
 
-	var toplevel: bool:
+	var enabled: bool:
 		get:
-			return transform.parent == null
+			return keys.get("m_IsActive")
+
+	var toplevel: Variant: # bool:
+		get:
+			if is_stripped:
+				# Stripped objects are part of a Prefab, so by definition will never be toplevel
+				# (The PrefabInstance itself will be the toplevel object)
+				return false
+			if typeof(transform) == TYPE_NIL:
+				printerr("guid " + meta.guid + " id " + str(fileID) + " has no transform in toplevel: " + str(transform))
+				return null
+			if typeof(transform.parent_ref) != TYPE_ARRAY:
+				printerr("guid " + meta.guid + " id " + str(fileID) + " has invalid or missing parent_ref: " + str(transform.parent_ref))
+				return null
+			return transform.parent_ref[1] == 0
+
+	var gameObject: UnityGameObject:
+		get:
+			return self
 
 
 ### ================ COMPONENT TYPES ================
 class UnityComponent extends UnityObject:
+
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
@@ -649,12 +968,21 @@ class UnityComponent extends UnityObject:
 		new_node.editor_description = str(self)
 		return new_node
 
-	var gameObject: UnityGameObject:
+	var gameObject: Variant: # UnityGameObject:
 		get:
-			return meta.lookup(keys.get("m_GameObject"))
+			if is_stripped:
+				printerr("Attempted to access the gameObject of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				# FIXME: Stripped objects do not know their name.
+				return 12345.678 # ???? 
+			return meta.lookup(keys.get("m_GameObject", []))
 
-	var name: String:
+	var name: Variant:
 		get:
+			if is_stripped:
+				printerr("Attempted to access the name of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				# FIXME: Stripped objects do not know their name.
+				# FIXME: Make the calling function crash, since we don't have stacktraces wwww
+				return 12345.678 # ???? 
 			return gameObject.name
 
 	var enabled: bool:
@@ -704,9 +1032,25 @@ class UnityTransform extends UnityComponent:
 		get:
 			return keys.get("m_RootOrder", 0)
 
-	var parent: UnityTransform:
+	var parent_ref: Variant: # Array: # UnityRef
 		get:
-			return meta.lookup(keys.get("m_Father"))
+			if is_stripped:
+				printerr("Attempted to access the parent of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
+			return keys.get("m_Father", [null,0,"",0])
+
+	var parent_no_stripped: Variant: # UnityTransform
+		get:
+			if is_stripped:
+				return null
+			return meta.lookup(parent_ref)
+
+	var parent: Variant: # UnityTransform:
+		get:
+			if is_stripped:
+				printerr("Attempted to access the parent of a stripped " + type + " guid " + meta.guid + " fileID " + str(fileID))
+				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
+			return meta.lookup(parent_ref)
 
 	var children_refs: Array:
 		get:
@@ -755,7 +1099,6 @@ class UnityBoxCollider extends UnityCollider:
 	var size: Vector3:
 		get:
 			return keys.get("m_Size")
-
 
 class UnitySphereCollider extends UnityCollider:
 	var shape: Shape3D:
@@ -840,11 +1183,11 @@ class UnityRigidbody extends UnityComponent:
 		state.add_child(new_node, new_parent, fileID)
 		return new_node
 
-	func create_physical_bone(state, skelley, name):
+	func create_physical_bone(state: GodotNodeState, godot_skeleton: Skeleton3D, name: String):
 		var new_node: PhysicalBone3D = PhysicalBone3D.new()
 		new_node.bone_name = name
 		new_node.name = name
-		state.add_child(new_node, skelley.godot_skeleton, fileID)
+		state.add_child(new_node, godot_skeleton, fileID)
 		return new_node
 
 	var isKinematic: bool:
@@ -898,8 +1241,15 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 	func create_skinned_mesh(state: GodotNodeState) -> Node:
 		if len(bones) == 0:
 			return null
-		var first_bone_key: String = meta.lookup(bones[0]).uniq_key
+		var first_bone_obj: Reference = meta.lookup(bones[0])
+		if first_bone_obj.is_stripped:
+			printerr("Cannot create skinned mesh on stripped skeleton!")
+			return null
+		var first_bone_key: String = first_bone_obj.uniq_key
 		var gdskel = state.uniq_key_to_skelley.get(first_bone_key).godot_skeleton
+		if gdskel == null:
+			printerr("Unable to find skeleton to add a mesh " + name + " for " + first_bone_key)
+			return null
 		var ret: MeshInstance3D = create_godot_node_orig(state, gdskel)
 		# ret.skeleton = NodePath("..") # default?
 		# TODO: skin??
@@ -1390,9 +1740,9 @@ var _type_dictionary: Dictionary = {
 	# "Polygon2D": UnityPolygon2D,
 	# "PolygonCollider2D": UnityPolygonCollider2D,
 	# "PositionConstraint": UnityPositionConstraint,
-	# "Prefab": UnityPrefab,
+	"Prefab": UnityPrefabLegacyUnused,
 	"PrefabImporter": UnityPrefabImporter,
-	# "PrefabInstance": UnityPrefabInstance,
+	"PrefabInstance": UnityPrefabInstance,
 	# "PreloadData": UnityPreloadData,
 	# "Preset": UnityPreset,
 	# "PresetManager": UnityPresetManager,

@@ -28,7 +28,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	var arr: Array = [].duplicate()
 
 	for asset in pkgasset.parsed_asset.assets.values():
-		if asset.type == "GameObject" and asset.toplevel:
+		if (asset.type == "GameObject" or asset.type == "PrefabInstance") and asset.toplevel:
+			if asset.is_stripped:
+				printerr("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 			arr.push_back(asset)
 
 	if arr.is_empty():
@@ -44,7 +46,46 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		scene_contents = Node3D.new()
 		scene_contents.name = "RootNode3D"
 
+	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
+
 	var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.database, pkgasset.parsed_meta, scene_contents)
+
+	var ps: Reference = node_state.prefab_state
+	for asset in pkgasset.parsed_asset.assets.values():
+		var parent: Reference = null # UnityTransform
+		if asset.is_prefab_reference:
+			pass # Ignore stripped components.
+		elif asset.type == "Transform" or asset.type == "PrefabInstance":
+			parent = asset.parent
+			if parent != null and parent.is_prefab_reference:
+				var prefab_instance_id: int = parent.prefab_instance[1]
+				var prefab_source_object: int = parent.prefab_source_object[1]
+				if not ps.transforms_by_parented_prefab.has(prefab_instance_id):
+					ps.transforms_by_parented_prefab[prefab_instance_id] = [].duplicate()
+				if not ps.child_transforms_by_stripped_id.has(parent.fileID):
+					ps.child_transforms_by_stripped_id[parent.fileID] = [].duplicate()
+				ps.transforms_by_parented_prefab.get(prefab_instance_id).push_back(parent)
+				#ps.transforms_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
+				ps.child_transforms_by_stripped_id[parent.fileID].push_back(asset)
+			#elif parent != null and asset.type == "PrefabInstance":
+			#	var uk: String = asset.parent.uniq_key
+			#	if not ps.prefab_parents.has(uk):
+			#		ps.prefab_parents[uk] = []
+			#	ps.prefab_parents[uk].append(asset)
+		elif asset.type != "GameObject":
+			# alternatively, is it a subclass of UnityComponent?
+			parent = asset.gameObject
+			if parent != null and parent.is_prefab_reference:
+				var prefab_instance_id: int = parent.prefab_instance[1]
+				var prefab_source_object: int = parent.prefab_source_object[1]
+				if not ps.gameobjects_by_parented_prefab.has(prefab_instance_id):
+					ps.gameobjects_by_parented_prefab[prefab_instance_id] = [].duplicate()
+				if not ps.components_by_stripped_id.has(parent.fileID):
+					ps.components_by_stripped_id[parent.fileID] = [].duplicate()
+				ps.gameobjects_by_parented_prefab.get(prefab_instance_id).push_back(parent)
+				#ps.gameobjects_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
+				ps.components_by_stripped_id[parent.fileID].push_back(asset)
+
 	var skelleys_with_no_parent: Array = object_adapter_class.initialize_skelleys(pkgasset.parsed_asset.assets.values(), node_state)
 
 	if len(skelleys_with_no_parent) == 1:
@@ -53,10 +94,19 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		node_state = node_state.state_with_owner(scene_contents)
 	elif len(skelleys_with_no_parent) > 1:
 		assert(not is_prefab)
+	#var fileid_to_prefab_nodepath = {}.duplicate()
+	#var fileid_to_prefab_ref = {}.duplicate()
+	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
+	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
-		var skel: Reference = node_state.uniq_key_to_skelley.get(asset.transform.uniq_key, null)
+		if asset.is_stripped:
+			printerr("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+		var skel: Reference = null
+		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
+		if asset.transform != null:
+			skel = node_state.uniq_key_to_skelley.get(asset.transform.uniq_key, null)
 		if skel != null:
 			if len(skelleys_with_no_parent) > 1:
 				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
@@ -79,9 +129,16 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if ret != null:
 				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
 
+	scene_contents = node_state.owner
+
 	var packed_scene: PackedScene = PackedScene.new()
 	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	packed_scene.pack(scene_contents)
+	var editable_hack: Dictionary = packed_scene._bundled
+	for ecpath in ps.prefab_instance_paths:
+		print(str(editable_hack.keys()))
+		editable_hack.get("editable_instances").push_back(str(ecpath))
+	packed_scene._bundled = editable_hack
 	#print(packed_scene)
 	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
 	#print(pi.get_child_count())

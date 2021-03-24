@@ -12,16 +12,71 @@ var database: Resource = null
 var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclass
 # for .fbx, must use fileIDToRecycleName in meta.
 
+@export var prefab_id_to_guid: Dictionary = {}
+
+# we have a list of all prefabs by ID
+#####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
+#####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
+
+var prefab_fileid_to_nodepath: Dictionary = {}
+var prefab_fileid_to_skeleton_bone: Dictionary = {}
+
 @export var fileid_to_nodepath: Dictionary = {}
 @export var fileid_to_skeleton_bone: Dictionary = {}
 @export var godot_resources: Dictionary = {}
 @export var main_object_id: int = 0 # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
+
+@export var dependency_guids: Dictionary = {}
 
 class ParsedAsset extends Reference:
 	var local_id_alias: Dictionary = {} # type*100000 + file_index*2 -> real fileId
 	var assets: Dictionary = {} # int fileID -> unity_object_adapter.UnityObject
 
 var parsed: ParsedAsset = null
+
+class TopsortTmp extends Reference:
+	var visited: Dictionary = {}.duplicate()
+	var output: Array = [].duplicate()
+
+func toposort_recurse(meta: Resource, tt: TopsortTmp):
+	for target_guid in meta.dependency_guids:
+		if not tt.visited.has(target_guid):
+			tt.visited[target_guid] = true
+			var child_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
+			if child_meta == null:
+				printerr("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
+			else:
+				toposort_recurse(child_meta, tt)
+	tt.output.push_back(meta)
+
+func toposort_dependency_guids() -> Array:
+	var tt: TopsortTmp = TopsortTmp.new()
+	toposort_recurse(self, tt)
+	return tt.output
+
+# Expected to be called in topological order
+func calculate_prefab_nodepaths():
+	#if not is_toplevel:
+	for prefab_fileid in self.prefab_id_to_guid:
+		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(self.prefab_id_to_guid.get(prefab_fileid))
+		var my_path_prefix: String = str(fileid_to_nodepath[prefab_fileid]) + "/"
+		for target_fileid in target_prefab_meta.fileid_to_nodepath:
+			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
+		for target_fileid in target_prefab_meta.prefab_fileid_to_nodepath:
+			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid)))
+		for target_fileid in target_prefab_meta.fileid_to_skeleton_bone:
+			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid)
+		for target_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
+			self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid)
+
+func calculate_prefab_nodepaths_recursive():
+	var toposorted: Variant = toposort_dependency_guids()
+	if typeof(toposorted) != TYPE_ARRAY:
+		printerr("BLEH BLEH")
+		return
+	for process_meta in toposorted:
+		if process_meta != null and process_meta.guid != guid and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter"):
+			process_meta.calculate_prefab_nodepaths()
 
 func override_resource(fileID: int, name: String, godot_resource: Resource):
 	godot_resource.resource_name = name
@@ -36,30 +91,48 @@ func rename(new_path: String):
 # Some properties cannot be serialized.
 func initialize(database: Resource):
 	self.database = database
+	self.prefab_fileid_to_nodepath = {}
+	self.prefab_fileid_to_skeleton_bone = {}
 	if self.importer_type == "":
 		self.importer = object_adapter_class.new().instantiate_unity_object(self, 0, 0, "AssetImporter")
 	else:
 		self.importer = object_adapter_class.new().instantiate_unity_object(self, 0, 0, self.importer_type)
 	self.importer.keys = importer_keys
 
-func lookup(unityref: Array) -> Resource:
-	if unityref.is_empty() or len(unityref) != 4:
-		printerr("UnityRef in wrong format: " + str(unityref))
-		return null
-	var local_id: int = unityref[1]
-	if local_id == 0:
-		return null
-	var found_meta: Resource = self
-	if typeof(unityref[2]) != TYPE_NIL:
-		found_meta = null
-		var target_guid: String = unityref[2]
-		var found_path: String = database.guid_to_path.get(target_guid, "")
-		if found_path != "":
-			found_meta = database.path_to_meta.get(found_path, null)
+func lookup_meta_by_guid_noinit(target_guid: String) -> Reference: # returns asset_meta type
+	var found_path: String = database.guid_to_path.get(target_guid, "")
+	var found_meta: Resource = null
+	if found_path != "":
+		found_meta = database.path_to_meta.get(found_path, null)
+	return found_meta
+
+func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta type
+	var found_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
 	if found_meta == null:
 		return null
 	if found_meta.database == null:
 		found_meta.initialize(self.database)
+	return found_meta
+
+func lookup_meta(unityref: Array) -> Reference: # returns asset_meta type
+	if unityref.is_empty() or len(unityref) != 4:
+		printerr("UnityRef in wrong format: " + str(unityref))
+		return null
+	# print("LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
+	var local_id: int = unityref[1]
+	if local_id == 0:
+		return null
+	var found_meta: Resource = self
+	if typeof(unityref[2]) != TYPE_NIL and unityref[2] != self.guid:
+		var target_guid: String = unityref[2]
+		found_meta = lookup_meta_by_guid(target_guid)
+	return found_meta
+
+func lookup(unityref: Array) -> Resource:
+	var found_meta: Resource = lookup_meta(unityref)
+	if found_meta == null:
+		return null
+	var local_id: int = unityref[1]
 	# Not implemented:
 	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.parsed == null:
@@ -73,40 +146,27 @@ func lookup(unityref: Array) -> Resource:
 	return ret
 
 func get_godot_resource(unityref: Array) -> Resource:
-	if unityref.is_empty() or len(unityref) != 4:
-		printerr("UnityRef in wrong format: " + str(unityref))
-		return null
-	print("LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
-	var local_id: int = unityref[1]
-	if local_id == 0:
-		return null
-	var found_meta: Resource = self
-	if typeof(unityref[2]) != TYPE_NIL:
-		found_meta = null
-		var target_guid: String = unityref[2]
-		var found_path: String = database.guid_to_path.get(target_guid, "")
-		if found_path != "":
-			found_meta = database.path_to_meta.get(found_path, null)
-			if found_meta == null:
-				printerr("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
-				return load("res://" + found_path)
+	var found_meta: Resource = lookup_meta(unityref)
 	if found_meta == null:
+		if len(unityref) == 4 and unityref[1] != 0:
+			var found_path: String = database.guid_to_path.get(unityref[2], "")
+			printerr("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
+			return load("res://" + found_path)
 		return null
-	if found_meta.database == null:
-		found_meta.initialize(self.database)
-	print("guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
+	var local_id: int = unityref[1]
+	# print("guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
 	if found_meta.main_object_id != 0 and found_meta.main_object_id == local_id:
 		return load("res://" + found_meta.path)
-	# Not implemented:
-	#var local_id: int = local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.godot_resources.has(local_id):
 		return found_meta.godot_resources.get(local_id)
 	if found_meta.parsed == null:
 		printerr("Target ref " + str(unityref) + " was not yet parsed!")
 		return null
-	var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
-	found_meta.godot_resources[local_id] = res
-	return res
+	printerr("Target ref " + str(unityref) + " would need to dynamically create a godot resource!")
+	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
+	#found_meta.godot_resources[local_id] = res
+	#return res
+	return null
 
 func parse_asset(file: Object) -> ParsedAsset:
 	var magic = file.get_line()

@@ -24,6 +24,7 @@ var current_obj: Object = null
 var current_obj_type: String = ""
 var current_obj_utype: int = 0
 var current_obj_fileID: int = 0
+var current_obj_stripped: bool = false
 var brace_line: String = ""
 var continuation_line_indentation_level: int = 0
 var double_quote_line: String = ""
@@ -193,6 +194,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 				printerr("Separator line not starting with --- !u!: " + line.substr(128))
 			current_obj_utype = parts[1].substr(3).to_int()
 			current_obj_fileID = parts[2].substr(1).to_int()
+			current_obj_stripped = line.ends_with(" stripped")
 	elif line == "%YAML 1.1":
 		pass
 	elif line == "%TAG !u! tag:unity3d.com,2011:":
@@ -216,6 +218,8 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			printerr("Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
 		current_obj = object_adapter.instantiate_unity_object(meta, current_obj_fileID, current_obj_utype, current_obj_type)
+		if current_obj_stripped:
+			current_obj.is_stripped = true
 	elif line == "" and single_quote_line != "":
 		single_quote_line += "\n"
 	elif new_indentation_level == 0:
@@ -297,7 +301,13 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			if obj_key_match.get_end() == len(line_plain):
 				prev_key = obj_key_match.get_string(1)
 			else:
-				current_obj_tree.back()[obj_key_match.get_string(1)] = parse_value(line_plain.substr(obj_key_match.get_end()))
+				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()))
+				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
+					meta.dependency_guids[parsed_val[2]] = 1
+				current_obj_tree.back()[obj_key_match.get_string(1)] = parsed_val
 		elif line_plain.begins_with("- "):
-			current_obj_tree.back().push_back(parse_value(line_plain.substr(2)))
+			var parsed_val = parse_value(line_plain.substr(2))
+			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
+				meta.dependency_guids[parsed_val[2]] = 1
+			current_obj_tree.back().push_back(parsed_val)
 	return object_to_return
