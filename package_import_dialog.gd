@@ -190,9 +190,6 @@ var _delay_tick: int = 0
 func _editor_filesystem_scan_tick():
 	if tree_dialog_state == STATE_DIALOG_SHOWING:
 		return
-	if tree_dialog_state >= STATE_DONE_IMPORT:
-		timer.queue_free()
-		timer = null
 	if static_storage.new().get_resource_filesystem().is_scanning():
 		print("Still Scanning... Percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
 		return
@@ -214,6 +211,11 @@ func _editor_filesystem_scan_tick():
 	if not retry_tex:
 		retry_tex = true
 		asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+		return
+
+	if tree_dialog_state >= STATE_DONE_IMPORT:
+		timer.queue_free()
+		timer = null
 	
 	var completed_scan: Array = asset_work_currently_scanning
 	for tw in completed_scan:

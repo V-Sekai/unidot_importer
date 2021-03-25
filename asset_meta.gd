@@ -27,6 +27,7 @@ var prefab_fileid_to_skeleton_bone: Dictionary = {}
 @export var main_object_id: int = 0 # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
 
 @export var dependency_guids: Dictionary = {}
+@export var prefab_dependency_guids: Dictionary = {}
 
 class ParsedAsset extends Reference:
 	var local_id_alias: Dictionary = {} # type*100000 + file_index*2 -> real fileId
@@ -38,20 +39,20 @@ class TopsortTmp extends Reference:
 	var visited: Dictionary = {}.duplicate()
 	var output: Array = [].duplicate()
 
-func toposort_recurse(meta: Resource, tt: TopsortTmp):
-	for target_guid in meta.dependency_guids:
+func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
+	for target_guid in meta.prefab_dependency_guids:
 		if not tt.visited.has(target_guid):
 			tt.visited[target_guid] = true
 			var child_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
 			if child_meta == null:
 				printerr("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
 			else:
-				toposort_recurse(child_meta, tt)
+				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
 
-func toposort_dependency_guids() -> Array:
+func toposort_prefab_dependency_guids() -> Array:
 	var tt: TopsortTmp = TopsortTmp.new()
-	toposort_recurse(self, tt)
+	toposort_prefab_recurse(self, tt)
 	return tt.output
 
 # Expected to be called in topological order
@@ -59,7 +60,7 @@ func calculate_prefab_nodepaths():
 	#if not is_toplevel:
 	for prefab_fileid in self.prefab_id_to_guid:
 		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(self.prefab_id_to_guid.get(prefab_fileid))
-		var my_path_prefix: String = str(fileid_to_nodepath[prefab_fileid]) + "/"
+		var my_path_prefix: String = str(fileid_to_nodepath.get(prefab_fileid)) + "/"
 		for target_fileid in target_prefab_meta.fileid_to_nodepath:
 			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
 		for target_fileid in target_prefab_meta.prefab_fileid_to_nodepath:
@@ -70,7 +71,7 @@ func calculate_prefab_nodepaths():
 			self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid)
 
 func calculate_prefab_nodepaths_recursive():
-	var toposorted: Variant = toposort_dependency_guids()
+	var toposorted: Variant = toposort_prefab_dependency_guids()
 	if typeof(toposorted) != TYPE_ARRAY:
 		printerr("BLEH BLEH")
 		return
@@ -78,12 +79,16 @@ func calculate_prefab_nodepaths_recursive():
 		if process_meta != null and process_meta.guid != guid and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter"):
 			process_meta.calculate_prefab_nodepaths()
 
+# This overrides a built-in resource, storing the resource inside the database itself.
 func override_resource(fileID: int, name: String, godot_resource: Resource):
 	godot_resource.resource_name = name
 	godot_resources[fileID] = godot_resource
 
+# This inserts a reference to an actual resource file on disk.
+# We cannot store an external resource reference because
+# Godot will fail to load the entire database if a single file is missing.
 func insert_resource(fileID: int, godot_resource: Resource):
-	godot_resources[fileID] = godot_resource
+	godot_resources[fileID] = str(godot_resource.resource_path)
 
 func rename(new_path: String):
 	database.rename_meta(self, new_path)
@@ -158,7 +163,11 @@ func get_godot_resource(unityref: Array) -> Resource:
 	if found_meta.main_object_id != 0 and found_meta.main_object_id == local_id:
 		return load("res://" + found_meta.path)
 	if found_meta.godot_resources.has(local_id):
-		return found_meta.godot_resources.get(local_id)
+		var ret: Variant = found_meta.godot_resources.get(local_id, null)
+		if typeof(ret) == TYPE_STRING:
+			return load(ret)
+		else:
+			return ret
 	if found_meta.parsed == null:
 		printerr("Target ref " + str(unityref) + " was not yet parsed!")
 		return null

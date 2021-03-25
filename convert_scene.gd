@@ -61,10 +61,10 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				var prefab_instance_id: int = parent.prefab_instance[1]
 				var prefab_source_object: int = parent.prefab_source_object[1]
 				if not ps.transforms_by_parented_prefab.has(prefab_instance_id):
-					ps.transforms_by_parented_prefab[prefab_instance_id] = [].duplicate()
+					ps.transforms_by_parented_prefab[prefab_instance_id] = {}.duplicate()
 				if not ps.child_transforms_by_stripped_id.has(parent.fileID):
 					ps.child_transforms_by_stripped_id[parent.fileID] = [].duplicate()
-				ps.transforms_by_parented_prefab.get(prefab_instance_id).push_back(parent)
+				ps.transforms_by_parented_prefab.get(prefab_instance_id)[parent.fileID] = parent
 				#ps.transforms_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.child_transforms_by_stripped_id[parent.fileID].push_back(asset)
 			#elif parent != null and asset.type == "PrefabInstance":
@@ -79,10 +79,10 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				var prefab_instance_id: int = parent.prefab_instance[1]
 				var prefab_source_object: int = parent.prefab_source_object[1]
 				if not ps.gameobjects_by_parented_prefab.has(prefab_instance_id):
-					ps.gameobjects_by_parented_prefab[prefab_instance_id] = [].duplicate()
+					ps.gameobjects_by_parented_prefab[prefab_instance_id] = {}.duplicate()
 				if not ps.components_by_stripped_id.has(parent.fileID):
 					ps.components_by_stripped_id[parent.fileID] = [].duplicate()
-				ps.gameobjects_by_parented_prefab.get(prefab_instance_id).push_back(parent)
+				ps.gameobjects_by_parented_prefab.get(prefab_instance_id)[parent.fileID] = parent
 				#ps.gameobjects_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.components_by_stripped_id[parent.fileID].push_back(asset)
 

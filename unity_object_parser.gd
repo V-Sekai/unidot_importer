@@ -303,6 +303,9 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			else:
 				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()))
 				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
+					match obj_key_match.get_string(1):
+						"m_SourcePrefab", "m_ParentPrefab":
+							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[obj_key_match.get_string(1)] = parsed_val
 		elif line_plain.begins_with("- "):

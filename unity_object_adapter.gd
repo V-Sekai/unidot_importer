@@ -614,17 +614,31 @@ class UnityPrefabInstance extends UnityObject:
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
 		var state: Object = xstate
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
-		if target_prefab_meta == null:
-			printerr("Unable to load prefab dependency " + str(source_prefab))
+		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
+			printerr("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
 			return null
 		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
-		ResourceLoader
 		if packed_scene == null:
-			printerr("Failed to instantiate prefab with guid " + meta.guid + "/" + str(fileID))
+			printerr("Failed to instantiate prefab with guid " + meta.guid + "/" + str(fileID) + " from " + str(self.meta.guid))
 			return null
 		print("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
-		var instanced_scene: Node3D = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
-		instanced_scene.filename = packed_scene.resource_path
+		var instanced_scene: Node3D = null
+		if new_parent == null:
+			# FIXME: This may be unstable across Godot versions, if .tscn format ever changes.
+			# node->set_scene_inherited_state(sdata->get_state()) is not exposed to GDScript. Let's HACK!!!
+			var stub_filename = "res://_temp_scene.tscn"
+			var fres = File.new()
+			fres.open(stub_filename, File.WRITE)
+			print("Writing stub scene to " + stub_filename)
+			fres.store_string('[gd_scene load_steps=2 format=2]\n\n' +
+				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
+				'[node name="" instance=ExtResource( 1 )\n')
+			fres.close()
+			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
+			instanced_scene = temp_packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		else:
+			instanced_scene = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			instanced_scene.filename = packed_scene.resource_path
 		state.add_child(instanced_scene, new_parent, fileID)
 		print("Prefab " + str(packed_scene.resource_path) + " ------------")
 		print(str(target_prefab_meta.fileid_to_nodepath))
@@ -633,13 +647,15 @@ class UnityPrefabInstance extends UnityObject:
 		print(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
 		print(" ------------")
 		var ps: PrefabState = state.prefab_state
-		ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
+		if new_parent != null:
+			ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
 		var nodepath_bone_to_stripped_gameobject: Dictionary = {}.duplicate()
 		var gameobject_fileid_to_attachment: Dictionary = {}.duplicate()
-		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(fileID, []):
+		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityGameObject = gameobject_asset
 			var source_obj_ref = par.prefab_source_object
+			print("Checking stripped GameObject " + str(par.meta.guid) + "/" + str(par.fileID) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
 					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
@@ -652,7 +668,7 @@ class UnityPrefabInstance extends UnityObject:
 			if (attachment == null):
 				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
 				continue
-			print("Found object: " + str(target_parent_obj.name))
+			print("Found gameobject: " + str(target_parent_obj.name))
 			if target_skel_bone != "" or target_parent_obj is BoneAttachment3D:
 				var godot_skeleton: Skeleton3D = target_parent_obj as Skeleton3D
 				attachment = null
@@ -673,11 +689,11 @@ class UnityPrefabInstance extends UnityObject:
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				component.create_godot_node(state, attachment)
 					
-		for transform_asset in ps.transforms_by_parented_prefab.get(fileID, []):
+		for transform_asset in ps.transforms_by_parented_prefab.get(fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityTransform = transform_asset
 			var source_obj_ref = par.prefab_source_object
-			print("Checking object " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			print("Checking stripped Transform " + str(par.meta.guid) + "/" + str(par.fileID) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
 					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
@@ -691,7 +707,7 @@ class UnityPrefabInstance extends UnityObject:
 			if (attachment == null):
 				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
 				continue
-			print("Found object: " + str(target_parent_obj.name))
+			print("Found transform: " + str(target_parent_obj.name))
 			if gameobject_asset != null and gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
 				print("We already got one! " + str(gameobject_asset.fileID) + " " + str(target_skel_bone))
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
@@ -716,7 +732,10 @@ class UnityPrefabInstance extends UnityObject:
 					var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
 					prefab_instance.create_godot_node(state, attachment)
 				else:
-					var child_game_object: UnityGameObject = child_transform.gameObject
+					var child_game_object: UnityObject = child_transform.gameObject
+					if child_game_object == null:
+						printerr("Failed to lookup gameObject of child_transform " + str(child_transform.name) + " at path " + str(state.owner.get_path_to(attachment)) + " fileId " + str(child_transform.fileID) + "/" + str(child_transform.keys.get("m_GameObject", [])))
+						continue
 					if child_game_object.is_prefab_reference:
 						printerr("child gameObject is a prefab reference! " + child_game_object.meta.guid + "/" + int(child_game_object.fileID))
 					var new_skelley: Skelley = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)
@@ -746,6 +765,10 @@ class UnityPrefabInstance extends UnityObject:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
 		return instanced_scene
+
+	var gameObject: UnityPrefabInstance:
+		get:
+			return self
 
 	var parent_ref: Array: # UnityRef
 		get:
