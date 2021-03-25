@@ -213,7 +213,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 		pass
 	elif is_meta and line.begins_with("guid:"):
 		meta.guid = line.split(":")[1].strip_edges()
-	elif indentation_level == 0 and line.ends_with(":"):
+	elif new_indentation_level == 0 and line.ends_with(":"):
 		if current_obj != null:
 			printerr("Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]

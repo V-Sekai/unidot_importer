@@ -37,6 +37,7 @@ var asset_database: Resource = null
 
 var tree_dialog_state: int = 0
 var _currently_preprocessing_assets: int = 0
+var retry_tex: bool = false
 
 var asset_work_waiting_scan: Array = [].duplicate()
 var asset_work_currently_scanning: Array = [].duplicate()
@@ -182,7 +183,7 @@ func _notification(what):
 				main_dialog = null
 
 func generate_sentinel_png_filename():
-	return "_unityimp_temp" + str(tree_dialog_state) + ".png"
+	return "_unityimp_temp" + str(tree_dialog_state) + ("_retry" if retry_tex else "") + ".png"
 
 var _delay_tick: int = 0
 
@@ -207,18 +208,24 @@ func _editor_filesystem_scan_tick():
 		return
 	_delay_tick = 0
 
+	dres.remove(generate_sentinel_png_filename() + ".import")
+	dres.remove(generate_sentinel_png_filename())
+
+	if not retry_tex:
+		retry_tex = true
+		asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+	
 	var completed_scan: Array = asset_work_currently_scanning
 	for tw in completed_scan:
 		print("Asset " + tw.asset.pathname + "/" + tw.asset.guid + " completed import.")
-		var loaded_asset = load(tw.asset.pathname)
+		var loaded_asset: Resource = ResourceLoader.load(tw.asset.pathname, "", ResourceLoader.CACHE_MODE_REPLACE)
+		#var loaded_asset: Resource = load(tw.asset.pathname)
 		if loaded_asset != null:
 			tw.asset.parsed_meta.insert_resource(tw.asset.parsed_meta.main_object_id, loaded_asset)
 	asset_work_currently_scanning = [].duplicate()
 
 	print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_currently_scanning) == 0 and _currently_preprocessing_assets == 0:
-		dres.remove(generate_sentinel_png_filename() + ".import")
-		dres.remove(generate_sentinel_png_filename())
 		asset_database.save()
 		print("Trying to scan more things: state=" + str(tree_dialog_state))
 		if tree_dialog_state == STATE_PREPROCESSING:
@@ -262,6 +269,7 @@ func _editor_filesystem_scan_tick():
 	for tw in asset_work:
 		asset_work_currently_scanning.push_back(tw)
 	asset_work_waiting_scan = [].duplicate()
+	retry_tex = false
 	asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 
 	print("Done Queueing work: state=" + str(tree_dialog_state))

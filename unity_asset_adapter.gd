@@ -69,7 +69,7 @@ class AssetHandler:
 		var dres = Directory.new()
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		pkgasset.meta.rename(pkgasset.pathname)
+		pkgasset.parsed_meta.rename(pkgasset.pathname)
 		dres.rename(temp_path, pkgasset.pathname)
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -143,7 +143,8 @@ class SceneHandler extends YamlHandler:
 		pkgasset.pathname = new_pathname
 		pkgasset.parsed_meta.rename(new_pathname)
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
-		ResourceSaver.save(pkgasset.pathname, packed_scene)
+		if packed_scene != null:
+			ResourceSaver.save(pkgasset.pathname, packed_scene)
 
 class FbxHandler extends AssetHandler:
 	var STUB_GLB_FILE: PackedByteArray = PackedByteArray([])
@@ -220,7 +221,9 @@ class FbxHandler extends AssetHandler:
 			cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
 			# animation/import
 
-		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
+		# FIXME: Godot has a major bug if light baking is used:
+		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
+		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value("params", "meshes/root_scale", importer.meshes_root_scale)
 		# addCollider???? TODO
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()

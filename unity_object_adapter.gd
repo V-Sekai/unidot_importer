@@ -614,7 +614,11 @@ class UnityPrefabInstance extends UnityObject:
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
 		var state: Object = xstate
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
+		if target_prefab_meta == null:
+			printerr("Unable to load prefab dependency " + str(source_prefab))
+			return null
 		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
+		ResourceLoader
 		if packed_scene == null:
 			printerr("Failed to instantiate prefab with guid " + meta.guid + "/" + str(fileID))
 			return null
@@ -642,8 +646,13 @@ class UnityPrefabInstance extends UnityObject:
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
 			nodepath_bone_to_stripped_gameobject[str(target_nodepath) + "/" + str(target_skel_bone)] = gameobject_asset
+			print("Get target node " + str(target_nodepath) + " bone " + target_skel_bone + " from " + str(instanced_scene.filename))
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
+			if (attachment == null):
+				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+				continue
+			print("Found object: " + str(target_parent_obj.name))
 			if target_skel_bone != "" or target_parent_obj is BoneAttachment3D:
 				var godot_skeleton: Skeleton3D = target_parent_obj as Skeleton3D
 				attachment = null
@@ -679,8 +688,11 @@ class UnityPrefabInstance extends UnityObject:
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
 			var already_has_attachment: bool = false
+			if (attachment == null):
+				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+				continue
 			print("Found object: " + str(target_parent_obj.name))
-			if gameobject_asset != null and state.gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
+			if gameobject_asset != null and gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
 				print("We already got one! " + str(gameobject_asset.fileID) + " " + str(target_skel_bone))
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
 				state.add_fileID(attachment, transform_asset.fileID)
@@ -851,10 +863,12 @@ class UnityGameObject extends UnityObject:
 				state = state.state_with_body(ret as CollisionObject3D)
 			if component.is_collider:
 				extra_fileID.push_back(component.fileID)
+				print("Has a collider " + self.name)
 				has_collider = true
 		var is_staticbody: bool = false
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
+			print("Created a StaticBody3D " + self.name)
 			is_staticbody = true
 		else:
 			ret = Node3D.new()
@@ -862,6 +876,7 @@ class UnityGameObject extends UnityObject:
 		state.add_child(ret, new_parent, transform.fileID)
 		ret.transform = transform.godot_transform
 		if is_staticbody:
+			print("Replacing state with body " + str(name))
 			state = state.state_with_body(ret as StaticBody3D)
 		for ext in extra_fileID:
 			state.add_fileID(ret, ext)
@@ -1062,12 +1077,33 @@ class UnityRectTransform extends UnityTransform:
 class UnityCollider extends UnityBehaviour:
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
+		print("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
+		if state.body == null:
+			state.body = StaticBody3D.new()
+			new_parent.add_child(state.body)
+			state.body.owner = state.owner
 		state.add_child(new_node, state.body, fileID)
-		var cur_node = new_parent
+		var path_to_body = new_parent.get_path_to(state.body)
+		var cur_node: Node3D = new_parent
 		var xform = Transform(self.basis, self.center)
-		while cur_node != state.body:
-			xform = cur_node.transform * xform
-			cur_node = cur_node.parent
+		for i in range(path_to_body.get_name_count()):
+			if path_to_body.get_name(i) == ".":
+				continue
+			elif path_to_body.get_name(i) == "..":
+				xform = cur_node.transform * xform
+				cur_node = cur_node.get_parent()
+				if cur_node == null:
+					break
+			else:
+				cur_node = cur_node.get_node(str(path_to_body.get_name(i)))
+				if cur_node == null:
+					break
+				xform = cur_node.transform.affine_inverse() * xform
+		#while cur_node != state.body and cur_node != null:
+		#	xform = cur_node.transform * xform
+		#	cur_node = cur_node.get_parent()
+		#if cur_node == null:
+		#	xform = Transform(self.basis, self.center)
 		new_node.transform = xform
 		new_node.shape = self.shape
 		new_node.name = self.type
@@ -1309,12 +1345,12 @@ class UnityLight extends UnityBehaviour:
 		light.shadow_enabled = shadowType != 0
 		light.set_param(Light3D.PARAM_SHADOW_BIAS, shadowBias)
 		if lightmapBakeType == 1:
-			light.light_bake_mode = Light3D.BAKE_INDIRECT
+			light.light_bake_mode = Light3D.BAKE_DYNAMIC # INDIRECT??
 		elif lightmapBakeType == 2:
-			light.light_bake_mode == Light3D.BAKE_ALL
+			light.light_bake_mode = Light3D.BAKE_DYNAMIC # BAKE_ALL???
 			light.editor_only = true
 		else:
-			light.light_bake_mode == Light3D.BAKE_DISABLED
+			light.light_bake_mode = Light3D.BAKE_DISABLED
 		return light
 	
 	var color: Color:

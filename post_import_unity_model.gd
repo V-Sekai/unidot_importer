@@ -146,7 +146,7 @@ class ParseState:
 								mesh.surface_set_material(i, mat)
 								saved_materials_by_name[mat_name] = mat
 								metaobj.insert_resource(fileId, mat)
-						print("MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name)+ " Material " + str(i) + " name " + str(mat.resource_name))
+						print("MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name if mesh != null else "NULL")+ " Material " + str(i) + " name " + str(mat.resource_name if mat != null else "NULL"))
 					fileId = objtype_to_name_to_id.get("Mesh", {}).get(mesh_name, 0)
 					if fileId == 0:
 						printerr("Missing fileId for Mesh " + str(mesh_name))

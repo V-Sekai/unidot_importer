@@ -129,8 +129,10 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if ret != null:
 				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
 
-	scene_contents = node_state.owner
-
+	# scene_contents = node_state.owner
+	if scene_contents == null:
+		printerr("Failed to parse scene " + pkgasset.pathname)
+		return null
 	var packed_scene: PackedScene = PackedScene.new()
 	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	packed_scene.pack(scene_contents)
