@@ -108,7 +108,8 @@ func _selected_package(p_path: String) -> void:
 			ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 			ti.set_checked(0, true)
 			ti.set_selectable(0, true)
-			ti.set_tooltip(0, path)
+			if i == len(path_names) - 1:
+				ti.set_tooltip(0, path)
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.darkblue)
 			var icon: Texture = pkg.path_to_pkgasset[path].icon
@@ -193,6 +194,11 @@ func _editor_filesystem_scan_tick():
 	if static_storage.new().get_resource_filesystem().is_scanning():
 		print("Still Scanning... Percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
 		return
+
+	if _currently_preprocessing_assets != 0:
+		print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
+		return
+
 	var dres = Directory.new()
 	dres.open("res://")
 	if not dres.file_exists(generate_sentinel_png_filename() + ".import"):
@@ -200,7 +206,7 @@ func _editor_filesystem_scan_tick():
 		static_storage.new().get_resource_filesystem().scan()
 		return
 
-	if _delay_tick < 20:
+	if _delay_tick < 3:
 		_delay_tick += 1
 		return
 	_delay_tick = 0
@@ -218,13 +224,13 @@ func _editor_filesystem_scan_tick():
 		timer = null
 	
 	var completed_scan: Array = asset_work_currently_scanning
+	asset_work_currently_scanning = [].duplicate()
 	for tw in completed_scan:
 		print("Asset " + tw.asset.pathname + "/" + tw.asset.guid + " completed import.")
 		var loaded_asset: Resource = ResourceLoader.load(tw.asset.pathname, "", ResourceLoader.CACHE_MODE_REPLACE)
 		#var loaded_asset: Resource = load(tw.asset.pathname)
 		if loaded_asset != null:
 			tw.asset.parsed_meta.insert_resource(tw.asset.parsed_meta.main_object_id, loaded_asset)
-	asset_work_currently_scanning = [].duplicate()
 
 	print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_currently_scanning) == 0 and _currently_preprocessing_assets == 0:
@@ -358,13 +364,14 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 		if ti.get_button_count(0) <= 0:
 			ti.add_button(0, spinner_icon, -1, true, "Loading...")
 		var path = ti.get_tooltip(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
-		var asset = pkg.path_to_pkgasset.get(path)
-		if asset == null:
-			printerr("Path " + str(path) + " has null asset!")
-		else:
-			ret += 1
-			_currently_preprocessing_assets += 1
-			self.import_worker.push_asset(asset, tmpdir, ti)
+		if path != "":
+			var asset = pkg.path_to_pkgasset.get(path)
+			if asset == null:
+				printerr("Path " + str(path) + " has null asset!")
+			else:
+				ret += 1
+				_currently_preprocessing_assets += 1
+				self.import_worker.push_asset(asset, tmpdir, ti)
 	var chld: TreeItem = ti.get_children()
 	while chld != null:
 		ret += _preprocess_recursively(chld)
