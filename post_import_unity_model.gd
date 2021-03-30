@@ -16,6 +16,7 @@ class ParseState:
 	
 	var saved_materials_by_name: Dictionary = {}.duplicate()
 	var saved_meshes_by_name: Dictionary = {}.duplicate()
+	var saved_skins_by_name: Dictionary = {}.duplicate()
 	var saved_animations_by_name: Dictionary = {}.duplicate()
 	var materials_by_name: Dictionary = {}.duplicate()
 	var meshes_by_name: Dictionary = {}.duplicate()
@@ -121,6 +122,8 @@ class ParseState:
 					mesh = saved_meshes_by_name.get(mesh_name)
 					if mesh != null:
 						node.mesh = mesh
+					if node.skin != null:
+						node.skin = saved_skins_by_name.get(mesh_name)
 				else:
 					meshes_by_name[mesh_name] = mesh
 					for i in range(mesh.get_surface_count()):
@@ -151,16 +154,27 @@ class ParseState:
 					if fileId == 0:
 						printerr("Missing fileId for Mesh " + str(mesh_name))
 					else:
+						var skin: Skin = node.skin
 						if external_objects_by_id.has(fileId):
 							mesh = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
+							if skin != null:
+								skin = metaobj.get_godot_resource(external_objects_by_id.get(-fileId))
 						else:
 							var respath: String = get_resource_path(mesh_name, ".res")
 							ResourceSaver.save(respath, mesh)
 							mesh = load(respath)
+							if skin != null:
+								respath = get_resource_path(mesh_name, ".skin.tres")
+								ResourceSaver.save(respath, skin)
+								skin = load(respath)
 						if mesh != null:
 							node.mesh = mesh
 							saved_meshes_by_name[mesh_name] = mesh
 							metaobj.insert_resource(fileId, mesh)
+							if skin != null:
+								node.skin = skin
+								saved_skins_by_name[mesh_name] = skin
+								metaobj.insert_resource(-fileId, skin)
 			elif node is AnimationPlayer:
 				var i = 0
 				for anim_name in node.get_animation_list():

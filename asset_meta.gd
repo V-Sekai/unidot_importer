@@ -19,10 +19,10 @@ var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclas
 #####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
 
 var prefab_fileid_to_nodepath: Dictionary = {}
-var prefab_fileid_to_skeleton_bone: Dictionary = {}
+var prefab_fileid_to_skeleton_bone: Dictionary = {} # int -> string
 
 @export var fileid_to_nodepath: Dictionary = {}
-@export var fileid_to_skeleton_bone: Dictionary = {}
+@export var fileid_to_skeleton_bone: Dictionary = {} # int -> string
 @export var godot_resources: Dictionary = {}
 @export var main_object_id: int = 0 # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
 
