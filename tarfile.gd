@@ -24,7 +24,7 @@ class StringFile:
 	func get_backing_string() -> String:
 		return _s
 
-	func get_line() -> String:
+	func OLD_nsquared_get_line() -> String:
 		if _eof:
 			return ""
 		var eol: int = _s.find("\n", _offset)
@@ -39,6 +39,25 @@ class StringFile:
 			eol -= 1
 		var ret: String = _s.substr(_offset, eol - _offset)
 		_offset = new_offset
+		return ret
+
+	var _lines_cache: Array = [].duplicate()
+	var _line_offset: int = -1
+	func get_line() -> String:
+		if _lines_cache.is_empty():
+			_lines_cache = _s.split("\n", true)
+			print("------- SPLITTING STRING TO " + str(len(_lines_cache)) + " LINES")
+		_line_offset += 1
+		if _line_offset >= len(_lines_cache):
+			_eof = true
+		if _eof:
+			return ""
+		var ret: String = _lines_cache[_line_offset]
+		var len_ret: int = len(ret)
+		if len_ret > 0:
+			if ret.substr(len_ret - 1, len_ret) == "\r":
+			# if ret.unicode_at(len_ret - 1) == 13:
+				return ret.substr(0, len_ret - 1)
 		return ret
 
 	func get_error():

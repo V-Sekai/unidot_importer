@@ -44,7 +44,9 @@ func _init():
 	search_obj_key_regex = RegEx.new()
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
-func parse_value(line: String) -> Variant:
+func parse_value(line: String, keyname: String) -> Variant:
+	if keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash":
+		return line # User must decode this as desired.
 	if len(line) < 24 and line.is_valid_integer():
 		return line.to_int()
 	if len(line) < 32 and line.is_valid_float():
@@ -153,14 +155,18 @@ func parse_value(line: String) -> Variant:
 
 func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_object_adapter.UnityObject
 	line_number = line_number + 1
+	if line_number % 10000 == 0:
+		print("guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
 	line = line.replace("\r", "")
 	while line.ends_with("\r"):
 		line = line.substr(0, len(line) - 1)
 	var line_plain: String = line.dedent()
 	var obj_key_match: RegExMatch = arr_obj_key_regex.search(line_plain)
 	var value_start: int = 2
+	var this_key: String = ""
 	if obj_key_match != null:
 		value_start = 0 + obj_key_match.get_end()
+		this_key = obj_key_match.get_string(1)
 	var missing_brace: bool = false
 	var missing_single_quote: bool = false
 	var missing_double_quote: bool = false
@@ -299,17 +305,17 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			current_obj_tree.push_back(new_obj)
 		if obj_key_match != null:
 			if obj_key_match.get_end() == len(line_plain):
-				prev_key = obj_key_match.get_string(1)
+				prev_key = this_key
 			else:
-				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()))
+				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()), this_key)
 				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
-					match obj_key_match.get_string(1):
+					match this_key:
 						"m_SourcePrefab", "m_ParentPrefab":
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
-				current_obj_tree.back()[obj_key_match.get_string(1)] = parsed_val
+				current_obj_tree.back()[this_key] = parsed_val
 		elif line_plain.begins_with("- "):
-			var parsed_val = parse_value(line_plain.substr(2))
+			var parsed_val = parse_value(line_plain.substr(2), "")
 			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 				meta.dependency_guids[parsed_val[2]] = 1
 			current_obj_tree.back().push_back(parsed_val)

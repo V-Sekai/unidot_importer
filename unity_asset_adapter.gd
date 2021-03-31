@@ -118,22 +118,23 @@ class YamlHandler extends AssetHandler:
 			return self.ASSET_TYPE_PREFAB
 		return self.ASSET_TYPE_YAML
 
-class MaterialHandler extends YamlHandler:
-	func write_godot_asset(pkgasset, temp_path):
-		var mat: Material = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id].create_godot_resource()
-		var new_pathname: String = pkgasset.pathname.get_basename() + ".mat.tres"
-		pkgasset.pathname = new_pathname
-		pkgasset.parsed_meta.rename(new_pathname)
-		ResourceSaver.save(pkgasset.pathname, mat)
-
-class AnimationHandler extends YamlHandler:
-	func write_godot_asset(pkgasset, temp_path):
-		pass # We don't want to dump out invalid .anim files since Godot reuses this extension.
-		#var anim: Animation = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id].create_godot_resource()
-		#var new_pathname: String = pkgasset.pathname.get_basename() + ".anim"
-		#pkgasset.pathname = new_pathname
-		#pkgasset.parsed_meta.rename(new_pathname)
-		#ResourceSaver.save(pkgasset.pathname, mat)
+	func write_godot_asset(pkgasset: Object, temp_path: String):
+		var main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
+		var godot_resource: Resource = main_asset.create_godot_resource()
+		if godot_resource != null:
+			var new_pathname: String = pkgasset.pathname.get_basename() + main_asset.get_godot_extension() # ".mat.tres"
+			pkgasset.pathname = new_pathname
+			pkgasset.parsed_meta.rename(new_pathname)
+			ResourceSaver.save(pkgasset.pathname, godot_resource)
+		var extra_resources: Dictionary = main_asset.get_extra_resources()
+		for extra_asset_fileid in extra_resources:
+			var file_ext: String = extra_resources.get(extra_asset_fileid)
+			var created_res: Resource = main_asset.create_extra_resource(extra_asset_fileid)
+			if created_res != null:
+				var new_pathname: String = pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
+				ResourceSaver.save(new_pathname, created_res)
+				created_res = load(new_pathname)
+				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
 
 class SceneHandler extends YamlHandler:
 
@@ -245,19 +246,19 @@ var file_handlers: Dictionary = {
 	"exr": image_handler,
 	"hdr": image_handler, # Godot unsupported?
 	#"dds": null, # Godot unsupported?
-	############"asset": YamlHandler.new(), # Generic file format
+	"asset": YamlHandler.new(), # Generic file format
 	"unity": SceneHandler.new(), # Unity Scenes
 	"prefab": SceneHandler.new(), # Prefabs (sub-scenes)
 	"mask": YamlHandler.new(), # Avatar Mask for animations
-	############"mesh": YamlHandler.new(), # Mesh data, sometimes .asset
+	"mesh": YamlHandler.new(), # Mesh data, sometimes .asset
 	"ht": YamlHandler.new(), # Human Template??
-	"mat": MaterialHandler.new(), # Materials
+	"mat": YamlHandler.new(), # Materials
 	"playable": YamlHandler.new(), # director?
 	"terrainlayer": YamlHandler.new(), # terrain, not supported
 	"physicmaterial": YamlHandler.new(), # Physics Material
 	"overridecontroller": YamlHandler.new(), # Animator Override Controller
 	"controller": YamlHandler.new(), # Animator Controller
-	"anim": AnimationHandler.new(), # Animation... # TODO: This should be by type (.asset), not extension
+	"anim": YamlHandler.new(), # Animation... # TODO: This should be by type (.asset), not extension
 	# ALSO: animations can be contained inside other assets, such as controllers. we need to recognize this and extract them.
 	"default": AssetHandler.new()
 }

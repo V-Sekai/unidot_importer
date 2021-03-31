@@ -1,6 +1,8 @@
 @tool
 extends Reference
 
+const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
+
 func to_classname(utype: int) -> String:
 	var ret = utype_to_classname.get(utype, "")
 	if ret == "":
@@ -480,8 +482,17 @@ class UnityObject extends Reference:
 		state.add_child(new_node, new_parent, fileID)
 		return new_node
 
+	func get_extra_resources() -> Dictionary:
+		return {}
+
+	func create_extra_resource(fileID: int) -> Resource:
+		return null
+
 	func create_godot_resource() -> Resource:
 		return null
+
+	func get_godot_extension() -> String:
+		return ".res"
 
 	# Prefab source properties: Component and GameObject sub-types only:
 	# UNITY 2018+:
@@ -515,7 +526,215 @@ class UnityObject extends Reference:
 ### ================ ASSET TYPES ================
 # FIXME: All of these are native Godot types. I'm not sure if these types are needed or warranted.
 class UnityMesh extends UnityObject:
-	pass
+	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	
+	func get_primitive_format(submesh: Dictionary) -> int:
+		match submesh.get("topology", 0):
+			0:
+				return Mesh.PRIMITIVE_TRIANGLES
+			1:
+				return Mesh.PRIMITIVE_TRIANGLES # quad meshes handled specially later
+			2:
+				return Mesh.PRIMITIVE_LINES
+			3:
+				return Mesh.PRIMITIVE_LINE_STRIP
+			4:
+				return Mesh.PRIMITIVE_POINTS
+			_:
+				printerr(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
+		return Mesh.PRIMITIVE_TRIANGLES
+
+	func get_extra_resources() -> Dictionary:
+		if binds.is_empty():
+			return {}
+		return {-meta.main_object_id: ".mesh.skin.tres"}
+
+	func dict_to_matrix(b: Dictionary) -> Transform:
+		return FLIP_X.affine_inverse() * Transform(
+			Vector3(b.get("e00"), b.get("e10"), b.get("e20")),
+			Vector3(b.get("e01"), b.get("e11"), b.get("e21")),
+			Vector3(b.get("e02"), b.get("e12"), b.get("e22")),
+			Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
+		) * FLIP_X
+
+	func create_extra_resource(fileID: int) -> Skin:
+		var sk: Skin = Skin.new()
+		var idx: int = 0
+		for b in binds:
+			sk.add_bind(idx, dict_to_matrix(b))
+			idx += 1
+		return sk
+
+	func create_godot_resource() -> ArrayMesh:
+		var vertex_buf: Reference = get_vertex_data()
+		var index_buf: Reference = get_index_data()
+		var vertex_layout: Dictionary = vertex_layout_info
+		var channel_info_array: Array = vertex_layout.get("m_Channels", [])
+		# https://docs.unity3d.com/2019.4/Documentation/ScriptReference/Rendering.VertexAttribute.html
+		var unity_to_godot_mesh_channels: Array = [ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL, ArrayMesh.ARRAY_TANGENT, ArrayMesh.ARRAY_COLOR, ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2, ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_CUSTOM2, ArrayMesh.ARRAY_CUSTOM3, -1, -1, ArrayMesh.ARRAY_WEIGHTS, ArrayMesh.ARRAY_BONES]
+		# Old vertex layout is probably stable since Unity 5.0
+		if vertex_layout.get("serializedVersion", 1) < 2:
+			# Old layout seems to have COLOR at the end.
+			unity_to_godot_mesh_channels = [ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL, ArrayMesh.ARRAY_TANGENT, ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2, ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_COLOR]
+
+		var tmp: Array = self.pre2018_skin
+		var pre2018_weights_buf: PackedFloat32Array = tmp[0]
+		var pre2018_bones_buf: PackedInt32Array = tmp[1]
+		var surf_idx: int = 0
+		var idx_format: int = keys.get("m_IndexFormat", 0)
+		var arr_mesh = ArrayMesh.new()
+		var stream_strides: Array = [0, 0, 0, 0]
+		var stream_offsets: Array = [0, 0, 0, 0]
+		if len(unity_to_godot_mesh_channels) != len(channel_info_array):
+			printerr("Unity has the wrong number of vertex channels: " + str(len(unity_to_godot_mesh_channels)) + " vs " + str(len(channel_info_array)))
+
+		for array_idx in range(len(unity_to_godot_mesh_channels)):
+			var channel_info: Dictionary = channel_info_array[array_idx]
+			stream_strides[channel_info.get("stream", 0)] += channel_info.get("dimension", 4) * aligned_byte_buffer.format_byte_width(channel_info.get("format", 0))
+		for s in range(1, 4):
+			stream_offsets[s] = stream_offsets[s - 1] + stream_strides[s - 1]
+
+		for submesh in submeshes:
+			var surface_arrays: Array = []
+			surface_arrays.resize(ArrayMesh.ARRAY_MAX)
+			var surface_index_buf: PackedInt32Array
+			if idx_format == 0:
+				surface_index_buf = index_buf.uint16_subarray(submesh.get("firstByte",0), submesh.get("indexCount",-1))
+			else:
+				surface_index_buf = index_buf.uint32_subarray(submesh.get("firstByte",0), submesh.get("indexCount",-1))
+			if submesh.get("topology", 0) == 1:
+				# convert quad mesh to tris
+				var new_buf: PackedInt32Array = PackedInt32Array()
+				new_buf.resize(len(surface_index_buf) / 4 * 6)
+				var quad_idx = [0, 1, 2, 2, 1, 3]
+				for i in range(len(surface_index_buf) / 4):
+					for el in range(6):
+						new_buf[i * 6 + el] = surface_index_buf[i * 4 + quad_idx[el]]
+				surface_index_buf = new_buf
+			var deltaVertex: int = submesh.get("firstVertex", 0)
+			var baseFirstVertex: int = submesh.get("baseVertex", 0) + deltaVertex
+			var vertexCount: int = submesh.get("vertexCount", 0)
+			print("baseFirstVertex "+ str(baseFirstVertex)+ " baseVertex "+ str(submesh.get("baseVertex", 0)) + " deltaVertex " + str(deltaVertex) + " index0 " + str(surface_index_buf[0]))
+			if deltaVertex != 0:
+				for i in range(len(surface_index_buf)):
+					surface_index_buf[i] -= deltaVertex
+			if not pre2018_weights_buf.is_empty():
+				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
+				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
+			var compress_flags: int = 0
+			for array_idx in range(len(unity_to_godot_mesh_channels)):
+				var godot_array_type = unity_to_godot_mesh_channels[array_idx]
+				if godot_array_type == -1:
+					continue
+				var channel_info: Dictionary = channel_info_array[array_idx]
+				var stream: int = channel_info.get("stream", 0)
+				var offset: int = channel_info.get("offset", 0) + stream_offsets[stream] + baseFirstVertex * stream_strides[stream]
+				var format: int = channel_info.get("format", 0)
+				var dimension: int = channel_info.get("dimension", 4)
+				if dimension <= 0:
+					continue
+				match godot_array_type:
+					ArrayMesh.ARRAY_BONES:
+						if dimension == 8:
+							compress_flags |= ArrayMesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS
+						print("Do bones int")
+						surface_arrays[godot_array_type] = vertex_buf.formatted_int_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_WEIGHTS:
+						print("Do weights int")
+						surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL:
+						print("Do vertex or normal vec3 " + str(godot_array_type) + " " + str(format))
+						surface_arrays[godot_array_type] = vertex_buf.formatted_vector3_subarray(Vector3(-1,1,1), format, offset, vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_TANGENT:
+						print("Do tangent float " + str(godot_array_type) + " " + str(format))
+						surface_arrays[godot_array_type] = vertex_buf.formatted_tangent_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_COLOR:
+						print("Do color " + str(godot_array_type) + " " + str(format))
+						surface_arrays[godot_array_type] = vertex_buf.formatted_color_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2:
+						print("Do uv " + str(godot_array_type) + " " + str(format))
+						surface_arrays[godot_array_type] = vertex_buf.formatted_vector2_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+					ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_CUSTOM2, ArrayMesh.ARRAY_CUSTOM3:
+						pass # Custom channels are currently broken in Godot master:
+					ArrayMesh.ARRAY_MAX: # ARRAY_MAX is a placeholder to disable this
+						print("Do custom " + str(godot_array_type) + " " + str(format))
+						var custom_shift = (ArrayMesh.ARRAY_FORMAT_CUSTOM1_SHIFT - ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT) * (godot_array_type - ArrayMesh.ARRAY_CUSTOM0) + ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+						if format == aligned_byte_buffer.FORMAT_UNORM8 or format == aligned_byte_buffer.FORMAT_SNORM8:
+							# assert(dimension == 4) # Unity docs says always word aligned, so I think this means it is guaranteed to be 4.
+							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(format, offset, 4 * vertexCount, stream_strides[stream], 4)
+							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_RGBA8_UNORM if format == aligned_byte_buffer.FORMAT_UNORM8 else ArrayMesh.ARRAY_CUSTOM_RGBA8_SNORM) << custom_shift
+						elif format == aligned_byte_buffer.FORMAT_FLOAT16:
+							assert(dimension == 2 or dimension == 4) # Unity docs says always word aligned, so I think this means it is guaranteed to be 2 or 4.
+							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(format, offset, dimension * vertexCount * 2, stream_strides[stream], dimension * 2)
+							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_RG_HALF if dimension == 2 else ArrayMesh.ARRAY_CUSTOM_RGBA_HALF) << custom_shift
+							# We could try to convert SNORM16 and UNORM16 to float16 but that sounds confusing and complicated.
+						else:
+							assert(dimension <= 4)
+							surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_R_FLOAT + (dimension - 1)) << custom_shift
+			#firstVertex: 1302
+			#vertexCount: 38371
+			surface_arrays[ArrayMesh.ARRAY_INDEX] = surface_index_buf
+			var primitive_format: int = get_primitive_format(submesh)
+			#var f= File.new()
+			#f.open("temp.temp", File.WRITE)
+			#f.store_string(str(surface_arrays))
+			#f.close()
+			for i in range(ArrayMesh.ARRAY_MAX):
+				print("Array " + str(i) + ": length=" + (str(len(surface_arrays[i])) if typeof(surface_arrays[i]) != TYPE_NIL else "NULL"))
+			print("here are some flags " + str(compress_flags))
+			arr_mesh.add_surface_from_arrays(primitive_format, surface_arrays, [], {}, compress_flags)
+		# arr_mesh.set_custom_aabb(local_aabb)
+		arr_mesh.resource_name = self.name
+		return arr_mesh
+
+	var local_aabb: AABB:
+		get:
+			return AABB(keys.get("m_LocalAABB", {}).get("m_Center") * Vector3(-1,1,1), keys.get("m_LocalAABB", {}).get("m_Extent"))
+
+	var pre2018_skin: Array:
+		get:
+			var skin_vertices = keys.get("m_Skin", [])
+			var ret = [PackedFloat32Array(), PackedInt32Array()]
+			# FIXME: Godot bug with F32Array. ret[0].resize(len(skin_vertices) * 4)
+			ret[1].resize(len(skin_vertices) * 4)
+			var i = 0
+			for vert in skin_vertices:
+				ret[0].push_back(vert.get("weight[0]"))
+				ret[0].push_back(vert.get("weight[1]"))
+				ret[0].push_back(vert.get("weight[2]"))
+				ret[0].push_back(vert.get("weight[3]"))
+				#ret[0][i] = vert.get("weight[0]")
+				#ret[0][i + 1] = vert.get("weight[1]")
+				#ret[0][i + 2] = vert.get("weight[2]")
+				#ret[0][i + 3] = vert.get("weight[3]")
+				ret[1][i] = vert.get("boneIndex[0]")
+				ret[1][i + 1] = vert.get("boneIndex[1]")
+				ret[1][i + 2] = vert.get("boneIndex[2]")
+				ret[1][i + 3] = vert.get("boneIndex[3]")
+				i += 4
+			return ret
+
+	var submeshes: Array:
+		get:
+			return keys.get("m_SubMeshes", [])
+
+	var binds: Array:
+		get:
+			return keys.get("m_BindPose", [])
+
+	var vertex_layout_info: Dictionary:
+		get:
+			return keys.get("m_VertexData", {})
+
+	func get_godot_extension() -> String:
+		return ".mesh.res"
+
+	func get_vertex_data() -> Reference:
+		return aligned_byte_buffer.new_with_hex(keys.get("m_VertexData", {}).get("_typelessdata", ""))
+
+	func get_index_data() -> Reference:
+		return aligned_byte_buffer.new_with_hex(keys.get("m_IndexBuffer", ""))
 
 class UnityMaterial extends UnityObject:
 
@@ -589,9 +808,21 @@ class UnityMaterial extends UnityObject:
 		var colorProperties = get_color_properties()
 		#print(str(colorProperties))
 		var ret = StandardMaterial3D.new()
+		ret.resource_name = self.name
+		# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unity
+		# But it seems to workaround a problem with some materials for now.
+		ret.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_tex_force_srgb = true # Nothing works if this isn't set to true explicitly. Stupid default.
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.white)
-		ret.albedo_texture = get_texture(texProperties, "_MainTex")
+		ret.albedo_texture = get_texture(texProperties, "_MainTex2") ### ONLY USED IN ONE SHADER. This case should be removed.
+		if ret.albedo_texture == null:
+			ret.albedo_texture = get_texture(texProperties, "_MainTex")
+		if ret.albedo_texture == null:
+			ret.albedo_texture = get_texture(texProperties, "_Tex")
+		if ret.albedo_texture == null:
+			ret.albedo_texture = get_texture(texProperties, "_Albedo")
+		if ret.albedo_texture == null:
+			ret.albedo_texture = get_texture(texProperties, "_Diffuse")
 		ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
 		ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
 		# TODO: ORM not yet implemented.
@@ -639,6 +870,9 @@ class UnityMaterial extends UnityObject:
 		#	ret.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
 		return ret
 
+	func get_godot_extension() -> String:
+		return ".mat.tres"
+
 class UnityShader extends UnityObject:
 	pass
 
@@ -646,7 +880,9 @@ class UnityTexture extends UnityObject:
 	pass
 
 class UnityAnimationClip extends UnityObject:
-	pass
+
+	func get_godot_extension() -> String:
+		return ".anim.tres"
 
 class UnityTexture2D extends UnityTexture:
 	pass
@@ -1530,13 +1766,14 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			var edited: bool = false
 			for idx in range(len(bones)):
 				var bone_transform: UnityTransform = meta.lookup(bones[idx])
-				if ret.skin.get_bind_name(idx) != gdskel.get_bone_name(bone_transform.skeleton_bone_index):
+				if ret.skin.get_bind_bone(idx) != bone_transform.skeleton_bone_index:
 					edited = true
 					break
 			if edited:
 				ret.skin = ret.skin.duplicate()
 				for idx in range(len(bones)):
 					var bone_transform: UnityTransform = meta.lookup(bones[idx])
+					ret.skin.set_bind_bone(idx, bone_transform.skeleton_bone_index)
 					ret.skin.set_bind_name(idx, gdskel.get_bone_name(bone_transform.skeleton_bone_index))
 		# TODO: duplicate skin and assign the correct bone names to match self.bones array
 		return ret
