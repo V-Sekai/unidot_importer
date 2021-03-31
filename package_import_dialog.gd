@@ -38,6 +38,8 @@ var asset_database: Resource = null
 var tree_dialog_state: int = 0
 var _currently_preprocessing_assets: int = 0
 var retry_tex: bool = false
+var _keep_open_on_import: bool = false
+var import_finished: bool = false
 
 var asset_work_waiting_scan: Array = [].duplicate()
 var asset_work_currently_scanning: Array = [].duplicate()
@@ -59,11 +61,6 @@ func _init():
 
 func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	ti.set_checked(0, is_checked)
-	if is_checked:
-		if ti.get_button_count(0) <= 0:
-			# ti.set_cell_mode(0, TreeItem.CELL_MODE_ICON)
-			ti.add_button(0, spinner_icon, -1, true, "Loading...")
-			ti.set_custom_color(0, Color("#888822"))
 	#var old_prefix: String = (checkbox_on_unicode if !is_checked else checkbox_off_unicode)
 	#var new_prefix: String  = (checkbox_on_unicode if is_checked else checkbox_off_unicode)
 	#ti.set_text(0, new_prefix + ti.get_text(0).substr(len(old_prefix)))
@@ -118,6 +115,9 @@ func _selected_package(p_path: String) -> void:
 				# ti.add_button(0, spinner_icon1, -1, true)
 			ti.set_text(0, path_names[i])
 	main_dialog.popup_centered_ratio()
+	if file_dialog:
+		file_dialog.queue_free()
+		file_dialog = null
 
 func show_importer() -> void:
 	#printerr("PKG IMPORT DIALOG INIT BEFORE " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface() if static_storage_singleton != null else null))
@@ -128,7 +128,7 @@ func show_importer() -> void:
 	file_dialog = FileDialog.new()
 	file_dialog.set_title("Import Unity Package...")
 	file_dialog.add_filter("*.unitypackage")
-	#file_dialog.mode = FileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	file_dialog.connect("file_selected", self._selected_package)
@@ -140,7 +140,9 @@ func show_importer() -> void:
 	main_dialog.dialog_hide_on_ok = false
 	main_dialog.connect("confirmed", self._asset_tree_window_confirmed)
 	# "cancelled" ????
-	main_dialog.add_cancel_button("Cancel")
+	main_dialog.add_cancel_button("Hide")
+	main_dialog.add_button("Import and show result", false, "show_result")
+	main_dialog.connect("custom_action", self._asset_tree_window_confirmed_custom)
 	var n: Label = main_dialog.get_label()
 	main_dialog_tree = Tree.new()
 	main_dialog_tree.set_column_titles_visible(false)
@@ -151,6 +153,8 @@ func show_importer() -> void:
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
+	_keep_open_on_import = false
+	import_finished = false
 	file_dialog.popup_centered_ratio()
 	timer = Timer.new()
 	timer.wait_time = 0.1
@@ -188,6 +192,22 @@ func generate_sentinel_png_filename():
 
 var _delay_tick: int = 0
 
+func on_import_fully_completed():
+	import_finished = true
+	if not _keep_open_on_import:
+		if main_dialog:
+			main_dialog.queue_free()
+			main_dialog = null
+
+func on_file_completed_godot_import(tw: Reference, loaded: bool):
+	var ti: TreeItem = tw.extra
+	if ti.get_button_count(0) > 0:
+		ti.erase_button(0, 0)
+	if loaded:
+		ti.set_custom_color(0, Color("#228822"))
+	else:
+		ti.set_custom_color(0, Color("#ff4422"))
+
 func _editor_filesystem_scan_tick():
 	if tree_dialog_state == STATE_DIALOG_SHOWING:
 		return
@@ -211,15 +231,20 @@ func _editor_filesystem_scan_tick():
 		return
 	_delay_tick = 0
 
+	print("Removing " + str(generate_sentinel_png_filename()))
 	dres.remove(generate_sentinel_png_filename() + ".import")
 	dres.remove(generate_sentinel_png_filename())
 
 	if not retry_tex:
 		retry_tex = true
+		print("Writing " + str(generate_sentinel_png_filename()))
 		asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 		return
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
+		asset_database.save()
+		static_storage.new().get_resource_filesystem().scan()
+		on_import_fully_completed()
 		timer.queue_free()
 		timer = null
 	
@@ -231,6 +256,7 @@ func _editor_filesystem_scan_tick():
 		#var loaded_asset: Resource = load(tw.asset.pathname)
 		if loaded_asset != null:
 			tw.asset.parsed_meta.insert_resource(tw.asset.parsed_meta.main_object_id, loaded_asset)
+		on_file_completed_godot_import(tw, loaded_asset != null)
 
 	print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_currently_scanning) == 0 and _currently_preprocessing_assets == 0:
@@ -276,9 +302,13 @@ func _editor_filesystem_scan_tick():
 	#	static_storage.new().get_resource_filesystem().update_file(tw.asset.pathname)
 	for tw in asset_work:
 		asset_work_currently_scanning.push_back(tw)
+		var ti: TreeItem = tw.extra
+		if ti.get_button_count(0) <= 0:
+			ti.add_button(0, spinner_icon, -1, true, "Loading...")
 	asset_work_waiting_scan = [].duplicate()
 	retry_tex = false
 	asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+	print("Writing " + str(generate_sentinel_png_filename()))
 
 	print("Done Queueing work: state=" + str(tree_dialog_state))
 	# static_storage.new().get_resource_filesystem().scan() # We wait for the next timer for this now.
@@ -328,8 +358,9 @@ func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
 	print(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
-	ti.set_custom_color(0, Color("#228822"))
-	ti.erase_button(0, 0)
+	ti.set_custom_color(0, Color("#888822"))
+	if ti.get_button_count(0) > 0:
+		ti.erase_button(0, 0)
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	asset_database.insert_meta(tw.asset.parsed_meta)
@@ -356,13 +387,11 @@ func _asset_processing_finished(tw: Object):
 func _asset_processing_started(tw: Object):
 	print("Started processing asset is " + str(tw.asset.pathname) + "/" + str(tw.asset.guid))
 	var ti: TreeItem = tw.extra
-	ti.set_custom_color(0, Color("#888822"))
+	ti.set_custom_color(0, Color("#228888"))
 
 func _preprocess_recursively(ti: TreeItem) -> int:
 	var ret: int = 0
 	if ti.is_checked(0):
-		if ti.get_button_count(0) <= 0:
-			ti.add_button(0, spinner_icon, -1, true, "Loading...")
 		var path = ti.get_tooltip(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
 		if path != "":
 			var asset = pkg.path_to_pkgasset.get(path)
@@ -371,15 +400,27 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 			else:
 				ret += 1
 				_currently_preprocessing_assets += 1
-				self.import_worker.push_asset(asset, tmpdir, ti)
+				var tw: Reference = self.import_worker.push_asset(asset, tmpdir, ti)
+				# ti.set_cell_mode(0, TreeItem.CELL_MODE_ICON)
+				if ti.get_button_count(0) <= 0:
+					ti.add_button(0, spinner_icon, -1, true, "Loading...")
 	var chld: TreeItem = ti.get_children()
 	while chld != null:
 		ret += _preprocess_recursively(chld)
 		chld = chld.get_next()
 	return ret
 
+func _asset_tree_window_confirmed_custom(action_name):
+	assert(action_name == "show_result")
+	self._keep_open_on_import = true
+	_asset_tree_window_confirmed()
 
 func _asset_tree_window_confirmed():
+	if import_finished:
+		if main_dialog:
+			main_dialog.queue_free()
+			main_dialog = null
+		return
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
 	tree_dialog_state = STATE_PREPROCESSING

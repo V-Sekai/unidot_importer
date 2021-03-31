@@ -1226,6 +1226,7 @@ class UnityBehaviour extends UnityComponent:
 class UnityTransform extends UnityComponent:
 
 	var skeleton_bone_index: int = -1
+	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
 
 	func create_godot_node(state: GodotNodeState, new_parent: Node3D) -> Node3D:
 		#var new_node: Node3D = Node3D.new()
@@ -1254,7 +1255,8 @@ class UnityTransform extends UnityComponent:
 
 	var godot_transform: Transform:
 		get:
-			return Transform(Basis(localRotation).scaled(localScale), localPosition)
+			return FLIP_X.affine_inverse() * Transform(Basis(localRotation).scaled(localScale), localPosition) * FLIP_X
+
 
 	var rootOrder: int:
 		get:
@@ -1324,7 +1326,7 @@ class UnityCollider extends UnityBehaviour:
 
 	var center: Vector3:
 		get:
-			return keys.get("m_Center", Vector3(0.0, 0.0, 0.0))
+			return Vector3(-1.0, 1.0, 1.0) * keys.get("m_Center", Vector3(0.0, 0.0, 0.0))
 
 	var basis: Basis:
 		get:
@@ -1407,8 +1409,8 @@ class UnityMeshCollider extends UnityCollider:
 		
 	var mesh: Array: # UnityRef
 		get:
-			var ret = keys.get("m_Mesh")
-			if ret == null:
+			var ret = keys.get("m_Mesh", [null,0,"",null])
+			if ret[1] == 0:
 				var mf: UnityMeshFilter = gameObject.meshFilter
 				if mf != null:
 					return gameObject.meshFilter.mesh
@@ -1450,7 +1452,7 @@ class UnityMeshFilter extends UnityComponent:
 		
 	var mesh: Array: # UnityRef
 		get:
-			return keys.get("m_Mesh")
+			return keys.get("m_Mesh", [null,0,"",null])
 
 class UnityRenderer extends UnityBehaviour:
 	pass
@@ -1477,7 +1479,7 @@ class UnityMeshRenderer extends UnityRenderer:
 			var mf: UnityMeshFilter = gameObject.meshFilter
 			if mf != null:
 				return mf.mesh
-			return null
+			return [null,0,"",null]
 
 class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 

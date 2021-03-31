@@ -86,40 +86,35 @@ func preload_builtin_assets():
 	unity_builtin.override_resource(10102, "Arial", stub) # Arial (font)
 	var cube: BoxMesh = BoxMesh.new()
 	cube.size = Vector3(1.0, 1.0, 1.0)
-	var mesh: ArrayMesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, cube.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10202 , "Cube", cube) # mesh)
+	unity_builtin.override_resource(10202 , "Cube", cube)
 	var cylinder: CylinderMesh = CylinderMesh.new()
 	cylinder.top_radius = 0.5
 	cylinder.bottom_radius = 0.5
 	cylinder.height = 2.0
-	mesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, cylinder.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10206, "Cylinder", cylinder) # mesh)
+	unity_builtin.override_resource(10206, "Cylinder", cylinder)
 	var sphere: SphereMesh = SphereMesh.new()
 	sphere.radius = 0.5
 	sphere.height = 2.0 * sphere.radius
-	mesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, sphere.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10207, "Sphere", sphere) # mesh)
+	unity_builtin.override_resource(10207, "Sphere", sphere)
 	var capsule: CapsuleMesh = CapsuleMesh.new()
 	capsule.radius = 0.5
-	mesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, capsule.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10208, "Capsule", capsule) # mesh)
+	unity_builtin.override_resource(10208, "Capsule", capsule)
 	var plane: PlaneMesh = PlaneMesh.new()
 	plane.subdivide_depth = 10
 	plane.subdivide_width = 10
 	plane.size = Vector2(10.0, 10.0)
-	mesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, plane.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10209, "Plane", plane) # mesh)
+	#mesh = ArrayMesh.new()
+	#mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, plane.surface_get_arrays(0), [], {})
+	unity_builtin.override_resource(10209, "Plane", plane)
 	var quad: QuadMesh = QuadMesh.new()
 	quad.size = Vector2(-1.0, 1.0)
-	mesh = ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10210, "Quad", quad) # mesh)
-	# ... Capsule, Cylinder, Plane, Quad
+	var quad_mesh: ArrayMesh = ArrayMesh.new()
+	var quad_arrays: Array = quad.surface_get_arrays(0)
+	# GODOT BUG: Quad mesh has incorrect normal if axis flipped.
+	for i in range(len(quad_arrays[Mesh.ARRAY_NORMAL])):
+		quad_arrays[Mesh.ARRAY_NORMAL][i] = Vector3(0,0,-1)
+	quad_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
+	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
 	var unity_extra = asset_meta_class.new()
 	unity_extra.database = self
