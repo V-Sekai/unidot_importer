@@ -519,7 +519,8 @@ class UnityObject extends Reference:
 			if not is_stripped:
 				assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
 			else:
-				assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+				# Might have source object=0 if the object is a dummy / broken prefab?
+				pass # assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
 			return (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
 
 
@@ -1707,9 +1708,16 @@ class UnityMeshRenderer extends UnityRenderer:
 		var mf: UnityMeshFilter = gameObject.meshFilter
 		if mf != null:
 			state.add_fileID(new_node, mf.fileID)
-
+		var idx: int = 0
+		for m in materials:
+			new_node.set_surface_material(idx, meta.get_godot_resource(m))
+			idx += 1
 		return new_node
-		
+
+	var materials: Array:
+		get:
+			return keys.get("m_Materials", [])
+
 	var mesh: Array: # UnityRef
 		get:
 			var mf: UnityMeshFilter = gameObject.meshFilter
@@ -1723,10 +1731,18 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		if len(bones) == 0:
 			var cloth: UnityCloth = gameObject.GetComponent("Cloth")
 			if cloth != null:
-				return cloth.create_cloth_godot_node(state, new_parent, type, self.fileID, self.mesh, null, [])
+				return create_cloth_godot_node(state, new_parent, type, cloth)
 			return create_godot_node_orig(state, new_parent, type)
 		else:
 			return null
+
+	func create_cloth_godot_node(state: GodotNodeState, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
+		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self.fileID, self.mesh, null, [])
+		var idx: int = 0
+		for m in materials:
+			new_node.set_surface_material(idx, meta.get_godot_resource(m))
+			idx += 1
+		return new_node
 
 	func create_skinned_mesh(state: GodotNodeState) -> Node:
 		var bones: Array = self.bones
@@ -1752,7 +1768,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		var cloth: UnityCloth = gameObject.GetComponent("Cloth")
 		var ret: MeshInstance3D = null
 		if cloth != null:
-			ret = cloth.create_cloth_godot_node(state, gdskel, component_name, self.fileID, self.mesh, gdskel, self.bones)
+			ret = create_cloth_godot_node(state, gdskel, component_name, cloth)
 		else:
 			ret = create_godot_node_orig(state, gdskel, component_name)
 		# ret.skeleton = NodePath("..") # default?

@@ -53,7 +53,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	var ps: Reference = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
 		var parent: Reference = null # UnityTransform
-		if asset.is_prefab_reference:
+		if asset.is_stripped:
 			pass # Ignore stripped components.
 		elif asset.type == "Transform" or asset.type == "PrefabInstance":
 			parent = asset.parent
