@@ -86,7 +86,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				#ps.gameobjects_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.components_by_stripped_id[parent.fileID].push_back(asset)
 
-	var skelleys_with_no_parent: Array = object_adapter_class.initialize_skelleys(pkgasset.parsed_asset.assets.values(), node_state)
+	var skelleys_with_no_parent: Array = node_state.initialize_skelleys(pkgasset.parsed_asset.assets.values())
 
 	if len(skelleys_with_no_parent) == 1:
 		scene_contents = skelleys_with_no_parent[0].godot_skeleton
