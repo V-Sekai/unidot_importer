@@ -157,15 +157,163 @@ class FbxHandler extends AssetHandler:
 		ret.STUB_GLB_FILE = stub_file
 		return ret
 
+	# From core/string/ustring.cpp
+	func find_in_buffer(p_buf: PackedByteArray, p_str: PackedByteArray, p_from: int=0, p_to: int=-1) -> int:
+		if (p_from < 0):
+			return -1
+		var src_len: int = len(p_str)
+		var xlen: int = len(p_buf)
+		if p_to != -1 and xlen > p_to:
+			xlen = p_to
+		if (src_len == 0 or xlen == 0):
+			return -1 # won't find anything!
+		for i in range(p_from, xlen - src_len):
+			var found: bool = true
+			for j in range(src_len):
+				var read_pos: int = i + j
+				if (read_pos >= xlen):
+					printerr("read_pos>=len")
+					return -1
+				if (p_buf[read_pos] != p_str[j]):
+					found = false
+					break
+
+			if (found):
+				return i
+
+		return -1
+
+	func _adjust_fbx_scale(pkgasset: Object, fbx_scale: float, useFileScale: bool, globalScale: float) -> float:
+		pkgasset.parsed_meta.internal_data["input_fbx_scale"] = fbx_scale
+		pkgasset.parsed_meta.internal_data["meta_scale_factor"] = globalScale
+		pkgasset.parsed_meta.internal_data["meta_convert_units"] = useFileScale
+		var desired_scale: float = 0
+		if useFileScale:
+			# Cases:
+			# (FBX All) fbx_scale=100; globalScale=1 -> 100
+			# (FBX All) fbx_scale=12.3; globalScale = 8.130081 -> 100
+			# (All Local) fbx_scale=1; globalScale=8.130081
+			# (All Local, No apply unit) fbx_scale=1; globalScale = 1 -> 1
+			desired_scale = fbx_scale * globalScale
+		else:
+			# Cases:
+			# (FBX All)fbx_scale=12.3; globalScale=1 -> 100
+			# (All Local) fbx_scale=1; globalScale=0.08130081 -> 8.130081
+			# (All Local, No apply unit) fbx_scale=1; globalScale = 0.01 -> 1
+			desired_scale = 100.0 * globalScale
+		
+		var output_scale: float = desired_scale
+		# FBX2glTF does not implement scale correctly, so we must set it to 1.0 and correct it later
+		# Godot's new built-in FBX importer works correctly and does not need this correction.
+		output_scale = 1.0
+		pkgasset.parsed_meta.internal_data["scale_correction_factor"] = desired_scale / output_scale
+		pkgasset.parsed_meta.internal_data["output_fbx_scale"] = output_scale
+		return output_scale
+
+	func _preprocess_fbx_scale(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
+		var filename: String = pkgasset.pathname
+		if useFileScale and is_equal_approx(globalScale, 1.0):
+			print("TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early.")
+			#return fbx_file_binary
+		var output_buf: PackedByteArray = fbx_file_binary
+		var is_binary: bool = (find_in_buffer(fbx_file_binary, "Kaydara FBX Binary".to_ascii_buffer(), 0, 64) != -1)
+		if is_binary:
+			var needle_buf: PackedByteArray = "\u0001PS\u000F...UnitScaleFactorS".to_ascii_buffer()
+			needle_buf[4] = 0
+			needle_buf[5] = 0
+			needle_buf[6] = 0
+			var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
+			if scale_factor_pos == -1:
+				printerr(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+				return output_buf
+
+			var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+			spb.data_array = fbx_file_binary
+			spb.seek(scale_factor_pos + len(needle_buf))
+			var datatype: String = spb.get_string(spb.get_32())
+			if spb.get_8() != ("S").to_ascii_buffer()[0]: # ord() is broken?!
+				printerr(filename + ": not a string, or datatype invalid " + datatype)
+				return output_buf
+			var subdatatype: String = spb.get_string(spb.get_32())
+			if spb.get_8() != ("S").to_ascii_buffer()[0]:
+				printerr(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
+				return output_buf
+			var extratype: String = spb.get_string(spb.get_32())
+			var number_type = spb.get_8()
+			var scale = 1.0
+			var is_double: bool = false
+			if number_type == ("F").to_ascii_buffer()[0]:
+				scale = spb.get_float()
+			elif number_type == ("D").to_ascii_buffer()[0]:
+				scale = spb.get_double()
+				is_double = true
+			else:
+				printerr(filename + ": not a float or double " + str(number_type))
+				return output_buf
+			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
+			print(filename + ": Binary FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
+					" (Scale Factor = " + str(globalScale) +
+					"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
+			if is_double:
+				spb.seek(spb.get_position() - 8)
+				print("double - Seeked to " + str(spb.get_position()))
+				spb.put_double(new_scale)
+			else:
+				spb.seek(spb.get_position() - 4)
+				print("float - Seeked to " + str(spb.get_position()))
+				spb.put_float(new_scale)
+			return spb.data_array
+		else:
+			var buffer_as_ascii: String = fbx_file_binary.get_string_from_ascii()
+			var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
+			if scale_factor_pos == -1:
+				printerr(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+				return output_buf
+			var newline_pos: int = buffer_as_ascii.find("\n", scale_factor_pos)
+			var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
+			if newline_pos == -1 or comma_pos == -1:
+				printerr(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+				return output_buf
+
+			var scale: float = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges().to_float()
+			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
+			print(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
+					" (Scale Factor = " + str(globalScale) +
+					"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
+			output_buf = fbx_file_binary.subarray(0, comma_pos) # subarray endpoint is inclusive!!
+			output_buf += str(new_scale).to_ascii_buffer()
+			output_buf += fbx_file_binary.subarray(newline_pos, len(fbx_file_binary) - 1)
+		return output_buf
+
+	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
+		var path: String = tmpdir + "/" + pkgasset.pathname
+		var outfile: File = File.new()
+		var err = outfile.open(path, File.WRITE)
+		print("Open " + path + " => " + str(err))
+		var importer = pkgasset.parsed_meta.importer
+
+		var fbx_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
+		fbx_file = _preprocess_fbx_scale(pkgasset, fbx_file, importer.useFileScale, importer.globalScale)
+		outfile.store_buffer(fbx_file)
+		# outfile.flush()
+		outfile.close()
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path)
+		if len(output_path) == 0:
+			output_path = path
+		print("Updating file at " + output_path)
+		return output_path
+
 	func preprocess_asset(pkgasset, tmpdir: String, path: String) -> String:
 		var user_path_base = OS.get_user_data_dir()
-
 		print("I am an FBX " + str(path))
 		var output_path: String = path.get_basename() + ".glb"
 		var stdout = [].duplicate()
 		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("FBX2glTF.exe")
 		if addon_path.begins_with("res://"):
 			addon_path = addon_path.substr(6)
+		# --long-indices auto
+		# --compute-normals never|broken|missing|always
+		# --blend-shape-normals --blend-shape-tangents
 		var ret = OS.execute(addon_path, [
 			"--pbr-metallic-roughness",
 			"--fbx-temp-dir", tmpdir + "/FBX_TEMP",
@@ -228,7 +376,7 @@ class FbxHandler extends AssetHandler:
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
-		cfile.set_value("params", "meshes/root_scale", importer.meshes_root_scale)
+		cfile.set_value("params", "meshes/root_scale", 1.0)
 		# addCollider???? TODO
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		cfile.set_value("params", "animation/optimizer/enabled", optim_setting.get("enabled"))

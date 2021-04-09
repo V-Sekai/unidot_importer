@@ -363,6 +363,7 @@ func _asset_processing_finished(tw: Object):
 		ti.erase_button(0, 0)
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
+	print("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
 	asset_database.insert_meta(tw.asset.parsed_meta)
 	if tw.asset.asset_tar_header != null:
 		var extn = tw.output_path.get_extension()

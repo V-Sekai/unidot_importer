@@ -11,6 +11,7 @@ var database: Resource = null
 @export var importer_type: String = ""
 var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclass
 # for .fbx, must use fileIDToRecycleName in meta.
+@export var internal_data: Dictionary = {}
 
 @export var prefab_id_to_guid: Dictionary = {}
 

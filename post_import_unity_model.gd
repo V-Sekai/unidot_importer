@@ -29,6 +29,8 @@ class ParseState:
 	var fileid_to_skeleton_bone: Dictionary = {}.duplicate()
 	var fileid_to_utype: Dictionary = {}.duplicate()
 	
+	var scale_correction_factor: float = 1.0
+
 	# Do we actually need this? Ordering?
 	#var materials = [].duplicate()
 	#var meshes = [].duplicate()
@@ -45,6 +47,14 @@ class ParseState:
 
 	func iterate(node):
 		if node != null:
+			if scale_correction_factor != 1.0:
+				# ANIMATION and NODES multiply by scale
+				if node is Node3D:
+					node.translation *= scale_correction_factor
+				if node is Skeleton3D:
+					for i in range(node.get_bone_count()):
+						var rest: Transform = node.get_bone_rest(i)
+						node.set_node_rest(i, Transform(rest.basis, scale_correction_factor * rest.origin))
 			# TODO: Nodes which should be part of a skeleton need to be remapped?
 			var path: NodePath = scene.get_path_to(node)
 			var node_name: String = str(node.name)
@@ -161,11 +171,14 @@ class ParseState:
 							if skin != null:
 								skin = metaobj.get_godot_resource(external_objects_by_id.get(-fileId))
 						else:
-							var respath: String = get_resource_path(mesh_name, ".res")
-							ResourceSaver.save(respath, mesh)
-							mesh = load(respath)
+							if mesh != null:
+								adjust_mesh_scale(mesh)
+								var respath: String = get_resource_path(mesh_name, ".res")
+								ResourceSaver.save(respath, mesh)
+								mesh = load(respath)
 							if skin != null:
-								respath = get_resource_path(mesh_name, ".skin.tres")
+								adjust_skin_scale(skin)
+								var respath: String = get_resource_path(mesh_name, ".skin.tres")
 								ResourceSaver.save(respath, skin)
 								skin = load(respath)
 						if mesh != null:
@@ -194,9 +207,11 @@ class ParseState:
 						if external_objects_by_id.has(fileId):
 							anim = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 						else:
-							var respath: String = get_resource_path(anim_name, ".tres")
-							ResourceSaver.save(respath, anim)
-							anim = load(respath)
+							if anim != null:
+								adjust_animation(anim)
+								var respath: String = get_resource_path(anim_name, ".tres")
+								ResourceSaver.save(respath, anim)
+								anim = load(respath)
 						if anim != null:
 							node.remove_animation(anim_name)
 							node.add_animation(anim_name, anim)
@@ -206,6 +221,122 @@ class ParseState:
 					i += 1
 			for child in node.get_children():
 				iterate(child)
+
+	
+	func adjust_skin_scale(skin: Skin):
+		if scale_correction_factor == 1.0:
+			return
+		# MESH and SKIN data divide, to compensate for object position multiplying.
+		for i in range(skin.get_bind_count()):
+			var transform = skin.get_bind_pose(i)
+			skin.set_bind_pose(i, Transform(transform.basis, transform.origin * scale_correction_factor))
+
+	# func get_lods_inner(mesh: Object, surf_idx: int) -> Variant:
+	# 	var ret: Variant = mesh.surface_get_lods(surf_idx)
+	# 	return ret
+
+	# func get_lods(mesh: Mesh, surf_idx: int) -> Dictionary:
+	# 	var ret: Variant = get_lods_inner(mesh, surf_idx)
+	# 	if typeof(ret) == TYPE_DICTIONARY:
+	# 		return ret
+	# 	return {}
+
+	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false):
+		if scale_correction_factor == 1.0:
+			return
+		# MESH and SKIN data divide, to compensate for object position multiplying.
+		var surf_count: int = mesh.get_surface_count()
+		var surf_data_by_mesh = [].duplicate()
+		for surf_idx in range(surf_count):
+			var prim: int = mesh.surface_get_primitive_type(surf_idx)
+			var fmt_compress_flags: int = mesh.surface_get_format(surf_idx)
+			var arr: Array = mesh.surface_get_arrays(surf_idx) 
+			var name: String = mesh.surface_get_name(surf_idx)
+			var bsarr: Array = mesh.surface_get_blend_shape_arrays(surf_idx)
+			var lods: Dictionary = {} # mesh.surface_get_lods(surf_idx) # get_lods(mesh, surf_idx)
+			var mat: Material = mesh.surface_get_material(surf_idx)
+			print("About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			for i in range(len(arr[ArrayMesh.ARRAY_VERTEX])):
+				arr[ArrayMesh.ARRAY_VERTEX][i] = arr[ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
+			print("Done multiplying mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			for bsidx in range(len(bsarr)):
+				for i in range(len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])):
+					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
+
+			surf_data_by_mesh.push_back({
+				"prim": prim,
+				"arr": arr,
+				"bsarr": bsarr,
+				"lods": lods,
+				"fmt_compress_flags": fmt_compress_flags,
+				"name": name,
+				"mat": mat
+			})
+		mesh.clear_surfaces()
+		for surf_idx in range(surf_count):
+			var prim: int = surf_data_by_mesh[surf_idx].get("prim")
+			var arr: Array = surf_data_by_mesh[surf_idx].get("arr")
+			var bsarr: Array = surf_data_by_mesh[surf_idx].get("bsarr")
+			var lods: Dictionary = surf_data_by_mesh[surf_idx].get("lods")
+			var fmt_compress_flags: int = surf_data_by_mesh[surf_idx].get("fmt_compress_flags")
+			var name: String = surf_data_by_mesh[surf_idx].get("name")
+			var mat: Material = surf_data_by_mesh[surf_idx].get("mat")
+			print("Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			mesh.add_surface_from_arrays(prim, arr, bsarr, lods, fmt_compress_flags)
+			mesh.surface_set_name(surf_idx, name)
+			mesh.surface_set_material(surf_idx, mat)
+			print("Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
+		if not is_shadow and mesh.shadow_mesh != mesh:
+			adjust_mesh_scale(mesh.shadow_mesh, true)
+
+	func adjust_animation_scale(anim: Animation):
+		if scale_correction_factor == 1.0:
+			return
+		# ANIMATION and NODES multiply by scale
+		for trackidx in range(anim.get_track_count()):
+			var path: String = anim.get("tracks/" + str(trackidx) + "/path")
+			if path.ends_with(":x") or path.ends_with(":y") or path.ends_with(":z"):
+				path = path.substr(0, len(path) - 2) # To make matching easier.
+			match anim.get("tracks/" + str(trackidx) + "/type"):
+				"transform":
+					var xform_keys: PackedFloat32Array = anim.get("tracks/" + str(trackidx) + "/keys")
+					for i in range(0, len(xform_keys), 12):
+						xform_keys[i + 2] *= scale_correction_factor
+						xform_keys[i + 3] *= scale_correction_factor
+						xform_keys[i + 4] *= scale_correction_factor
+					anim.set("tracks/" + str(trackidx) + "/keys", xform_keys)
+				"value":
+					if path.ends_with(":translation") or path.ends_with(":transform"):
+						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
+						var track_values: Array = track_dict.get("values")
+						if path.ends_with(":transform"):
+							for i in range(len(track_values)):
+								track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+						else:
+							for i in range(len(track_values)):
+								track_values[i] *= scale_correction_factor
+						track_dict["values"] = track_values
+						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
+				"bezier":
+					if path.ends_with(":translation") or path.ends_with(":transform"):
+						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
+						var track_values: Variant = track_dict.get("points") # Some sort of packed array?
+						# VALUE, inX, inY, outX, outY
+						if path.ends_with(":transform"):
+							for i in range(len(track_values)):
+								if ((i % 5) % 2) != 1:
+									track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+						else:
+							for i in range(len(track_values)):
+								if ((i % 5) % 2) != 1:
+									track_values[i] *= scale_correction_factor
+						track_dict["points"] = track_values
+						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
+
+	func adjust_animation(anim: Animation):
+		adjust_animation_scale(anim)
+		# Root motion?
+		# Splitting up animation?
 
 func post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
@@ -230,6 +361,8 @@ func post_import(p_scene: Node) -> Object:
 	ps.scene = p_scene
 	ps.source_file_path = source_file_path
 	ps.metaobj = metaobj
+	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
+	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 
 	var recycles: Dictionary = metaobj.importer.fileIDToRecycleName
