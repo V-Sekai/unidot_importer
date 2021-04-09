@@ -32,9 +32,29 @@ func instantiate_unity_object(meta: Object, fileID: int, utype: int, type: Strin
 		else:
 			ret = UnityObject.new()
 	ret.meta = meta
+	ret.adapter = self
 	ret.fileID = fileID
 	if utype != 0 and utype != classname_to_utype.get(actual_type, utype):
 		printerr("Mismatched utype " + str(utype) + " for " + type)
+	ret.utype = classname_to_utype.get(actual_type, utype)
+	ret.type = actual_type
+	return ret
+
+
+func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) -> UnityObject:
+	var ret: UnityObject = null
+	if not utype_to_classname.has(utype):
+		printerr("Unknown utype " + str(utype) + " for " + str(fileID))
+		return
+	var actual_type: String = utype_to_classname[utype]
+	if _type_dictionary.has(actual_type):
+		ret = _type_dictionary[actual_type].new()
+	else:
+		printerr("Failed to instantiate object of type " + str(actual_type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
+		ret = UnityObject.new()
+	ret.meta = meta
+	ret.adapter = self
+	ret.fileID = fileID
 	ret.utype = classname_to_utype.get(actual_type, utype)
 	ret.type = actual_type
 	return ret
@@ -53,6 +73,9 @@ class UnityObject extends Reference:
 	var type: String = ""
 	var utype: int = 0 # Not set in .meta files
 	var _cache_uniq_key: String = ""
+	var adapter: Reference = null # Reference to containing scope.
+
+	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
 
 	# Some components or game objects within a prefab are "stripped" dummy objects.
 	# Setting the stripped flag is not required...
@@ -98,7 +121,7 @@ class UnityObject extends Reference:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		state.add_child(new_node, new_parent, fileID)
+		state.add_child(new_node, new_parent, self)
 		return new_node
 
 	func get_extra_resources() -> Dictionary:
@@ -112,6 +135,98 @@ class UnityObject extends Reference:
 
 	func get_godot_extension() -> String:
 		return ".res"
+
+	func configure_skeleton_bone(skel: Skeleton3D, bone_name: String):
+		configure_skeleton_bone_props(skel, bone_name, self.keys)
+
+	func configure_skeleton_bone_props(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
+		var props = self.convert_skeleton_properties(skel, bone_name, uprops)
+		if props.has(bone_name):
+			skel.set_bone_rest(skel.find_bone(bone_name), props.get(bone_name))
+
+	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
+		var props: Dictionary = self.convert_properties(skel, uprops)
+		var matn: Transform = skel.get_bone_rest(skel.find_bone(bone_name))
+		var quat: Quat = matn.basis.get_rotation_quat()
+		var scale: Vector3 = matn.basis.get_scale()
+		var translation: Vector3 = matn.origin
+
+		var has_trs: bool = false
+		if (props.has("_quaternion")):
+			has_trs = true
+			quat = props.get("_quaternion")
+		elif props.has("rotation_degrees"):
+			has_trs = true
+			quat = Quat(props.get("rotation_degrees") * PI / 180.0)
+		if (props.has("scale")):
+			has_trs = true
+			scale = props.get("scale")
+		if (props.has("translation")):
+			has_trs = true
+			translation = props.get("translation")
+
+		if not has_trs:
+			return props
+
+		quat = (FLIP_X.affine_inverse() * Transform(Basis(quat)) * FLIP_X).basis.get_rotation_quat()
+		scale = (FLIP_X.affine_inverse() * Transform(Basis.IDENTITY.scaled(scale)) * FLIP_X).basis.get_scale()
+		translation = (FLIP_X.affine_inverse() * Transform(Basis.IDENTITY, translation) * FLIP_X).origin
+
+		matn = Transform(Basis(quat).scaled(scale), translation)
+
+		props[bone_name] = matn
+		return props
+
+	func configure_node(node: Node):
+		configure_node_props(node, self.keys)
+
+	func configure_node_props(node: Node, uprops: Dictionary):
+		if node == null:
+			return {}
+		var props: Dictionary = self.convert_properties(node, uprops)
+		print(str(node.name) + ": " + str(uprops))
+		# var has_transform_track: bool = false
+		# var transform_position: Vector3 = Vector3()
+		# var transform_rotation: Quat = Quat()
+		# var transform_position: Vector3 = Vector3()
+		if (props.has("_quaternion")):
+			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
+
+		for propname in props:
+			if typeof(props.get(propname)) == TYPE_NIL:
+				continue
+			if str(propname) != "_quaternion": # .begins_with("_"):
+				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
+				node.set(propname, props.get(propname))
+		return props
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		return convert_properties_component(node, uprops)
+
+	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
+		return {}
+
+	static func get_vector(uprops: Dictionary, key: String) -> Variant:
+		if uprops.has(key):
+			return uprops.get(key)
+		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
+			return Vector3(
+				uprops.get(key + ".x", 0.0),
+				uprops.get(key + ".y", 0.0),
+				uprops.get(key + ".z", 0.0))
+		return null
+
+	static func get_quat(uprops: Dictionary, key: String) -> Variant:
+		if uprops.has(key):
+			return uprops.get(key)
+		if uprops.has(key + ".x") and uprops.has(key + ".y") and uprops.has(key + ".z") and uprops.has(key + ".w"):
+			return Quat(
+				uprops.get(key + ".x", 0.0),
+				uprops.get(key + ".y", 0.0),
+				uprops.get(key + ".z", 0.0),
+				uprops.get(key + ".w", 1.0))
+		return null
+
 
 	# Prefab source properties: Component and GameObject sub-types only:
 	# UNITY 2018+:
@@ -201,6 +316,7 @@ class UnityMesh extends UnityObject:
 		var pre2018_weights_buf: PackedFloat32Array = tmp[0]
 		var pre2018_bones_buf: PackedInt32Array = tmp[1]
 		var surf_idx: int = 0
+		var total_vertex_count: int = vertex_layout.get("m_VertexCount", 0)
 		var idx_format: int = keys.get("m_IndexFormat", 0)
 		var arr_mesh = ArrayMesh.new()
 		var stream_strides: Array = [0, 0, 0, 0]
@@ -210,9 +326,9 @@ class UnityMesh extends UnityObject:
 
 		for array_idx in range(len(unity_to_godot_mesh_channels)):
 			var channel_info: Dictionary = channel_info_array[array_idx]
-			stream_strides[channel_info.get("stream", 0)] += channel_info.get("dimension", 4) * aligned_byte_buffer.format_byte_width(channel_info.get("format", 0))
+			stream_strides[channel_info.get("stream", 0)] += (channel_info.get("dimension", 4) * aligned_byte_buffer.format_byte_width(channel_info.get("format", 0)) + 3) / 4 * 4
 		for s in range(1, 4):
-			stream_offsets[s] = stream_offsets[s - 1] + stream_strides[s - 1]
+			stream_offsets[s] = stream_offsets[s - 1] + (total_vertex_count * stream_strides[s - 1] + 15) / 16 * 16
 
 		for submesh in submeshes:
 			var surface_arrays: Array = []
@@ -273,7 +389,9 @@ class UnityMesh extends UnityObject:
 						surface_arrays[godot_array_type] = vertex_buf.formatted_color_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
 					ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2:
 						print("Do uv " + str(godot_array_type) + " " + str(format))
-						surface_arrays[godot_array_type] = vertex_buf.formatted_vector2_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+						print("Offset " + str(offset) + " = " + str(channel_info.get("offset", 0)) + "," + str(stream_offsets[stream]) + "," + str(baseFirstVertex) + "," + str(stream_strides[stream]) + "," + str(dimension))
+						surface_arrays[godot_array_type] = vertex_buf.formatted_vector2_subarray(format, offset, vertexCount, stream_strides[stream], dimension, true)
+						print("triangle 0: " + str(surface_arrays[godot_array_type][surface_index_buf[0]]) + ";" + str(surface_arrays[godot_array_type][surface_index_buf[1]]) + ";" + str(surface_arrays[godot_array_type][surface_index_buf[2]]))
 					ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_CUSTOM2, ArrayMesh.ARRAY_CUSTOM3:
 						pass # Custom channels are currently broken in Godot master:
 					ArrayMesh.ARRAY_MAX: # ARRAY_MAX is a placeholder to disable this
@@ -529,10 +647,15 @@ class UnityCustomRenderTexture extends UnityRenderTexture:
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
 
-	func recurse_to_child_transform(state: Reference, child_transform: UnityTransform, new_parent: Node3D):
-		if child_transform.is_prefab_reference:
+	func recurse_to_child_transform(state: Reference, child_transform: UnityObject, new_parent: Node3D):
+		if child_transform.is_stripped:
+			print("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
+		if child_transform.type == "PrefabInstance":
+			var prefab_instance: UnityPrefabInstance = child_transform
+			prefab_instance.create_godot_node(state, new_parent)
+		elif child_transform.is_prefab_reference:
 			var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
-			prefab_instance.instance(state, new_parent)
+			prefab_instance.create_godot_node(state, new_parent)
 		else:
 			var child_game_object: UnityGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
@@ -556,19 +679,22 @@ class UnityGameObject extends UnityObject:
 		var ret: Node3D = null
 		if self.rigidbody != null:
 			ret = self.rigidbody.create_physical_bone(state, godot_skeleton, skeleton_bone_name)
-			state.add_fileID(ret, fileID)
-			state.add_fileID(ret, transform.fileID)
+			self.rigidbody.configure_node(ret)
+			state.add_fileID(ret, self)
+			state.add_fileID(ret, transform)
 		elif len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
 			ret = BoneAttachment3D.new()
 			ret.name = self.name
-			state.add_child(ret, godot_skeleton, fileID)
-			state.add_fileID(ret, transform.fileID)
+			state.add_child(ret, godot_skeleton, self)
+			state.add_fileID(ret, transform)
 			ret.bone_name = skeleton_bone_name
 		else:
-			state.add_fileID(godot_skeleton, fileID)
-			state.add_fileID(godot_skeleton, transform.fileID)
+			state.add_fileID(godot_skeleton, self)
+			state.add_fileID(godot_skeleton, transform)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, fileID)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, transform.fileID)
+		# TODO: do we need to configure GameObject here? IsActive, Name on a skeleton bone?
+		transform.configure_skeleton_bone(godot_skeleton, skeleton_bone_name)
 		if ret != null:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 			for new_skelley in list_of_skelleys:
@@ -584,7 +710,8 @@ class UnityGameObject extends UnityObject:
 			else:
 				assert(ret != null)
 				var component = meta.lookup(component_ref.get("component"))
-				component.create_godot_node(state, ret)
+				var tmp = component.create_godot_node(state, ret)
+				component.configure_node(tmp)
 
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
@@ -595,7 +722,7 @@ class UnityGameObject extends UnityObject:
 		var ret: Node3D = null
 		var components: Array = self.components
 		var has_collider: bool = false
-		var extra_fileID: Array = [fileID]
+		var extra_fileID: Array = [self]
 		var transform: UnityTransform = self.transform
 
 		for component_ref in components:
@@ -603,11 +730,12 @@ class UnityGameObject extends UnityObject:
 			# Some components take priority and must be created here.
 			if component.type == "Rigidbody":
 				ret = component.create_physics_body(state, new_parent, name)
-				ret.transform = transform.godot_transform
-				extra_fileID.push_back(transform.fileID)
+				transform.configure_node(ret)
+				component.configure_node(ret)
+				extra_fileID.push_back(transform)
 				state = state.state_with_body(ret)
 			if component.is_collider:
-				extra_fileID.push_back(component.fileID)
+				extra_fileID.push_back(component)
 				print("Has a collider " + self.name)
 				has_collider = true
 		var is_staticbody: bool = false
@@ -615,11 +743,12 @@ class UnityGameObject extends UnityObject:
 			ret = StaticBody3D.new()
 			print("Created a StaticBody3D " + self.name)
 			is_staticbody = true
-		else:
+			transform.configure_node(ret)
+		elif ret == null:
 			ret = Node3D.new()
+			transform.configure_node(ret)
 		ret.name = name
-		state.add_child(ret, new_parent, transform.fileID)
-		ret.transform = transform.godot_transform
+		state.add_child(ret, new_parent, transform)
 		if is_staticbody:
 			print("Replacing state with body " + str(name))
 			state = state.state_with_body(ret)
@@ -633,7 +762,8 @@ class UnityGameObject extends UnityObject:
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.get("component"))
-				component.create_godot_node(state, ret)
+				var tmp = component.create_godot_node(state, ret)
+				component.configure_node(tmp)
 
 		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 		for new_skelley in list_of_skelleys:
@@ -679,6 +809,12 @@ class UnityGameObject extends UnityObject:
 			if component.type == typ:
 				return component
 		return null
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = convert_properties_component(node, uprops)
+		if uprops.has("m_IsActive"):
+			outdict["visible"] = uprops.get("m_IsActive")
+		return outdict
 
 	var meshFilter: UnityMeshFilter:
 		get:
@@ -767,7 +903,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			# Traditional instanced scene case: It only requires calling instance() and setting the filename.
 			instanced_scene = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			instanced_scene.filename = packed_scene.resource_path
-		state.add_child(instanced_scene, new_parent, fileID)
+		state.add_child(instanced_scene, new_parent, self)
 		print("Prefab " + str(packed_scene.resource_path) + " ------------")
 		print(str(target_prefab_meta.fileid_to_nodepath))
 		print(str(target_prefab_meta.prefab_fileid_to_nodepath))
@@ -781,6 +917,36 @@ class UnityPrefabInstance extends UnityGameObject:
 			ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
 
 		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
+
+		var fileID_to_keys = {}.duplicate()
+		for mod in modifications:
+			print("Applying mod!! Mod is " + str(mod))
+			var property_key: String = mod.get("propertyPath", "")
+			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
+			var obj_value: Array = mod.get("objectReference", [null,0,"",null])
+			var value: Variant = mod.get("value", 0)
+			var fileID: int = source_obj_ref[1]
+			if not fileID_to_keys.has(fileID):
+				fileID_to_keys[fileID] = {}.duplicate()
+			fileID_to_keys.get(fileID)[property_key] = (obj_value if obj_value[1] != 0 else value)
+
+		for fileID in fileID_to_keys:
+			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID,
+					target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID,
+					target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID,
+					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
+			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
+			var uprops: Dictionary = fileID_to_keys.get(fileID)
+
+			var existing_node = instanced_scene.get_node(target_nodepath)
+			if existing_node != null:
+				if target_skel_bone.is_empty():
+					virtual_unity_object.configure_node_props(existing_node, uprops)
+				else:
+					# Test this:
+					virtual_unity_object.configure_skeleton_bone_props(existing_node, target_skel_bone, uprops)
 
 		# NOTE: We have duplicate code here for GameObject and then Transform
 		# The issue is, we will be parented to a stripped GameObject or Transform, but we do not
@@ -823,7 +989,8 @@ class UnityPrefabInstance extends UnityGameObject:
 						var physattach: PhysicalBone3D = self.rigidbody.create_physical_bone(state, godot_skeleton, target_skel_bone)
 						state.body = physattach
 						attachment = physattach
-						state.add_fileID(attachment, gameobject_asset.fileID)
+						state.add_fileID(attachment, gameobject_asset)
+						self.rigidbody.configure_node(physattach)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
 						#state.fileid_to_nodepath[transform_asset.fileID] = gameobject_asset.fileID
 				if attachment == null:
@@ -832,10 +999,11 @@ class UnityPrefabInstance extends UnityGameObject:
 						attachment = BoneAttachment3D.new()
 						attachment.name = target_skel_bone # target_parent_obj.name if not stripped??
 						attachment.bone_name = target_skel_bone
-						state.add_child(attachment, godot_skeleton, gameobject_asset.fileID)
+						state.add_child(attachment, godot_skeleton, gameobject_asset)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
-				component.create_godot_node(state, attachment)
+				var tmp = component.create_godot_node(state, attachment)
+				component.configure_node(tmp)
 			gameobject_fileid_to_body[gameobject_asset.fileID] = state.body
 			state.body = orig_state_body
 
@@ -864,7 +1032,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			if gameobject_asset != null and gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
 				print("We already got one! " + str(gameobject_asset.fileID) + " " + str(target_skel_bone))
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
-				state.add_fileID(attachment, transform_asset.fileID)
+				state.add_fileID(attachment, transform_asset)
 				already_has_attachment = true
 			elif !already_has_attachment and ((target_skel_bone != "" or target_parent_obj is BoneAttachment3D) and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
 				var godot_skeleton: Node3D = target_parent_obj
@@ -876,7 +1044,7 @@ class UnityPrefabInstance extends UnityGameObject:
 					attachment.name = target_skel_bone # target_parent_obj.name if not stripped??
 					attachment.bone_name = target_skel_bone
 					print("Made a new attachment! " + str(target_skel_bone))
-					state.add_child(attachment, godot_skeleton, transform_asset.fileID)
+					state.add_child(attachment, godot_skeleton, transform_asset)
 			print("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
@@ -885,6 +1053,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				new_skelley.godot_skeleton.owner = state.owner
 
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
+				# child_transform usually Transform; occasionally can be PrefabInstance
 				recurse_to_child_transform(state, child_transform, attachment)
 
 			state.body = orig_state_body
@@ -979,7 +1148,7 @@ class UnityComponent extends UnityObject:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
-		state.add_child(new_node, new_parent, fileID)
+		state.add_child(new_node, new_parent, self)
 		new_node.editor_description = str(self)
 		return new_node
 
@@ -1000,18 +1169,15 @@ class UnityComponent extends UnityObject:
 				return 12345.678 # ???? 
 			return gameObject.name
 
-	var enabled: bool:
-		get:
-			return true
-
 	var toplevel: bool:
 		get:
 			return false
 
 class UnityBehaviour extends UnityComponent:
-	var enabled: bool:
-		get:
-			return keys.get("m_Enabled", true)
+	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = {}
+		outdict["visible"] = uprops.get("m_Enabled")
+		return outdict
 
 class UnityTransform extends UnityComponent:
 
@@ -1019,33 +1185,26 @@ class UnityTransform extends UnityComponent:
 	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
 
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node3D:
-		#var new_node: Node3D = Node3D.new()
-		#state.add_child(new_node, new_parent, fileID)
-		#new_node.transform = godot_transform
 		return null
 
-	var localPosition: Vector3:
-		get:
-			return keys.get("m_LocalPosition", Vector3(1,2,3))
-
-	var localRotation: Quat:
-		get:
-			return keys.get("m_LocalRotation", Quat(0.1,0.2,0.3,0.4))
-
-	var localScale: Vector3:
-		get:
-			var scale = keys.get("m_LocalScale", Vector3(0.4,0.6,0.8))
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = convert_properties_component(node, uprops)
+		var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
+		if typeof(pos_vec) == TYPE_VECTOR3:
+			outdict["translation"] = FLIP_X.affine_inverse() * pos_vec * FLIP_X
+		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
+		if typeof(rot_vec) == TYPE_QUAT:
+			outdict["_quaternion"] = rot_vec
+		var scale: Variant = get_vector(uprops, "m_LocalScale")
+		if typeof(scale) == TYPE_VECTOR3:
 			if scale.x > -1e-7 && scale.x < 1e-7:
 				scale.x = 1e-7
 			if scale.y > -1e-7 && scale.y < 1e-7:
 				scale.y = 1e-7
 			if scale.z > -1e-7 && scale.z < 1e-7:
 				scale.z = 1e-7
-			return scale
-
-	var godot_transform: Transform:
-		get:
-			return FLIP_X.affine_inverse() * Transform(Basis(localRotation).scaled(localScale), localPosition) * FLIP_X
+			outdict["scale"] = scale
+		return outdict
 
 
 	var rootOrder: int:
@@ -1088,10 +1247,10 @@ class UnityCollider extends UnityBehaviour:
 			new_parent.add_child(state.body)
 			state.body.owner = state.owner
 		new_node.name = self.type
-		state.add_child(new_node, state.body, fileID)
+		state.add_child(new_node, state.body, self)
 		var path_to_body = new_parent.get_path_to(state.body)
 		var cur_node: Node3D = new_parent
-		var xform = Transform(self.basis, self.center)
+		var xform = Transform()
 		for i in range(path_to_body.get_name_count()):
 			if path_to_body.get_name(i) == ".":
 				continue
@@ -1110,17 +1269,39 @@ class UnityCollider extends UnityBehaviour:
 		#	cur_node = cur_node.get_parent()
 		#if cur_node == null:
 		#	xform = Transform(self.basis, self.center)
-		new_node.transform = xform
 		new_node.shape = self.shape
+		if not xform.is_equal_approx(Transform()):
+			var xform_storage: Node3D = Node3D.new()
+			new_node.add_child(xform_storage)
+			new_node.name = "__xform_storage"
+			new_node.owner = state.owner
+			new_node.transform = xform
 		return new_node
 
-	var center: Vector3:
-		get:
-			return Vector3(-1.0, 1.0, 1.0) * keys.get("m_Center", Vector3(0.0, 0.0, 0.0))
+	# TODO: Colliders are complicated because of the transform hierarchy issue above.
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		var complex_xform: Node3D = node.get_node("__xform_storage")
+		var center: Vector3 = Vector3()
+		var basis: Basis = Basis.IDENTITY
 
-	var basis: Basis:
-		get:
-			return Basis(Vector3(0.0, 0.0, 0.0))
+		var center_prop: Variant = get_vector(uprops, "m_Center")
+		if typeof(center_prop) == TYPE_VECTOR3:
+			center = Vector3(-1.0, 1.0, 1.0) * center_prop
+			if complex_xform != null:
+				outdict["transform"] = complex_xform.transform * Transform(basis, center)
+			else:
+				outdict["translation"] = center
+		if uprops.has("m_Direction"):
+			basis = get_basis_from_direction(uprops.get("m_Direction"))
+			if complex_xform != null:
+				outdict["transform"].transform = complex_xform.transform * Transform(basis, center)
+			else:
+				outdict["rotation_degrees"] = basis.get_euler() * 180 / PI
+		return outdict
+
+	func get_basis_from_direction(direction: int):
+		return Basis()
 
 	var shape: Shape3D:
 		get:
@@ -1134,58 +1315,54 @@ class UnityBoxCollider extends UnityCollider:
 	var shape: Shape3D:
 		get:
 			var bs: BoxShape3D = BoxShape3D.new()
-			bs.size = size
 			return bs
 
-	var size: Vector3:
-		get:
-			return keys.get("m_Size")
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		outdict["shape:size"] = get_vector(uprops, "m_Size")
+		return outdict
 
 class UnitySphereCollider extends UnityCollider:
 	var shape: Shape3D:
 		get:
 			var bs: SphereShape3D = SphereShape3D.new()
-			bs.radius = radius
 			return bs
 
-	var radius: float:
-		get:
-			return keys.get("m_Radius")
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		outdict["shape:radius"] = uprops.get("m_Radius", null)
+		return outdict
 
 class UnityCapsuleCollider extends UnityCollider:
 	var shape: Shape3D:
 		get:
 			var bs: CapsuleShape3D = CapsuleShape3D.new()
-			bs.radius = radius
-			var adj_height: float = height - 2 * bs.radius
-			if adj_height < 0.0:
-				adj_height = 0.0
-			bs.height = adj_height
 			return bs
 
-	var basis: Basis:
-		get:
-			if direction == 0: # Along the X-Axis
-				return Basis(Vector3(0.0, 0.0, PI/2.0))
-			if direction == 1: # Along the Y-Axis (Godot default)
-				return Basis(Vector3(0.0, 0.0, 0.0))
-			if direction == 2: # Along the Z-Axis
-				return Basis(Vector3(PI/2.0, 0.0, 0.0))
+	func get_basis_from_direction(direction: int):
+		if direction == 0: # Along the X-Axis
+			return Basis(Vector3(0.0, 0.0, PI/2.0))
+		if direction == 1: # Along the Y-Axis (Godot default)
+			return Basis(Vector3(0.0, 0.0, 0.0))
+		if direction == 2: # Along the Z-Axis
+			return Basis(Vector3(PI/2.0, 0.0, 0.0))
 
-	var direction: int:
-		get:
-			return keys.get("m_Direction") # 0, 1 or 2
-
-	var radius: float:
-		get:
-			return keys.get("m_Radius")
-
-	var height: float:
-		get:
-			return keys.get("m_Height")
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		outdict["shape:radius"] = uprops.get("m_Radius", null)
+		var radius = node.shape.radius
+		if typeof(uprops.get("m_Radius")) != TYPE_NIL:
+			radius = uprops.get("m_Radius")
+		if typeof(uprops.get("m_Height")) != TYPE_NIL:
+			var adj_height: float = uprops.get("m_Height", null) - 2 * radius
+			if adj_height < 0.0:
+				adj_height = 0.0
+			outdict["shape:height"] = adj_height
+		return outdict
 
 class UnityMeshCollider extends UnityCollider:
 
+	# Not making these animatable?
 	var convex: Shape3D:
 		get:
 			return keys.get("m_Convex")
@@ -1193,18 +1370,40 @@ class UnityMeshCollider extends UnityCollider:
 	var shape: Shape3D:
 		get:
 			if convex:
-				return meta.get_godot_resource(mesh).create_convex_shape()
+				return meta.get_godot_resource(get_mesh(keys)).create_convex_shape()
 			else:
-				return meta.get_godot_resource(mesh).create_trimesh_shape()
-		
-	var mesh: Array: # UnityRef
-		get:
-			var ret = keys.get("m_Mesh", [null,0,"",null])
-			if ret[1] == 0:
+				return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
+
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		var new_convex = node.shape.get_type() == "ConvexPolygonShape"
+		if uprops.has("m_Convex"):
+			new_convex = uprops.get("m_Convex", new_convex)
+			# We do not allow animating this without also changing m_Mesh.
+		if uprops.has("m_Mesh"):
+			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var new_mesh: Mesh = null
+			if mesh_ref[1] == 0:
 				var mf: UnityMeshFilter = gameObject.meshFilter
 				if mf != null:
-					return gameObject.meshFilter.mesh
-			return ret
+					new_mesh = gameObject.meshFilter.mesh
+			else:
+				new_mesh = meta.get_godot_resource(mesh_ref)
+			if new_mesh != null:
+				if new_convex:
+					outdict["shape"] = meta.get_godot_resource(new_mesh).create_convex_shape()
+				else:
+					outdict["shape"] = meta.get_godot_resource(new_mesh).create_trimesh_shape()
+			
+		return outdict
+
+	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
+		var ret = uprops.get("m_Mesh", [null,0,"",null])
+		if ret[1] == 0:
+			var mf: UnityMeshFilter = gameObject.meshFilter
+			if mf != null:
+				return gameObject.meshFilter.mesh
+		return ret
 
 class UnityRigidbody extends UnityComponent:
 
@@ -1221,14 +1420,20 @@ class UnityRigidbody extends UnityComponent:
 			new_node = rigid
 
 		new_node.name = name # Not type: This replaces the usual transform node.
-		state.add_child(new_node, new_parent, fileID)
+		state.add_child(new_node, new_parent, self)
 		return new_node
+
+	# TODO: Add properties for rigidbody (e.g. mass, etc.).
+	# NOTE: We do not allow changing m_IsKinematic because that's a Godot type change!
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		return outdict
 
 	func create_physical_bone(state: Reference, godot_skeleton: Skeleton3D, name: String):
 		var new_node: PhysicalBone3D = PhysicalBone3D.new()
 		new_node.bone_name = name
 		new_node.name = name
-		state.add_child(new_node, godot_skeleton, fileID)
+		state.add_child(new_node, godot_skeleton, self)
 		return new_node
 
 	var isKinematic: bool:
@@ -1240,6 +1445,15 @@ class UnityMeshFilter extends UnityComponent:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		return null
 		
+
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_Mesh"):
+			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var new_mesh: Mesh = meta.get_godot_resource(mesh)
+			outdict["mesh"] = new_mesh # property track?
+		return outdict
+
 	var mesh: Array: # UnityRef
 		get:
 			return keys.get("m_Mesh", [null,0,"",null])
@@ -1254,18 +1468,22 @@ class UnityMeshRenderer extends UnityRenderer:
 	func create_godot_node_orig(state: Reference, new_parent: Node3D, component_name: String) -> Node:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
 		new_node.name = component_name
-		state.add_child(new_node, new_parent, fileID)
+		state.add_child(new_node, new_parent, self)
 		new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(self.mesh)
 
 		var mf: UnityMeshFilter = gameObject.meshFilter
 		if mf != null:
-			state.add_fileID(new_node, mf.fileID)
+			state.add_fileID(new_node, mf)
 		var idx: int = 0
 		for m in materials:
 			new_node.set_surface_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
+
+	# TODO: convert_properties
+	# both material properties as well as material references??
+	# anything else to animate?
 
 	var materials: Array:
 		get:
@@ -1290,7 +1508,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			return null
 
 	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
-		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self.fileID, self.mesh, null, [])
+		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self, self.mesh, null, [])
 		var idx: int = 0
 		for m in materials:
 			new_node.set_surface_material(idx, meta.get_godot_resource(m))
@@ -1351,6 +1569,22 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		get:
 			return keys.get("m_Bones", [])
 
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_Mesh"):
+			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var new_mesh: Mesh = meta.get_godot_resource(mesh)
+			outdict["mesh"] = new_mesh # property track?
+			var skin_ref: Array = mesh_ref
+			skin_ref = [null, -skin_ref[1], skin_ref[2], skin_ref[3]]
+			var new_skin: Mesh = meta.get_godot_resource(mesh)
+			outdict["skin"] = new_skin # property track?
+
+			# TODO: blend shapes
+
+			# TODO: m_Bones modifications? what even is the syntax. I think we shouldn't allow changes to bones.
+		return outdict
+
 	var skin: Array: # UnityRef
 		get:
 			var ret: Array = keys.get("m_Mesh", [null,0,"",null])
@@ -1381,18 +1615,18 @@ class UnityCloth extends UnityBehaviour:
 		if ret is Skeleton3D:
 			ret = BoneAttachment3D.new()
 			ret.name = skel.get_bone_name(bone_transform.skeleton_bone_index) # target_skel_bone
-			state.add_child(ret, skel, bone_transform.fileID)
+			state.add_child(ret, skel, bone_transform)
 			state.remove_fileID_to_skeleton_bone(bone_transform.fileID)
 			ret.bone_name = ret.name
 			return ret
 		else:
 			return ret
 
-	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, smr_fileID: int, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
+	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
 		var new_node: SoftBody3D = SoftBody3D.new()
 		new_node.name = component_name
-		state.add_child(new_node, new_parent, smr_fileID)
-		state.add_fileID(new_node, self.fileID)
+		state.add_child(new_node, new_parent, smr)
+		state.add_fileID(new_node, self)
 		new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(mesh)
 		new_node.ray_pickable = false
@@ -1484,6 +1718,8 @@ class UnityCloth extends UnityBehaviour:
 			new_node.set("attachments/" + str(i) + "/offset", offsets[i])
 		return new_node
 
+	# TODO: convert to properties!
+
 	var coefficients:
 		get:
 			return keys.get("m_Coefficients", [])
@@ -1506,6 +1742,7 @@ class UnityCloth extends UnityBehaviour:
 
 
 class UnityLight extends UnityBehaviour:
+
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		var light: Light3D
 		var unityLightType = lightType
@@ -1543,7 +1780,7 @@ class UnityLight extends UnityBehaviour:
 		if keys.get("useColorTemperature"):
 			printerr("Color Temperature not implemented.")
 		light.name = type
-		state.add_child(light, new_parent, fileID)
+		state.add_child(light, new_parent, self)
 		light.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))
 		light.light_color = color
 		light.set_param(Light3D.PARAM_ENERGY, intensity)
@@ -1558,14 +1795,16 @@ class UnityLight extends UnityBehaviour:
 		else:
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		return light
-	
+
+	# TODO: convert to properties!
+
 	var color: Color:
 		get:
 			return keys.get("m_Color")
 	
 	var lightType: float:
 		get:
-			return keys.get("m_Type")
+			return keys.get("m_Type", 1)
 	
 	var lightRange: float:
 		get:
@@ -1660,11 +1899,16 @@ class UnityModelImporter extends UnityAssetImporter:
 	var meshes_light_baking: int:
 		get:
 			# Godot uses: Disabled,Enabled,GenLightmaps
-			return keys.get("meshes").get("generateSecondaryUV") * 2
+			return keys.get("meshes").get("generateSecondaryUV", 0) * 2
 
-	var meshes_root_scale: float:
+	# The following parameters have special meaning when importing FBX files and do not map one-to-one with godot importer.
+	var useFileScale: bool:
 		get:
-			return keys.get("meshes").get("globalScale") == 1
+			return keys.get("meshes").get("useFileScale", 0) == 1
+
+	var globalScale: float:
+		get:
+			return keys.get("meshes").get("globalScale", 1)
 
 	var animation_import: bool:
 		# legacyGenerateAnimations = 4 ??

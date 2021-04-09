@@ -210,7 +210,7 @@ class Skelley extends Reference:
 					godot_skeleton.set_bone_parent(idx, -1)
 				else:
 					godot_skeleton.set_bone_parent(idx, uniq_key_to_bone.get(bone.parent_no_stripped.uniq_key, -1))
-				godot_skeleton.set_bone_rest(idx, bone.godot_transform)
+				# godot_skeleton.set_bone_rest(idx, bone.godot_transform)
 				idx += 1
 	# Skelley rules:
 	# Root bone will be added as parent to common ancestor of all bones
@@ -236,7 +236,7 @@ func duplicate() -> Reference:
 	state.prefab_state = prefab_state
 	return state
 
-func add_child(child: Node, new_parent: Node3D, fileID: int):
+func add_child(child: Node, new_parent: Node3D, unityobj: Reference):
 	# meta. # FIXME???
 	if owner != null:
 		assert(new_parent != null)
@@ -248,8 +248,8 @@ func add_child(child: Node, new_parent: Node3D, fileID: int):
 		self.owner = child
 	else:
 		assert(owner != null)
-	if fileID != 0:
-		add_fileID(child, fileID)
+	if unityobj.fileID != 0:
+		add_fileID(child, unityobj)
 
 func add_fileID_to_skeleton_bone(bone_name: String, fileID: int):
 	meta.fileid_to_skeleton_bone[fileID] = bone_name
@@ -257,10 +257,11 @@ func add_fileID_to_skeleton_bone(bone_name: String, fileID: int):
 func remove_fileID_to_skeleton_bone(fileID: int):
 	meta.fileid_to_skeleton_bone[fileID] = ""
 
-func add_fileID(child: Node, fileID: int):
+func add_fileID(child: Node, unityobj: Reference):
 	if owner != null:
-		print("Add fileID " + str(fileID) + " " + str(owner.name) + " to " + str(child.name))
-		meta.fileid_to_nodepath[fileID] = owner.get_path_to(child)
+		print("Add fileID " + str(unityobj.fileID) + " type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
+		meta.fileid_to_nodepath[unityobj.fileID] = owner.get_path_to(child)
+		meta.fileid_to_utype[unityobj.fileID] = unityobj.utype
 	# FIXME??
 	#else:
 	#	meta.fileid_to_nodepath[fileID] = root_nodepath
@@ -460,6 +461,6 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			var idx: int = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.fileID, ""))
 			var parent_bone_index: int = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.parent.fileID, ""))
 			skelley.godot_skeleton.set_bone_parent(idx, parent_bone_index)
-			skelley.godot_skeleton.set_bone_rest(idx, bone.godot_transform)
+			# skelley.godot_skeleton.set_bone_rest(idx, bone.godot_transform) # Set later on.
 			fileid_to_skeleton_nodepath[bone.fileID] = godot_skeleton_nodepath
 

@@ -119,6 +119,9 @@ class YamlHandler extends AssetHandler:
 		return self.ASSET_TYPE_YAML
 
 	func write_godot_asset(pkgasset: Object, temp_path: String):
+		if pkgasset.parsed_meta.main_object_id == -1 or pkgasset.parsed_meta.main_object_id == 0:
+			printerr("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+			return
 		var main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		var godot_resource: Resource = main_asset.create_godot_resource()
 		if godot_resource != null:

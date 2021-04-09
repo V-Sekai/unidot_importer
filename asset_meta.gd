@@ -20,9 +20,11 @@ var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclas
 
 var prefab_fileid_to_nodepath: Dictionary = {}
 var prefab_fileid_to_skeleton_bone: Dictionary = {} # int -> string
+var prefab_fileid_to_utype: Dictionary = {} # int -> int
 
 @export var fileid_to_nodepath: Dictionary = {}
 @export var fileid_to_skeleton_bone: Dictionary = {} # int -> string
+@export var fileid_to_utype: Dictionary = {} # int -> int
 @export var godot_resources: Dictionary = {}
 @export var main_object_id: int = 0 # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
 
@@ -69,6 +71,11 @@ func calculate_prefab_nodepaths():
 			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid)
 		for target_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
 			self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid)
+		for target_fileid in target_prefab_meta.fileid_to_utype:
+			self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(target_fileid)
+		for target_fileid in target_prefab_meta.prefab_fileid_to_utype:
+			self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_utype.get(target_fileid)
+
 
 func calculate_prefab_nodepaths_recursive():
 	var toposorted: Variant = toposort_prefab_dependency_guids()
@@ -98,6 +105,7 @@ func initialize(database: Resource):
 	self.database = database
 	self.prefab_fileid_to_nodepath = {}
 	self.prefab_fileid_to_skeleton_bone = {}
+	self.prefab_fileid_to_utype = {}
 	if self.importer_type == "":
 		self.importer = object_adapter_class.new().instantiate_unity_object(self, 0, 0, "AssetImporter")
 	else:

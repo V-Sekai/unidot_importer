@@ -249,16 +249,16 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 		double_quote_line += " " + line_plain
 		#print("Missing double mid: " + brace_line)
 	elif (brace_line != "" and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with('}')):
-		brace_line += line_plain
-		printerr("Missing brace mid: " + brace_line)
+		brace_line += " " + line_plain
+		printerr("Missing brace mid: " + brace_line) # Never seen structs big enough to wrap twice.
 	else:
 		if new_indentation_level > continuation_line_indentation_level:
 			var endcontinuation: bool = false
 			if brace_line != "" and line_plain.ends_with('}'):
-				line_plain = brace_line + line_plain
+				line_plain = brace_line + " " + line_plain
 				brace_line = ""
 				endcontinuation = true
-				#print("Missing brace end")
+				#print("Missing brace end: " + line_plain)
 			if single_quote_line != "" and (ending_single_quotes % 2) != 0:
 				line_plain = single_quote_line + line_plain
 				single_quote_line = ""
@@ -272,6 +272,9 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			if endcontinuation:
 				new_indentation_level = continuation_line_indentation_level
 				obj_key_match = arr_obj_key_regex.search(line_plain)
+				if obj_key_match != null:
+					value_start = 0 + obj_key_match.get_end()
+					this_key = obj_key_match.get_string(1)
 		if new_indentation_level > indentation_level or (new_indentation_level == indentation_level and line_plain.begins_with("- ") and typeof(current_obj_tree.back()) != TYPE_ARRAY):
 			if line_plain.begins_with("- "):
 				current_indent_tree.push_back(indentation_level)

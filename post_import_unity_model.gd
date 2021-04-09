@@ -27,6 +27,7 @@ class ParseState:
 	
 	var fileid_to_nodepath: Dictionary = {}.duplicate()
 	var fileid_to_skeleton_bone: Dictionary = {}.duplicate()
+	var fileid_to_utype: Dictionary = {}.duplicate()
 	
 	# Do we actually need this? Ordering?
 	#var materials = [].duplicate()
@@ -253,9 +254,15 @@ func post_import(p_scene: Node) -> Object:
 			ps.external_objects_by_id[fileId] = external_objects.get(type).get(og_obj_name)
 
 	ps.iterate(p_scene)
-	
+
+	for fileId in ps.fileid_to_nodepath:
+		# Guaranteed for imported files
+		var utype: int = fileId / 100000
+		ps.fileid_to_utype[fileId] = utype
+
 	metaobj.fileid_to_nodepath = ps.fileid_to_nodepath
 	metaobj.fileid_to_skeleton_bone = ps.fileid_to_skeleton_bone
+	metaobj.fileid_to_utype = ps.fileid_to_utype
 
 	asset_database.save()
 
