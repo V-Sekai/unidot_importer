@@ -267,13 +267,15 @@ func formatted_int_subarray(format: int, offset: int, length: int, stride: int, 
 			printerr("Invalid format " + str(format) + " for integer vertex array.")
 			return PackedInt32Array()
 
-func formatted_vector2_subarray(format: int, offset: int, length: int, stride: int, dimension: int=2) -> PackedVector2Array:
+func formatted_vector2_subarray(format: int, offset: int, length: int, stride: int, dimension: int=2, flipv: bool=false) -> PackedVector2Array:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * dimension, stride, dimension))
 	var vec2_array: PackedVector2Array = PackedVector2Array()
 	vec2_array.resize(len(float_array) / dimension)
+	var flip=1.0 if flipv else 0.0
+	var flop=-1.0 if flipv else 1.0
 	for i in range(len(float_array) / dimension):
-		vec2_array[i] = Vector2(float_array[i * 2], float_array[i * 2 + 1])
+		vec2_array[i] = Vector2(float_array[i * dimension], flip + flop * float_array[i * dimension + 1])
 	return vec2_array
 
 # Special case: comes with a vector to flip handedness if used for vertex or normal.
