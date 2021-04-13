@@ -98,6 +98,8 @@ class ParseState:
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
+			elif path == NodePath("RootNode"):
+				pass
 			elif node_name not in nodes_by_name and (path != NodePath(".") or use_scene_root):
 				if path == NodePath("."):
 					node_name = ""
@@ -394,11 +396,11 @@ func post_import(p_scene: Node) -> Object:
 		if obj_name.begins_with("//"):
 			# Not sure why, but Unity uses //RootNode
 			# Maybe it indicates that the node will be hidden???
-			if is_obj or is_dae:
-				obj_name = ""
-				ps.use_scene_root = true
-			else:
-				obj_name = obj_name.substr(2)
+			obj_name = ""
+			ps.use_scene_root = true
+			#if is_obj or is_dae:
+			#else:
+			#	obj_name = obj_name.substr(2)
 		var fileId: int = int(str(fileIdStr).to_int())
 		var type: String = str(object_adapter.to_classname(fileId / 100000))
 		if (type == "Transform" or type == "GameObject" or type == "MeshRenderer"

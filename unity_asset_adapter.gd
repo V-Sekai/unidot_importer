@@ -425,12 +425,17 @@ var file_handlers: Dictionary = {
 	"dae": dae_handler,
 	"glb": model_handler,
 	"jpg": image_handler,
+	"jpeg": image_handler,
 	"png": image_handler,
-	"bmp": image_handler, # Godot unsupported?
+	"bmp": image_handler,
 	"tga": image_handler,
 	"exr": image_handler,
-	"hdr": image_handler, # Godot unsupported?
-	#"dds": null, # Godot unsupported?
+	"hdr": image_handler,
+	"dds": image_handler,
+	"webp": image_handler,
+	"svg": image_handler,
+	"svgz": image_handler,
+	# "tif": image_handler, # Unsupported.
 	"asset": YamlHandler.new(), # Generic file format
 	"unity": SceneHandler.new(), # Unity Scenes
 	"prefab": SceneHandler.new(), # Prefabs (sub-scenes)
