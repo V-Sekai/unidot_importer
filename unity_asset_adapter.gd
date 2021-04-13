@@ -21,6 +21,22 @@ var STUB_GLB_FILE: PackedByteArray = Marshalls.base64_to_raw(
 	"Z2xURgIAAACEAAAAcAAAAEpTT057ImFzc2V0Ijp7ImdlbmVyYXRvciI6IiIsInZlcnNpb24i" +
 	"OiIyLjAifSwic2NlbmUiOjAsInNjZW5lcyI6W3sibmFtZSI6IlMiLCJub2RlcyI6WzBdfV0s" +
 	"Im5vZGVzIjpbeyJuYW1lIjoiTiJ9XX0g")
+var STUB_OBJ_FILE: PackedByteArray = "o a\nv 0 0 0\nf 1 1 1".to_ascii_buffer()
+var STUB_DAE_FILE: PackedByteArray = ("""
+<?xml version="1.0" encoding="utf-8"?>
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4">
+  <library_visual_scenes>
+	<visual_scene id="A" name="A">
+	  <node id="a" name="a" type="NODE">
+		<matrix sid="transform">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</matrix>
+	  </node>
+	</visual_scene>
+  </library_visual_scenes>
+  <scene>
+	<instance_visual_scene url="#A"/>
+  </scene>
+</COLLADA>
+""").to_ascii_buffer() # vscode syntax hack: "#"
 
 func write_sentinel_png(sentinel_filename: String):
 	var f: File = File.new()
@@ -153,12 +169,80 @@ class SceneHandler extends YamlHandler:
 		if packed_scene != null:
 			ResourceSaver.save(pkgasset.pathname, packed_scene)
 
-class FbxHandler extends AssetHandler:
-	var STUB_GLB_FILE: PackedByteArray = PackedByteArray([])
+class BaseModelHandler extends AssetHandler:
+	var stub_file: PackedByteArray = PackedByteArray([])
 	func create_with_constant(stub_file: PackedByteArray):
 		var ret = self
-		ret.STUB_GLB_FILE = stub_file
+		ret.stub_file = stub_file
 		return ret
+
+	func get_asset_type(pkgasset: Object) -> int:
+		return self.ASSET_TYPE_MODEL
+
+	func write_godot_stub(pkgasset: Object) -> bool:
+		var dres = Directory.new()
+		dres.open("res://")
+		var fres = File.new()
+		fres.open("res://" + pkgasset.pathname, File.WRITE)
+		print("Writing stub model to " + pkgasset.pathname)
+		fres.store_buffer(stub_file)
+		fres.close()
+		var import_path = pkgasset.pathname + ".import"
+		if not dres.file_exists(import_path):
+			fres = File.new()
+			fres.open("res://" + import_path, File.WRITE)
+			print("Writing stub import file to " + import_path)
+			fres.store_buffer("[remap]\n\nimporter=\"scene\"\nimporter_version=1\n".to_ascii_buffer())
+			fres.close()
+		print("Renaming model file from " + str(pkgasset.parsed_meta.path) + " to " + pkgasset.pathname)
+		pkgasset.parsed_meta.rename(pkgasset.pathname)
+		return true
+
+	func write_godot_asset(pkgasset: Object, temp_path: String):
+		# super.write_godot_asset(pkgasset, temp_path)
+		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
+		var dres = Directory.new()
+		dres.open("res://")
+		print("Renaming " + temp_path + " to " + pkgasset.pathname)
+		dres.rename(temp_path, pkgasset.pathname)
+
+		var importer = pkgasset.parsed_meta.importer
+		var cfile = ConfigFile.new()
+		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
+			printerr("Failed to load .import config file for " + pkgasset.pathname)
+			return
+		cfile.set_value("params", "nodes/custom_script", post_import_material_remap_script.resource_path)
+		cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
+		cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
+		cfile.set_value("params", "meshes/light_baking", 0)
+		cfile.set_value("params", "animation/fps", 30)
+		cfile.set_value("params", "animation/import", importer.animation_import)
+		var anim_clips: Array = importer.get_animation_clips()
+		# animation/clips don't seem to work at least in 4.0.... why even bother?
+		# We should use an import script I guess.
+		cfile.set_value("params", "animation/clips/amount", len(anim_clips))
+		var idx: int = 0
+		for anim_clip in anim_clips:
+			idx += 1 # 1-indexed
+			var prefix: String = "animation/clip_" + str(idx)
+			cfile.set_value("params", prefix + "/name", anim_clip.get("name"))
+			cfile.set_value("params", prefix + "/start_frame", anim_clip.get("start_frame"))
+			cfile.set_value("params", prefix + "/end_frame", anim_clip.get("end_frame"))
+			cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
+			# animation/import
+
+		# FIXME: Godot has a major bug if light baking is used:
+		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
+		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
+		cfile.set_value("params", "meshes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
+		# addCollider???? TODO
+		var optim_setting: Dictionary = importer.animation_optimizer_settings()
+		cfile.set_value("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
+		cfile.set_value("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
+		cfile.set_value("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
+		cfile.save("res://" + pkgasset.pathname + ".import")
+
+class FbxHandler extends BaseModelHandler:
 
 	# From core/string/ustring.cpp
 	func find_in_buffer(p_buf: PackedByteArray, p_str: PackedByteArray, p_from: int=0, p_to: int=-1) -> int:
@@ -330,68 +414,15 @@ class FbxHandler extends AssetHandler:
 
 		return output_path
 
-	func get_asset_type(pkgasset: Object) -> int:
-		return self.ASSET_TYPE_MODEL
-
-	func write_godot_stub(pkgasset: Object) -> bool:
-		var fres = File.new()
-		fres.open("res://" + pkgasset.pathname, File.WRITE)
-		print("Writing stub model to " + pkgasset.pathname)
-		fres.store_buffer(STUB_GLB_FILE)
-		fres.close()
-		print("Renaming model file from " + str(pkgasset.parsed_meta.path) + " to " + pkgasset.pathname)
-		pkgasset.parsed_meta.rename(pkgasset.pathname)
-		return true
-
-	func write_godot_asset(pkgasset: Object, temp_path: String):
-		# super.write_godot_asset(pkgasset, temp_path)
-		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
-		var dres = Directory.new()
-		dres.open("res://")
-		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		dres.rename(temp_path, pkgasset.pathname)
-
-		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFile.new()
-		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			printerr("Failed to load .import config file for " + pkgasset.pathname)
-			return
-		cfile.set_value("params", "nodes/custom_script", post_import_material_remap_script.resource_path)
-		cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
-		cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value("params", "meshes/light_baking", 0)
-		cfile.set_value("params", "animation/fps", 30)
-		cfile.set_value("params", "animation/import", importer.animation_import)
-		var anim_clips: Array = importer.get_animation_clips()
-		# animation/clips don't seem to work at least in 4.0.... why even bother?
-		# We should use an import script I guess.
-		cfile.set_value("params", "animation/clips/amount", len(anim_clips))
-		var idx: int = 0
-		for anim_clip in anim_clips:
-			idx += 1 # 1-indexed
-			var prefix: String = "animation/clip_" + str(idx)
-			cfile.set_value("params", prefix + "/name", anim_clip.get("name"))
-			cfile.set_value("params", prefix + "/start_frame", anim_clip.get("start_frame"))
-			cfile.set_value("params", prefix + "/end_frame", anim_clip.get("end_frame"))
-			cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
-			# animation/import
-
-		# FIXME: Godot has a major bug if light baking is used:
-		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
-		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
-		cfile.set_value("params", "meshes/root_scale", 1.0)
-		# addCollider???? TODO
-		var optim_setting: Dictionary = importer.animation_optimizer_settings()
-		cfile.set_value("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
-		cfile.set_value("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
-		cfile.set_value("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
-		cfile.save("res://" + pkgasset.pathname + ".import")
-
-var model_handler: FbxHandler = FbxHandler.new().create_with_constant(STUB_GLB_FILE)
+var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
+var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
+var model_handler: FbxHandler = FbxHandler.new().create_with_constant(STUB_GLB_FILE) # FBX needs to rewrite to GLB for compatibility.
 var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_PNG_FILE)
 
 var file_handlers: Dictionary = {
 	"fbx": model_handler,
+	"obj": obj_handler,
+	"dae": dae_handler,
 	"glb": model_handler,
 	"jpg": image_handler,
 	"png": image_handler,

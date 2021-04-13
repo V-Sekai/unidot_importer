@@ -30,6 +30,8 @@ class ParseState:
 	var fileid_to_utype: Dictionary = {}.duplicate()
 	
 	var scale_correction_factor: float = 1.0
+	var is_obj: bool = false
+	var use_scene_root: bool = true
 
 	# Do we actually need this? Ordering?
 	#var materials = [].duplicate()
@@ -43,7 +45,7 @@ class ParseState:
 
 	func sanitize_bone_name(bone_name: String) -> String:
 		# Note: Spaces do not add _, but captial characters do??? Let's just clean everything for now.
-		return bone_name.replace("/", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
+		return bone_name.replace("/", "").replace(":", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
 
 	func iterate(node: Node):
 		var sm = StandardMaterial3D.new()
@@ -59,6 +61,10 @@ class ParseState:
 			var path: NodePath = scene.get_path_to(node)
 			# TODO: Nodes which should be part of a skeleton need to be remapped?
 			var node_name: String = str(node.name)
+			if node is MeshInstance3D:
+				if is_obj and node.mesh != null:
+					node_name = "default"
+					node.name = "default" # Does this make sense?? For compatibility?
 			var fileId: int
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			node_name = sanitize_bone_name(node_name)
@@ -92,7 +98,11 @@ class ParseState:
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
-			elif node_name not in nodes_by_name and path != NodePath("."):
+			elif node_name not in nodes_by_name and (path != NodePath(".") or use_scene_root):
+				if path == NodePath("."):
+					node_name = ""
+				if node is BoneAttachment3D:
+					node_name = sanitize_bone_name(node.bone_name)
 				if node_name in skeleton_bones_by_name:
 					skeleton_bones_by_name.erase(node_name)
 				print("Found node " + str(node_name) + " : " + str(scene.get_path_to(node)))
@@ -111,7 +121,7 @@ class ParseState:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
-			if node is MeshInstance3D:
+			if node is MeshInstance3D and node.mesh != null:
 				fileId = objtype_to_name_to_id.get("SkinnedMeshRenderer", {}).get(node_name, 0)
 				var fileId_mr: int = objtype_to_name_to_id.get("MeshRenderer", {}).get(node_name, 0)
 				var fileId_mf: int = objtype_to_name_to_id.get("MeshFilter", {}).get(node_name, 0)
@@ -130,6 +140,8 @@ class ParseState:
 				var mesh: Mesh = node.mesh
 				# FIXME: mesh_name is broken on master branch, maybe 3.2 as well.
 				var mesh_name: String = mesh.resource_name
+				if is_obj:
+					mesh_name = "default"
 				if  meshes_by_name.has(mesh_name):
 					mesh = saved_meshes_by_name.get(mesh_name)
 					if mesh != null:
@@ -140,7 +152,11 @@ class ParseState:
 					meshes_by_name[mesh_name] = mesh
 					for i in range(mesh.get_surface_count()):
 						var mat: Material = mesh.surface_get_material(i)
+						if mat == null:
+							continue
 						var mat_name: String = mat.resource_name
+						if is_obj:
+							mat_name = "default"
 						if materials_by_name.has(mat_name):
 							mat = saved_materials_by_name.get(mat_name)
 							if mat != null:
@@ -191,6 +207,7 @@ class ParseState:
 								node.skin = skin
 								saved_skins_by_name[mesh_name] = skin
 								metaobj.insert_resource(-fileId, skin)
+				is_obj = false
 			elif node is AnimationPlayer:
 				var i = 0
 				for anim_name in node.get_animation_list():
@@ -344,6 +361,8 @@ func post_import(p_scene: Node) -> Object:
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
 	var asset_database = asset_database_class.get_singleton()
+	var is_obj: bool = source_file_path.ends_with(".obj")
+	var is_dae: bool = source_file_path.ends_with(".dae")
 
 	var metaobj: Resource = asset_database.get_meta_at_path(rel_path)
 	var f: File
@@ -363,7 +382,9 @@ func post_import(p_scene: Node) -> Object:
 	ps.source_file_path = source_file_path
 	ps.metaobj = metaobj
 	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
+	ps.is_obj = is_obj
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
+	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 
 	var recycles: Dictionary = metaobj.importer.fileIDToRecycleName
@@ -373,7 +394,11 @@ func post_import(p_scene: Node) -> Object:
 		if obj_name.begins_with("//"):
 			# Not sure why, but Unity uses //RootNode
 			# Maybe it indicates that the node will be hidden???
-			obj_name = obj_name.substr(2)
+			if is_obj or is_dae:
+				obj_name = ""
+				ps.use_scene_root = true
+			else:
+				obj_name = obj_name.substr(2)
 		var fileId: int = int(str(fileIdStr).to_int())
 		var type: String = str(object_adapter.to_classname(fileId / 100000))
 		if (type == "Transform" or type == "GameObject" or type == "MeshRenderer"

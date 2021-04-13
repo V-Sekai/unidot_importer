@@ -19,6 +19,13 @@ func smallestTransform(a, b):
 	else:
 		return b.fileID < a.fileID
 
+func recursive_print(node:Node, indent:String=""):
+	var fnstr = "" if str(node.filename) == "" else (" (" + str(node.filename) + ")")
+	print(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
+	#print(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
+	var new_indent: String = indent + "  "
+	for c in node.get_children():
+		recursive_print(c, new_indent)
 
 func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#for asset in pkgasset.parsed_asset.assets.values():
@@ -43,8 +50,13 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		arr.sort_custom(smallestTransform)
 		arr = [arr[0]]
 	else:
-		scene_contents = Node3D.new()
-		scene_contents.name = "RootNode3D"
+		#scene_contents = Node3D.new()
+		#scene_contents.name = "RootNode3D"
+		var tmpps: PackedScene = load("res://Assets/2A-7-4/XXXX/testscene1 - Copy.tscn")
+		scene_contents = tmpps.instance(PackedScene.GEN_EDIT_STATE_MAIN)
+		scene_contents.remove_child(scene_contents.find_node("XXXX_lc_200522VRC"))
+		scene_contents.remove_child(scene_contents.find_node("Main Camera"))
+		scene_contents.remove_child(scene_contents.find_node("Directional Light"))
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
@@ -134,13 +146,15 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		printerr("Failed to parse scene " + pkgasset.pathname)
 		return null
 	var packed_scene: PackedScene = PackedScene.new()
-	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	packed_scene.pack(scene_contents)
+	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
+	recursive_print(scene_contents)
 	var editable_hack: Dictionary = packed_scene._bundled
 	for ecpath in ps.prefab_instance_paths:
 		print(str(editable_hack.keys()))
 		editable_hack.get("editable_instances").push_back(str(ecpath))
 	packed_scene._bundled = editable_hack
+	packed_scene.pack(scene_contents)
 	#print(packed_scene)
 	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
 	#print(pi.get_child_count())

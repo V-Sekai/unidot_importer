@@ -856,6 +856,11 @@ class UnityGameObject extends UnityObject:
 # Is this canon? We'll never know because the documentation denies even the existence of a "PrefabInstance" class
 class UnityPrefabInstance extends UnityGameObject:
 
+	func set_owner_rec(node: Node, owner: Node):
+		node.owner = owner
+		for n in node.get_children():
+			set_owner_rec(n, owner)
+
 	# When you see a PrefabInstance, load() the scene.
 	# If it is_prefab_reference but not the root, log an error.
 
@@ -871,10 +876,15 @@ class UnityPrefabInstance extends UnityGameObject:
 	# Then, repeat one more time and makwe sure no overlap
 	# all transforms are marked as parented to the prefab.
 
+	func set_editable_children(state: Reference, instanced_scene: Node) -> Node:
+		state.owner.set_editable_instance(instanced_scene, true)
+		return instanced_scene
+
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
 	func create_godot_node(xstate: Reference, new_parent: Node3D) -> Node3D:
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
 		var state: Reference = xstate # scene_node_state
+		var ps: Reference = state.prefab_state # scene_node_state.PrefabState
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
 		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
 			printerr("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
@@ -907,21 +917,29 @@ class UnityPrefabInstance extends UnityGameObject:
 		else:
 			# Traditional instanced scene case: It only requires calling instance() and setting the filename.
 			instanced_scene = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
-			instanced_scene.filename = packed_scene.resource_path
+			#instanced_scene.filename = packed_scene.resource_path
+
 		state.add_child(instanced_scene, new_parent, self)
+		if set_editable_children(state, instanced_scene) != instanced_scene:
+			instanced_scene.filename = ""
+			set_owner_rec(instanced_scene, state.owner)
+		## using _bundled.editable_instance happens after the data is discarded...
+		## This whole system doesn't work. We need an engine mod instead that allows set_editable_instance.
+		##if new_parent != null:
+			# In this case, we must also set editable children later in convert_scene.gd
+			# Here is how we keep track of it:
+		##	ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
+		# state = state.state_with_owner(instanced_scene)
+
+		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
+
 		print("Prefab " + str(packed_scene.resource_path) + " ------------")
+		print("Adding to parent " + str(new_parent))
 		print(str(target_prefab_meta.fileid_to_nodepath))
 		print(str(target_prefab_meta.prefab_fileid_to_nodepath))
 		print(str(target_prefab_meta.fileid_to_skeleton_bone))
 		print(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
 		print(" ------------")
-		var ps: Reference = state.prefab_state # scene_node_state.PrefabState
-		if new_parent != null:
-			# In this case, we must also set editable children later in convert_scene.gd
-			# Here is how we keep track of it:
-			ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
-
-		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
 
 		var fileID_to_keys = {}.duplicate()
 		var nodepath_to_first_virtual_object = {}.duplicate()
@@ -946,8 +964,8 @@ class UnityPrefabInstance extends UnityGameObject:
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
-
 			var existing_node = instanced_scene.get_node(target_nodepath)
+			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty():
 				if not nodepath_to_first_virtual_object.has(target_nodepath):
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
@@ -1061,7 +1079,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
 				state.add_fileID(attachment, transform_asset)
 				already_has_attachment = true
-			elif !already_has_attachment and ((target_skel_bone != "" or target_parent_obj is BoneAttachment3D) and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
+			elif !already_has_attachment and (target_skel_bone != "" or target_parent_obj is BoneAttachment3D): # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
 				var godot_skeleton: Node3D = target_parent_obj
 				if target_parent_obj is BoneAttachment3D:
 					attachment = target_parent_obj

@@ -150,11 +150,11 @@ func lookup(unityref: Array) -> Resource:
 	# Not implemented:
 	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.parsed == null:
-		printerr("Target ref " + str(unityref) + " was not yet parsed!")
+		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
 		return null
 	var ret: Reference = found_meta.parsed.assets.get(local_id)
 	if ret == null:
-		printerr("Target ref " + str(unityref) + " is null!")
+		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")")
 		return null
 	ret.meta = found_meta
 	return ret
@@ -178,9 +178,9 @@ func get_godot_resource(unityref: Array) -> Resource:
 		else:
 			return ret
 	if found_meta.parsed == null:
-		printerr("Target ref " + str(unityref) + " was not yet parsed!")
+		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
 		return null
-	printerr("Target ref " + str(unityref) + " would need to dynamically create a godot resource!")
+	printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")")
 	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
 	#found_meta.godot_resources[local_id] = res
 	#return res
