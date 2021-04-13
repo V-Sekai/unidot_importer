@@ -45,18 +45,19 @@ class ParseState:
 		# Note: Spaces do not add _, but captial characters do??? Let's just clean everything for now.
 		return bone_name.replace("/", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
 
-	func iterate(node):
+	func iterate(node: Node):
+		var sm = StandardMaterial3D.new()
+		sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		if node != null:
 			if scale_correction_factor != 1.0:
-				# ANIMATION and NODES multiply by scale
 				if node is Node3D:
 					node.translation *= scale_correction_factor
 				if node is Skeleton3D:
 					for i in range(node.get_bone_count()):
 						var rest: Transform = node.get_bone_rest(i)
-						node.set_node_rest(i, Transform(rest.basis, scale_correction_factor * rest.origin))
-			# TODO: Nodes which should be part of a skeleton need to be remapped?
+						node.set_bone_rest(i, Transform(rest.basis, scale_correction_factor * rest.origin))
 			var path: NodePath = scene.get_path_to(node)
+			# TODO: Nodes which should be part of a skeleton need to be remapped?
 			var node_name: String = str(node.name)
 			var fileId: int
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
@@ -153,7 +154,7 @@ class ParseState:
 							if external_objects_by_id.has(fileId):
 								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 							else:
-								var respath: String = get_resource_path(mat_name, ".tres")
+								var respath: String = get_resource_path(mat_name, ".res")
 								ResourceSaver.save(respath, mat)
 								mat = load(respath)
 							if mat != null:
@@ -177,6 +178,7 @@ class ParseState:
 								ResourceSaver.save(respath, mesh)
 								mesh = load(respath)
 							if skin != null:
+								skin = skin.duplicate()
 								adjust_skin_scale(skin)
 								var respath: String = get_resource_path(mesh_name, ".skin.tres")
 								ResourceSaver.save(respath, skin)
@@ -231,16 +233,6 @@ class ParseState:
 			var transform = skin.get_bind_pose(i)
 			skin.set_bind_pose(i, Transform(transform.basis, transform.origin * scale_correction_factor))
 
-	# func get_lods_inner(mesh: Object, surf_idx: int) -> Variant:
-	# 	var ret: Variant = mesh.surface_get_lods(surf_idx)
-	# 	return ret
-
-	# func get_lods(mesh: Mesh, surf_idx: int) -> Dictionary:
-	# 	var ret: Variant = get_lods_inner(mesh, surf_idx)
-	# 	if typeof(ret) == TYPE_DICTIONARY:
-	# 		return ret
-	# 	return {}
-
 	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false):
 		if scale_correction_factor == 1.0:
 			return
@@ -262,6 +254,15 @@ class ParseState:
 			for bsidx in range(len(bsarr)):
 				for i in range(len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])):
 					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
+				bsarr[bsidx].resize(len(arr))
+				print("Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
+				for i in range(len(arr)):
+					if i >= ArrayMesh.ARRAY_INDEX or typeof(arr[i]) == TYPE_NIL:
+						bsarr[bsidx][i] = null
+					elif typeof(bsarr[bsidx][i]) == TYPE_NIL or len(bsarr[bsidx][i]) == 0:
+						bsarr[bsidx][i] = arr[i].duplicate()
+						bsarr[bsidx][i].resize(0)
+						bsarr[bsidx][i].resize(len(arr[i]))
 
 			surf_data_by_mesh.push_back({
 				"prim": prim,
@@ -286,7 +287,7 @@ class ParseState:
 			mesh.surface_set_name(surf_idx, name)
 			mesh.surface_set_material(surf_idx, mat)
 			print("Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
-		if not is_shadow and mesh.shadow_mesh != mesh:
+		if not is_shadow and mesh.shadow_mesh != mesh and mesh.shadow_mesh != null:
 			adjust_mesh_scale(mesh.shadow_mesh, true)
 
 	func adjust_animation_scale(anim: Animation):

@@ -12,6 +12,11 @@ var object_adapter = object_adapter_class.new()
 @export var guid_to_path: Dictionary = {}
 @export var path_to_meta: Dictionary = {}
 
+# Must be non-null to hold material references
+@export var truncated_shader_reference: Shader = null
+@export var truncated_material_reference: Material = null
+@export var null_material_reference: Material = null
+
 # SEMI-STATIC
 static func get_singleton() -> Object:
 
@@ -72,6 +77,17 @@ static func parse_meta(file: Object, path: String) -> Resource: # asset_meta
 	return asset_meta_class.parse_meta(file, path)
 
 func preload_builtin_assets():
+	truncated_shader_reference = Shader.new()
+	truncated_shader_reference.code = "shader_type spatial;render_mode unshaded;void vertex() {VERTEX=vec3(1.0);}"
+	truncated_shader_reference.resource_name = "Unidot Hidden Shader"
+	truncated_material_reference = ShaderMaterial.new()
+	truncated_material_reference.shader = truncated_shader_reference
+	truncated_material_reference.resource_name = "Unidot Hidden Material"
+	null_material_reference = StandardMaterial3D.new()
+	null_material_reference.resource_name = "PINK"
+	null_material_reference.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
+
 	var unity_builtin = asset_meta_class.new()
 	unity_builtin.database = self
 	unity_builtin.resource_name = "Library/unity default resources"

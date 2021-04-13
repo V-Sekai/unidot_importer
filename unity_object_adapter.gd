@@ -99,7 +99,7 @@ class UnityObject extends Reference:
 
 	var name: String:
 		get:
-			return keys.get("m_Name","NO_NAME:"+uniq_key)
+			return str(keys.get("m_Name","NO_NAME:"+uniq_key))
 
 	var toplevel: bool:
 		get:
@@ -178,13 +178,13 @@ class UnityObject extends Reference:
 		return props
 
 	func configure_node(node: Node):
-		configure_node_props(node, self.keys)
-
-	func configure_node_props(node: Node, uprops: Dictionary):
 		if node == null:
-			return {}
-		var props: Dictionary = self.convert_properties(node, uprops)
-		print(str(node.name) + ": " + str(uprops))
+			return
+		var props: Dictionary = self.convert_properties(node, self.keys)
+		apply_node_props(node, props)
+
+	func apply_node_props(node: Node, props: Dictionary):
+		print(str(node.name) + ": " + str(props))
 		# var has_transform_track: bool = false
 		# var transform_position: Vector3 = Vector3()
 		# var transform_rotation: Quat = Quat()
@@ -198,7 +198,6 @@ class UnityObject extends Reference:
 			if str(propname) != "_quaternion": # .begins_with("_"):
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
 				node.set(propname, props.get(propname))
-		return props
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		return convert_properties_component(node, uprops)
@@ -577,6 +576,8 @@ class UnityMaterial extends UnityObject:
 				ret.emission = Color(emis_vec.x/emis_mag, emis_vec.y/emis_mag, emis_vec.z/emis_mag)
 				ret.emission_energy = emis_mag
 			ret.emission_texture = get_texture(texProperties, "_EmissionMap")
+			if ret.emission_texture != null:
+				ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 		if kws.get("_PARALLAXMAP", false):
 			ret.heightmap_enabled = true
 			ret.heightmap_texture = get_texture(texProperties, "_ParallaxMap")
@@ -648,15 +649,19 @@ class UnityCustomRenderTexture extends UnityRenderTexture:
 class UnityGameObject extends UnityObject:
 
 	func recurse_to_child_transform(state: Reference, child_transform: UnityObject, new_parent: Node3D):
-		if child_transform.is_stripped:
-			print("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
 		if child_transform.type == "PrefabInstance":
+			# PrefabInstance child of stripped Transform part of another PrefabInstance
 			var prefab_instance: UnityPrefabInstance = child_transform
 			prefab_instance.create_godot_node(state, new_parent)
 		elif child_transform.is_prefab_reference:
+			# PrefabInstance child of ordinary Transform
+			if not child_transform.is_stripped:
+				print("Expected a stripped transform for prefab root as child of transform")
 			var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
 			prefab_instance.create_godot_node(state, new_parent)
 		else:
+			if child_transform.is_stripped:
+				printerr("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
 			var child_game_object: UnityGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
 				printerr("child gameObject is a prefab reference! " + child_game_object.uniq_key)
@@ -919,8 +924,10 @@ class UnityPrefabInstance extends UnityGameObject:
 		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
 
 		var fileID_to_keys = {}.duplicate()
+		var nodepath_to_first_virtual_object = {}.duplicate()
+		var nodepath_to_keys = {}.duplicate()
 		for mod in modifications:
-			print("Applying mod!! Mod is " + str(mod))
+			# print("Preparing to apply mod: Mod is " + str(mod))
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
 			var obj_value: Array = mod.get("objectReference", [null,0,"",null])
@@ -941,12 +948,32 @@ class UnityPrefabInstance extends UnityGameObject:
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
 
 			var existing_node = instanced_scene.get_node(target_nodepath)
-			if existing_node != null:
-				if target_skel_bone.is_empty():
-					virtual_unity_object.configure_node_props(existing_node, uprops)
+			if target_skel_bone.is_empty():
+				if not nodepath_to_first_virtual_object.has(target_nodepath):
+					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
+					nodepath_to_keys[target_nodepath] = virtual_unity_object.convert_properties(existing_node, uprops)
 				else:
+					var dict: Dictionary = nodepath_to_keys.get(target_nodepath)
+					var converted: Dictionary = virtual_unity_object.convert_properties(existing_node, uprops)
+					for key in converted:
+						dict[key] = converted.get(key)
+					nodepath_to_keys[target_nodepath] = dict
+			else:
+				if existing_node != null:
 					# Test this:
+					print("Applying mod to skeleton bone " + str(existing_node) + " at path " + str(target_nodepath) + ":" + str(target_skel_bone) + "!! Mod is " + str(uprops))
 					virtual_unity_object.configure_skeleton_bone_props(existing_node, target_skel_bone, uprops)
+				else:
+					printerr("FAILED to get_node to apply mod to skeleton at path " + str(target_nodepath) + ":" + target_skel_bone + "!! Mod is " + str(uprops))
+		for target_nodepath in nodepath_to_keys:
+			var virtual_unity_object: UnityObject = nodepath_to_first_virtual_object.get(target_nodepath)
+			var existing_node = instanced_scene.get_node(target_nodepath)
+			var props: Dictionary = nodepath_to_keys.get(target_nodepath)
+			if existing_node != null:
+				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props))
+				virtual_unity_object.apply_node_props(existing_node, props)
+			else:
+				printerr("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(props))
 
 		# NOTE: We have duplicate code here for GameObject and then Transform
 		# The issue is, we will be parented to a stripped GameObject or Transform, but we do not
@@ -1167,11 +1194,86 @@ class UnityComponent extends UnityObject:
 				# FIXME: Stripped objects do not know their name.
 				# FIXME: Make the calling function crash, since we don't have stacktraces wwww
 				return 12345.678 # ???? 
-			return gameObject.name
+			return str(gameObject.name)
 
 	var toplevel: bool:
 		get:
 			return false
+
+	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
+		const material_prefix: String = ":UNIDOT_PROXY:"
+		var truncated_mat_prefix: String = meta.database.truncated_material_reference.resource_name
+		var null_mat_prefix: String = meta.database.null_material_reference.resource_name
+		var last_material: Object = null
+		var old_surface_count: int = 0
+		if node.mesh == null or node.mesh.get_surface_count() == 0:
+			last_material = node.get_material_override()
+			if last_material != null:
+				old_surface_count = 1
+		else:
+			old_surface_count = node.mesh.get_surface_count()
+			last_material = node.get_surface_material(old_surface_count - 1)
+
+		while last_material != null and last_material.resource_name.begins_with(truncated_mat_prefix):
+			old_surface_count -= 1
+			if old_surface_count == 0:
+				last_material = null
+				break
+			last_material = node.get_surface_material(old_surface_count - 1)
+
+		var last_extra_material: Resource = last_material
+		var current_materials: Array = [].duplicate()
+
+		var prefix: String = material_prefix + str(old_surface_count - 1) + ":"
+		var new_prefix: String = prefix
+
+		var material_idx: int = 0
+		while material_idx < old_surface_count:
+			var mat: Resource = node.get_surface_material(material_idx)
+			if mat != null and str(mat.resource_name).begins_with(prefix):
+				break
+			current_materials.push_back(mat)
+			material_idx += 1
+
+		while last_extra_material != null and (str(last_extra_material.resource_name).begins_with(prefix) or str(last_extra_material.resource_name).begins_with(new_prefix)):
+			if str(last_extra_material.resource_name).begins_with(new_prefix):
+				prefix = new_prefix
+				var guid_fileid = str(last_extra_material.resource_name).substr(len(prefix)).split(":")
+				current_materials.push_back(meta.get_godot_resource([null, guid_fileid[1].to_int(), guid_fileid[0], null]))
+				material_idx += 1
+				new_prefix = material_prefix + str(material_idx) + ":"
+			#material_idx_to_extra_material[material_idx] = last_extra_material
+			last_extra_material = last_extra_material.next_pass
+		if material_idx == old_surface_count - 1:
+			assert(last_extra_material != null)
+			current_materials.push_back(last_extra_material)
+			material_idx += 1
+
+		var new_materials_size = props.get("_materials_size", material_idx)
+
+		if props.has("_mesh"):
+			node.mesh = props.get("_mesh")
+			node.material_override = null
+
+		current_materials.resize(new_materials_size)
+		for i in range(new_materials_size):
+			current_materials[i] = props.get("_materials/" + str(i), current_materials[i])
+
+		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
+		if new_surface_count != 0 and node.mesh != null:
+			if new_materials_size < new_surface_count:
+				for i in range(new_materials_size, new_surface_count):
+					node.mesh.set_surface_material(i, meta.database.truncated_material_reference)
+			#for i in range(new_materials_size):
+			#	#node.mesh.set_surface_material(
+
+		# surface_get_material
+		#for i in range(new_surface_count)
+		#	for i in range():
+		#		node.material_override 
+		#else:
+		#	if new_materials_size < new_surface_count:
+
 
 class UnityBehaviour extends UnityComponent:
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
@@ -1234,6 +1336,7 @@ class UnityTransform extends UnityComponent:
 	var children_refs: Array:
 		get:
 			return keys.get("m_Children")
+
 
 class UnityRectTransform extends UnityTransform:
 	pass
@@ -1441,17 +1544,20 @@ class UnityRigidbody extends UnityComponent:
 			return keys.get("m_IsKinematic") != 0
 
 
+
 class UnityMeshFilter extends UnityComponent:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		return null
-		
+
+	func apply_node_props(node: Node, props: Dictionary):
+		self.apply_mesh_renderer_props(meta, node, props)
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
 			var new_mesh: Mesh = meta.get_godot_resource(mesh)
-			outdict["mesh"] = new_mesh # property track?
+			outdict["_mesh"] = new_mesh # property track?
 		return outdict
 
 	var mesh: Array: # UnityRef
@@ -1480,6 +1586,33 @@ class UnityMeshRenderer extends UnityRenderer:
 			new_node.set_surface_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
+
+	func apply_node_props(node: Node, props: Dictionary):
+		self.apply_mesh_renderer_props(meta, node, props)
+
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_Materials"):
+			outdict["_materials_size"] = len(uprops.get("m_Materials"))
+			var idx: int = 0
+			for m in keys.get("m_Materials", []):
+				if typeof(m) == TYPE_OBJECT:
+					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+				else:
+					outdict["_materials/" + str(idx)] = null
+				idx += 1
+		if uprops.has("m_Materials.Array.size"):
+			outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
+		const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
+		for prop in uprops:
+			if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
+				var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
+				var m: Variant = uprops.get(prop)
+				if typeof(m) == TYPE_OBJECT:
+					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+				else:
+					outdict["_materials/" + str(idx)] = null
+		return outdict
 
 	# TODO: convert_properties
 	# both material properties as well as material references??

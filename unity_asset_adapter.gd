@@ -122,6 +122,9 @@ class YamlHandler extends AssetHandler:
 		if pkgasset.parsed_meta.main_object_id == -1 or pkgasset.parsed_meta.main_object_id == 0:
 			printerr("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 			return
+		if pkgasset.parsed_asset == null:
+			printerr("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
+			return
 		var main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		var godot_resource: Resource = main_asset.create_godot_resource()
 		if godot_resource != null:
