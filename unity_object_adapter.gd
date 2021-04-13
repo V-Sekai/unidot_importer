@@ -21,12 +21,12 @@ func instantiate_unity_object(meta: Object, fileID: int, utype: int, type: Strin
 	if utype != 0 and utype_to_classname.has(utype):
 		actual_type = utype_to_classname[utype]
 		if actual_type != type and (type != "Behaviour" or actual_type != "FlareLayer") and (type != "Prefab" or actual_type != "PrefabInstance"):
-			printerr("Mismatched type for " + meta.guid + ":" + str(fileID) + " type:" + type + " vs. utype:" + str(utype) + ":" + actual_type)
+			push_error("Mismatched type for " + meta.guid + ":" + str(fileID) + " type:" + type + " vs. utype:" + str(utype) + ":" + actual_type)
 	if _type_dictionary.has(actual_type):
 		# print("Will instantiate object of type " + str(actual_type) + "/" + str(type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
 		ret = _type_dictionary[actual_type].new()
 	else:
-		printerr("Failed to instantiate object of type " + str(actual_type) + "/" + str(type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
+		push_error("Failed to instantiate object of type " + str(actual_type) + "/" + str(type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
 		if type.ends_with("Importer"):
 			ret = UnityAssetImporter.new()
 		else:
@@ -35,7 +35,7 @@ func instantiate_unity_object(meta: Object, fileID: int, utype: int, type: Strin
 	ret.adapter = self
 	ret.fileID = fileID
 	if utype != 0 and utype != classname_to_utype.get(actual_type, utype):
-		printerr("Mismatched utype " + str(utype) + " for " + type)
+		push_error("Mismatched utype " + str(utype) + " for " + type)
 	ret.utype = classname_to_utype.get(actual_type, utype)
 	ret.type = actual_type
 	return ret
@@ -44,13 +44,13 @@ func instantiate_unity_object(meta: Object, fileID: int, utype: int, type: Strin
 func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) -> UnityObject:
 	var ret: UnityObject = null
 	if not utype_to_classname.has(utype):
-		printerr("Unknown utype " + str(utype) + " for " + str(fileID))
+		push_error("Unknown utype " + str(utype) + " for " + str(fileID))
 		return
 	var actual_type: String = utype_to_classname[utype]
 	if _type_dictionary.has(actual_type):
 		ret = _type_dictionary[actual_type].new()
 	else:
-		printerr("Failed to instantiate object of type " + str(actual_type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
+		push_error("Failed to instantiate object of type " + str(actual_type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
 		ret = UnityObject.new()
 	ret.meta = meta
 	ret.adapter = self
@@ -275,7 +275,7 @@ class UnityMesh extends UnityObject:
 			4:
 				return Mesh.PRIMITIVE_POINTS
 			_:
-				printerr(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
+				push_error(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
 		return Mesh.PRIMITIVE_TRIANGLES
 
 	func get_extra_resources() -> Dictionary:
@@ -321,7 +321,7 @@ class UnityMesh extends UnityObject:
 		var stream_strides: Array = [0, 0, 0, 0]
 		var stream_offsets: Array = [0, 0, 0, 0]
 		if len(unity_to_godot_mesh_channels) != len(channel_info_array):
-			printerr("Unity has the wrong number of vertex channels: " + str(len(unity_to_godot_mesh_channels)) + " vs " + str(len(channel_info_array)))
+			push_error("Unity has the wrong number of vertex channels: " + str(len(unity_to_godot_mesh_channels)) + " vs " + str(len(channel_info_array)))
 
 		for array_idx in range(len(unity_to_godot_mesh_channels)):
 			var channel_info: Dictionary = channel_info_array[array_idx]
@@ -661,13 +661,13 @@ class UnityGameObject extends UnityObject:
 			prefab_instance.create_godot_node(state, new_parent)
 		else:
 			if child_transform.is_stripped:
-				printerr("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
+				push_error("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
 			var child_game_object: UnityGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
-				printerr("child gameObject is a prefab reference! " + child_game_object.uniq_key)
+				push_error("child gameObject is a prefab reference! " + child_game_object.uniq_key)
 			var new_skelley: Reference = state.uniq_key_to_skelley.get(child_transform.uniq_key, null) # Skelley
 			if new_skelley == null and new_parent == null:
-				printerr("We did not create a node for this child, but it is not a skeleton bone! " + uniq_key + " child " + child_transform.uniq_key + " gameObject " + child_game_object.uniq_key + " name " + child_game_object.name)
+				push_error("We did not create a node for this child, but it is not a skeleton bone! " + uniq_key + " child " + child_transform.uniq_key + " gameObject " + child_game_object.uniq_key + " name " + child_game_object.name)
 			elif new_skelley != null:
 				# print("Go from " + transform_asset.uniq_key + " to " + str(child_game_object) + " transform " + str(child_transform) + " found skelley " + str(new_skelley))
 				child_game_object.create_skeleton_bone(state, new_skelley)
@@ -784,7 +784,7 @@ class UnityGameObject extends UnityObject:
 	var components: Variant: # Array:
 		get:
 			if is_stripped:
-				printerr("Attempted to access the component array of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the component array of a stripped " + type + " " + uniq_key)
 				# FIXME: Stripped objects do not know their name.
 				return 12345.678 # ???? 
 			return keys.get("m_Component")
@@ -792,19 +792,19 @@ class UnityGameObject extends UnityObject:
 	var transform: Variant: # UnityTransform:
 		get:
 			if is_stripped:
-				printerr("Attempted to access the transform of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the transform of a stripped " + type + " " + uniq_key)
 				# FIXME: Stripped objects do not know their name.
 				return 12345.678 # ???? 
 			if typeof(components) != TYPE_ARRAY:
-				printerr(uniq_key + " has component array: " + str(components))
+				push_error(uniq_key + " has component array: " + str(components))
 			elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
-				printerr(uniq_key + " has invalid first component: " + str(components))
+				push_error(uniq_key + " has invalid first component: " + str(components))
 			elif len(components[0].get("component", [])) < 3:
-				printerr(uniq_key + " has invalid component: " + str(components))
+				push_error(uniq_key + " has invalid component: " + str(components))
 			else:
 				var component = meta.lookup(components[0].get("component"))
 				if component.type != "Transform" and component.type != "RectTransform":
-					printerr(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
+					push_error(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
 				return component
 			return null
 
@@ -840,10 +840,10 @@ class UnityGameObject extends UnityObject:
 				# (The PrefabInstance itself will be the toplevel object)
 				return false
 			if typeof(transform) == TYPE_NIL:
-				printerr(uniq_key + " has no transform in toplevel: " + str(transform))
+				push_error(uniq_key + " has no transform in toplevel: " + str(transform))
 				return null
 			if typeof(transform.parent_ref) != TYPE_ARRAY:
-				printerr(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
+				push_error(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
 				return null
 			return transform.parent_ref[1] == 0
 
@@ -887,11 +887,11 @@ class UnityPrefabInstance extends UnityGameObject:
 		var ps: Reference = state.prefab_state # scene_node_state.PrefabState
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
 		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
-			printerr("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
+			push_error("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
 			return null
 		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
 		if packed_scene == null:
-			printerr("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid))
+			push_error("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid))
 			return null
 		print("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
 		var instanced_scene: Node3D = null
@@ -982,7 +982,7 @@ class UnityPrefabInstance extends UnityGameObject:
 					print("Applying mod to skeleton bone " + str(existing_node) + " at path " + str(target_nodepath) + ":" + str(target_skel_bone) + "!! Mod is " + str(uprops))
 					virtual_unity_object.configure_skeleton_bone_props(existing_node, target_skel_bone, uprops)
 				else:
-					printerr("FAILED to get_node to apply mod to skeleton at path " + str(target_nodepath) + ":" + target_skel_bone + "!! Mod is " + str(uprops))
+					push_error("FAILED to get_node to apply mod to skeleton at path " + str(target_nodepath) + ":" + target_skel_bone + "!! Mod is " + str(uprops))
 		for target_nodepath in nodepath_to_keys:
 			var virtual_unity_object: UnityObject = nodepath_to_first_virtual_object.get(target_nodepath)
 			var existing_node = instanced_scene.get_node(target_nodepath)
@@ -991,7 +991,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props))
 				virtual_unity_object.apply_node_props(existing_node, props)
 			else:
-				printerr("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(props))
+				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(props))
 
 		# NOTE: We have duplicate code here for GameObject and then Transform
 		# The issue is, we will be parented to a stripped GameObject or Transform, but we do not
@@ -1021,7 +1021,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
 			if (attachment == null):
-				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+				push_error("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
 				continue
 			print("Found gameobject: " + str(target_parent_obj.name))
 			if target_skel_bone != "" or target_parent_obj is BoneAttachment3D:
@@ -1069,7 +1069,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			var attachment: Node3D = target_parent_obj
 			var already_has_attachment: bool = false
 			if (attachment == null):
-				printerr("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+				push_error("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
 				continue
 			print("Found transform: " + str(target_parent_obj.name))
 			if gameobject_asset != null:
@@ -1200,7 +1200,7 @@ class UnityComponent extends UnityObject:
 	var gameObject: Variant: # UnityGameObject:
 		get:
 			if is_stripped:
-				printerr("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
 				# FIXME: Stripped objects do not know their name.
 				return 12345.678 # ???? 
 			return meta.lookup(keys.get("m_GameObject", []))
@@ -1208,7 +1208,7 @@ class UnityComponent extends UnityObject:
 	var name: Variant:
 		get:
 			if is_stripped:
-				printerr("Attempted to access the name of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the name of a stripped " + type + " " + uniq_key)
 				# FIXME: Stripped objects do not know their name.
 				# FIXME: Make the calling function crash, since we don't have stacktraces wwww
 				return 12345.678 # ???? 
@@ -1334,7 +1334,7 @@ class UnityTransform extends UnityComponent:
 	var parent_ref: Variant: # Array: # UnityRef
 		get:
 			if is_stripped:
-				printerr("Attempted to access the parent of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the parent of a stripped " + type + " " + uniq_key)
 				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
 			return keys.get("m_Father", [null,0,"",0])
 
@@ -1347,7 +1347,7 @@ class UnityTransform extends UnityComponent:
 	var parent: Variant: # UnityTransform:
 		get:
 			if is_stripped:
-				printerr("Attempted to access the parent of a stripped " + type + " " + uniq_key)
+				push_error("Attempted to access the parent of a stripped " + type + " " + uniq_key)
 				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
 			return meta.lookup(parent_ref)
 
@@ -1497,7 +1497,7 @@ class UnityMeshCollider extends UnityCollider:
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
-		var new_convex = node.shape.get_type() == "ConvexPolygonShape"
+		var new_convex = node.shape is ConvexPolygonShape3D
 		if uprops.has("m_Convex"):
 			new_convex = uprops.get("m_Convex", new_convex)
 			# We do not allow animating this without also changing m_Mesh.
@@ -1672,17 +1672,17 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			return null
 		var first_bone_obj: Reference = meta.lookup(bones[0])
 		#if first_bone_obj.is_stripped:
-		#	printerr("Cannot create skinned mesh on stripped skeleton!")
+		#	push_error("Cannot create skinned mesh on stripped skeleton!")
 		#	return null
 		var first_bone_key: String = first_bone_obj.uniq_key
 		print("SkinnedMeshRenderer: Looking up " + first_bone_key + " for " + str(self.gameObject))
 		var skelley: Reference = state.uniq_key_to_skelley.get(first_bone_key, null) # Skelley
 		if skelley == null:
-			printerr("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key)
+			push_error("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key)
 			return null
 		var gdskel: Skeleton3D = skelley.godot_skeleton
 		if gdskel == null:
-			printerr("Unable to find skeleton to add a mesh " + name + " for " + first_bone_key)
+			push_error("Unable to find skeleton to add a mesh " + name + " for " + first_bone_key)
 			return null
 		var component_name: String = type
 		if not self.gameObject.is_stripped:
@@ -1697,9 +1697,9 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		# TODO: skin??
 		ret.skin = meta.get_godot_resource(skin)
 		if ret.skin == null:
-			printerr("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " has null skin")
+			push_error("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " has null skin")
 		elif len(bones) != ret.skin.get_bind_count():
-			printerr("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " mismatched with bind bones " + str(ret.skin.get_bind_count()))
+			push_error("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " mismatched with bind bones " + str(ret.skin.get_bind_count()))
 		else:
 			var edited: bool = false
 			for idx in range(len(bones)):
@@ -1920,16 +1920,16 @@ class UnityLight extends UnityBehaviour:
 			omni_light.set_param(Light3D.PARAM_ATTENUATION, 1.0)
 			omni_light.set_param(Light3D.PARAM_RANGE, lightRange)
 		elif unityLightType == 3:
-			printerr("Rectangle Area Light not supported!")
+			push_error("Rectangle Area Light not supported!")
 			# areaSize?
 			return UnityBehaviour.create_godot_node(state, new_parent)
 		elif unityLightType == 4:
-			printerr("Disc Area Light not supported!")
+			push_error("Disc Area Light not supported!")
 			return UnityBehaviour.create_godot_node(state, new_parent)
 
 		# TODO: Layers
 		if keys.get("useColorTemperature"):
-			printerr("Color Temperature not implemented.")
+			push_error("Color Temperature not implemented.")
 		light.name = type
 		state.add_child(light, new_parent, self)
 		light.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))

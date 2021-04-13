@@ -75,7 +75,7 @@ class ParseState:
 				node_name = sanitize_bone_name(str(parent_node.name))
 				fileId = objtype_to_name_to_id.get("Animator", {}).get(node_name, 0)
 				if fileId == 0:
-					printerr("Missing fileId for Animator " + str(node_name))
+					push_error("Missing fileId for Animator " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
 			elif node is Skeleton3D:
@@ -88,13 +88,13 @@ class ParseState:
 						fileId = objtype_to_name_to_id.get("Transform", {}).get(bone_name, 0)
 						skeleton_bones_by_name[node_name] = node
 						if fileId == 0:
-							printerr("Missing fileId for bone Transform " + str(bone_name))
+							push_error("Missing fileId for bone Transform " + str(bone_name))
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
 						fileId = objtype_to_name_to_id.get("GameObject", {}).get(bone_name, 0)
 						if fileId == 0:
-							printerr("Missing fileId for bone GameObject " + str(bone_name))
+							push_error("Missing fileId for bone GameObject " + str(bone_name))
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
@@ -109,14 +109,14 @@ class ParseState:
 				nodes_by_name[node_name] = node
 				fileId = objtype_to_name_to_id.get("Transform", {}).get(node_name, 0)
 				if fileId == 0:
-					printerr("Missing fileId for Transform " + str(node_name))
+					push_error("Missing fileId for Transform " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
 				fileId = objtype_to_name_to_id.get("GameObject", {}).get(node_name, 0)
 				if fileId == 0:
-					printerr("Missing fileId for GameObject " + str(node_name))
+					push_error("Missing fileId for GameObject " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
@@ -126,17 +126,17 @@ class ParseState:
 				var fileId_mr: int = objtype_to_name_to_id.get("MeshRenderer", {}).get(node_name, 0)
 				var fileId_mf: int = objtype_to_name_to_id.get("MeshFilter", {}).get(node_name, 0)
 				if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
-					printerr("Missing fileId for MeshRenderer " + str(node_name))
+					push_error("Missing fileId for MeshRenderer " + str(node_name))
 				elif fileId == 0:
 					fileId = fileId_mr
 					fileid_to_nodepath[fileId_mr] = path
 					fileid_to_nodepath[fileId_mf] = path
 					if node.skeleton != NodePath():
-						printerr("A Skeleton exists for MeshRenderer " + str(node_name))
+						push_error("A Skeleton exists for MeshRenderer " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
 					if node.skeleton == NodePath():
-						printerr("No Skeleton exists for SkinnedMeshRenderer " + str(node_name))
+						push_error("No Skeleton exists for SkinnedMeshRenderer " + str(node_name))
 				var mesh: Mesh = node.mesh
 				# FIXME: mesh_name is broken on master branch, maybe 3.2 as well.
 				var mesh_name: String = mesh.resource_name
@@ -165,7 +165,7 @@ class ParseState:
 						materials_by_name[mat_name] = mat
 						fileId = objtype_to_name_to_id.get("Material", {}).get(mat_name, 0)
 						if fileId == 0:
-							printerr("Missing fileId for Material " + str(mat_name))
+							push_error("Missing fileId for Material " + str(mat_name))
 						else:
 							if external_objects_by_id.has(fileId):
 								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
@@ -180,7 +180,7 @@ class ParseState:
 						print("MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name if mesh != null else "NULL")+ " Material " + str(i) + " name " + str(mat.resource_name if mat != null else "NULL"))
 					fileId = objtype_to_name_to_id.get("Mesh", {}).get(mesh_name, 0)
 					if fileId == 0:
-						printerr("Missing fileId for Mesh " + str(mesh_name))
+						push_error("Missing fileId for Mesh " + str(mesh_name))
 					else:
 						var skin: Skin = node.skin
 						if external_objects_by_id.has(fileId):
@@ -221,7 +221,7 @@ class ParseState:
 					animations_by_name[anim_name] = anim
 					fileId = objtype_to_name_to_id.get("AnimationClip", {}).get(anim_name, 0)
 					if fileId == 0:
-						printerr("Missing fileId for Animation " + str(anim_name))
+						push_error("Missing fileId for Animation " + str(anim_name))
 					else:
 						if external_objects_by_id.has(fileId):
 							anim = metaobj.get_godot_resource(external_objects_by_id.get(fileId))

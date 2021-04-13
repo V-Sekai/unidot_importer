@@ -64,7 +64,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 		return [].duplicate()
 	if line.begins_with("{"):
 		if not line.ends_with("}"):
-			printerr("Invalid object value " + line.substr(0, 64))
+			push_error("Invalid object value " + line.substr(0, 64))
 			return null
 		var value_color: Color = Color()
 		var value_quat: Quat = Quat()
@@ -80,7 +80,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 		while true:
 			var match_obj = search_obj_key_regex.search(line, offset)
 			if match_obj == null:
-				printerr("Unable to match regex on inline object @" + str(line_number) + ": " + line.substr(128))
+				push_error("Unable to match regex on inline object @" + str(line_number) + ": " + line.substr(128))
 			#	break
 			offset = match_obj.get_end()
 			var comma = line.find(",", offset)
@@ -131,7 +131,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 						value_ref.resize(4)
 					value_ref[3] = value.to_int()
 				_:
-					printerr("Unsupported serializable struct type " + key + ": " + line.substr(128))
+					push_error("Unsupported serializable struct type " + key + ": " + line.substr(128))
 			if comma == -1:
 				break
 		if is_quat:
@@ -197,7 +197,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 			current_obj = null
 			var parts = line.split(" ")
 			if !parts[1].begins_with("!u!"):
-				printerr("Separator line not starting with --- !u!: " + line.substr(128))
+				push_error("Separator line not starting with --- !u!: " + line.substr(128))
 			current_obj_utype = parts[1].substr(3).to_int()
 			current_obj_fileID = parts[2].substr(1).to_int()
 			current_obj_stripped = line.ends_with(" stripped")
@@ -221,7 +221,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 		meta.guid = line.split(":")[1].strip_edges()
 	elif new_indentation_level == 0 and line.ends_with(":"):
 		if current_obj != null:
-			printerr("Creating toplevel object without header")
+			push_error("Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
 		current_obj = object_adapter.instantiate_unity_object(meta, current_obj_fileID, current_obj_utype, current_obj_type)
 		if current_obj_stripped:
@@ -229,7 +229,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 	elif line == "" and single_quote_line != "":
 		single_quote_line += "\n"
 	elif new_indentation_level == 0:
-		printerr("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r","").substr(128))
+		push_error("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r","").substr(128))
 	elif missing_single_quote:
 		single_quote_line = line_plain
 		continuation_line_indentation_level = new_indentation_level
@@ -250,7 +250,7 @@ func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_
 		#print("Missing double mid: " + brace_line)
 	elif (brace_line != "" and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with('}')):
 		brace_line += " " + line_plain
-		printerr("Missing brace mid: " + brace_line) # Never seen structs big enough to wrap twice.
+		push_error("Missing brace mid: " + brace_line) # Never seen structs big enough to wrap twice.
 	else:
 		if new_indentation_level > continuation_line_indentation_level:
 			var endcontinuation: bool = false

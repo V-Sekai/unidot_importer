@@ -95,7 +95,7 @@ func _selected_package(p_path: String) -> void:
 			tree_items.pop_back()
 			i -= 1
 		if i < 0:
-			printerr("Path outside of Assets: " + path)
+			push_error("Path outside of Assets: " + path)
 			break
 		while i < len(path_names) - 1:
 			i += 1
@@ -120,11 +120,11 @@ func _selected_package(p_path: String) -> void:
 		file_dialog = null
 
 func show_importer() -> void:
-	#printerr("PKG IMPORT DIALOG INIT BEFORE " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface() if static_storage_singleton != null else null))
+	#push_error("PKG IMPORT DIALOG INIT BEFORE " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface() if static_storage_singleton != null else null))
 	#if static_storage_singleton == null:
 	#	static_storage_singleton = static_storage.new().singleton()
 	#static_storage.new().set_singleton(static_storage_singleton)
-	#printerr("PKG IMPORT DIALOG INIT AFTER " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface()))
+	#push_error("PKG IMPORT DIALOG INIT AFTER " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface()))
 	file_dialog = FileDialog.new()
 	file_dialog.set_title("Import Unity Package...")
 	file_dialog.add_filter("*.unitypackage")
@@ -171,7 +171,7 @@ func show_importer() -> void:
 		# was get_icon in 3.2
 		var progress_icon = base_control.get_theme_icon("Progress" + str(i + 1), "EditorIcons")
 		if progress_icon == null:
-			printerr("Failed to get icon!")
+			push_error("Failed to get icon!")
 		else:
 			spinner_icon.set_frame_texture(i, progress_icon)
 	spinner_icon.frames = 8
@@ -293,7 +293,7 @@ func _editor_filesystem_scan_tick():
 		elif tree_dialog_state == STATE_DONE_IMPORT:
 			break
 		else:
-			printerr("Invalid state: " + str(tree_dialog_state))
+			push_error("Invalid state: " + str(tree_dialog_state))
 			break
 
 	var asset_work = asset_work_waiting_scan
@@ -331,7 +331,7 @@ func _done_preprocessing_assets():
 
 func _asset_failed(tw: Object):
 	_currently_preprocessing_assets -= 1
-	printerr(str(tw.asset) + " preprocess failed!")
+	push_error(str(tw.asset) + " preprocess failed!")
 	var ti: TreeItem = tw.extra
 	ti.set_custom_color(0, Color("#222288"))
 	ti.erase_button(0, 0)
@@ -397,7 +397,7 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 		if path != "":
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:
-				printerr("Path " + str(path) + " has null asset!")
+				push_error("Path " + str(path) + " has null asset!")
 			else:
 				ret += 1
 				_currently_preprocessing_assets += 1

@@ -37,16 +37,16 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	for asset in pkgasset.parsed_asset.assets.values():
 		if (asset.type == "GameObject" or asset.type == "PrefabInstance") and asset.toplevel:
 			if asset.is_stripped:
-				printerr("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+				push_error("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 			arr.push_back(asset)
 
 	if arr.is_empty():
-		printerr("Scene " + pkgasset.pathname + " has no nodes.")
+		push_error("Scene " + pkgasset.pathname + " has no nodes.")
 		return
 	var scene_contents: Node3D = null
 	if is_prefab:
 		if len(arr) > 1:
-			printerr("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
+			push_error("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
 		arr.sort_custom(smallestTransform)
 		arr = [arr[0]]
 	else:
@@ -114,7 +114,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	arr.sort_custom(customComparison)
 	for asset in arr:
 		if asset.is_stripped:
-			printerr("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+			push_error("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 		var skel: Reference = null
 		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
 		if asset.transform != null:
@@ -143,7 +143,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	# scene_contents = node_state.owner
 	if scene_contents == null:
-		printerr("Failed to parse scene " + pkgasset.pathname)
+		push_error("Failed to parse scene " + pkgasset.pathname)
 		return null
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)

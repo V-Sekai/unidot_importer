@@ -119,7 +119,7 @@ class YamlHandler extends AssetHandler:
 		sf.init(buf.get_string_from_utf8())
 		pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
 		if pkgasset.parsed_asset == null:
-			printerr("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
+			push_error("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
 		print("Done with " + path + "/" + pkgasset.guid)
 		return path
 
@@ -136,10 +136,10 @@ class YamlHandler extends AssetHandler:
 
 	func write_godot_asset(pkgasset: Object, temp_path: String):
 		if pkgasset.parsed_meta.main_object_id == -1 or pkgasset.parsed_meta.main_object_id == 0:
-			printerr("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 			return
 		if pkgasset.parsed_asset == null:
-			printerr("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
+			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return
 		var main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		var godot_resource: Resource = main_asset.create_godot_resource()
@@ -209,7 +209,7 @@ class BaseModelHandler extends AssetHandler:
 		var importer = pkgasset.parsed_meta.importer
 		var cfile = ConfigFile.new()
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			printerr("Failed to load .import config file for " + pkgasset.pathname)
+			push_error("Failed to load .import config file for " + pkgasset.pathname)
 			return
 		cfile.set_value("params", "nodes/custom_script", post_import_material_remap_script.resource_path)
 		cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
@@ -259,7 +259,7 @@ class FbxHandler extends BaseModelHandler:
 			for j in range(src_len):
 				var read_pos: int = i + j
 				if (read_pos >= xlen):
-					printerr("read_pos>=len")
+					push_error("read_pos>=len")
 					return -1
 				if (p_buf[read_pos] != p_str[j]):
 					found = false
@@ -311,7 +311,7 @@ class FbxHandler extends BaseModelHandler:
 			needle_buf[6] = 0
 			var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
 			if scale_factor_pos == -1:
-				printerr(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+				push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
 				return output_buf
 
 			var spb: StreamPeerBuffer = StreamPeerBuffer.new()
@@ -319,11 +319,11 @@ class FbxHandler extends BaseModelHandler:
 			spb.seek(scale_factor_pos + len(needle_buf))
 			var datatype: String = spb.get_string(spb.get_32())
 			if spb.get_8() != ("S").to_ascii_buffer()[0]: # ord() is broken?!
-				printerr(filename + ": not a string, or datatype invalid " + datatype)
+				push_error(filename + ": not a string, or datatype invalid " + datatype)
 				return output_buf
 			var subdatatype: String = spb.get_string(spb.get_32())
 			if spb.get_8() != ("S").to_ascii_buffer()[0]:
-				printerr(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
+				push_error(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
 				return output_buf
 			var extratype: String = spb.get_string(spb.get_32())
 			var number_type = spb.get_8()
@@ -335,7 +335,7 @@ class FbxHandler extends BaseModelHandler:
 				scale = spb.get_double()
 				is_double = true
 			else:
-				printerr(filename + ": not a float or double " + str(number_type))
+				push_error(filename + ": not a float or double " + str(number_type))
 				return output_buf
 			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
 			print(filename + ": Binary FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
@@ -354,12 +354,12 @@ class FbxHandler extends BaseModelHandler:
 			var buffer_as_ascii: String = fbx_file_binary.get_string_from_ascii()
 			var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
 			if scale_factor_pos == -1:
-				printerr(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+				push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
 				return output_buf
 			var newline_pos: int = buffer_as_ascii.find("\n", scale_factor_pos)
 			var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
 			if newline_pos == -1 or comma_pos == -1:
-				printerr(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+				push_error(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
 				return output_buf
 
 			var scale: float = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges().to_float()

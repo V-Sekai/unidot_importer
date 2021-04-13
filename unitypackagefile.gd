@@ -41,7 +41,7 @@ func init_with_filename(source_file):
 			continue
 		var fnparts = header.filename.split("/")
 		if len(fnparts[0]) != 32:
-			printerr("Invalid member of .unitypackage: " + str(header.filename))
+			push_error("Invalid member of .unitypackage: " + str(header.filename))
 			continue
 		if not guid_to_pkgasset.has(fnparts[0]):
 			# print("Discovered Asset " + fnparts[0])
@@ -55,7 +55,7 @@ func init_with_filename(source_file):
 			var path = pkgasset.pathname
 			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
 				#if path != "Assets":
-				printerr("Asset " + pkgasset.guid + ": Illegal path " + path)
+				push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
 				guids_to_remove.append(pkgasset.guid)
 			else:
 				# print("Asset " + pkgasset.guid + ": " + path)

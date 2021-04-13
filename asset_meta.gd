@@ -48,7 +48,7 @@ func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 			tt.visited[target_guid] = true
 			var child_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
 			if child_meta == null:
-				printerr("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
+				push_error("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
 			else:
 				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
@@ -81,7 +81,7 @@ func calculate_prefab_nodepaths():
 func calculate_prefab_nodepaths_recursive():
 	var toposorted: Variant = toposort_prefab_dependency_guids()
 	if typeof(toposorted) != TYPE_ARRAY:
-		printerr("BLEH BLEH")
+		push_error("BLEH BLEH")
 		return
 	for process_meta in toposorted:
 		if process_meta != null and process_meta.guid != guid and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter"):
@@ -130,7 +130,7 @@ func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta
 
 func lookup_meta(unityref: Array) -> Reference: # returns asset_meta type
 	if unityref.is_empty() or len(unityref) != 4:
-		printerr("UnityRef in wrong format: " + str(unityref))
+		push_error("UnityRef in wrong format: " + str(unityref))
 		return null
 	# print("LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
 	var local_id: int = unityref[1]
@@ -150,11 +150,11 @@ func lookup(unityref: Array) -> Resource:
 	# Not implemented:
 	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.parsed == null:
-		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
+		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
 		return null
 	var ret: Reference = found_meta.parsed.assets.get(local_id)
 	if ret == null:
-		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")")
+		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")")
 		return null
 	ret.meta = found_meta
 	return ret
@@ -164,7 +164,7 @@ func get_godot_resource(unityref: Array) -> Resource:
 	if found_meta == null:
 		if len(unityref) == 4 and unityref[1] != 0:
 			var found_path: String = database.guid_to_path.get(unityref[2], "")
-			printerr("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
+			push_error("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
 			return load("res://" + found_path)
 		return null
 	var local_id: int = unityref[1]
@@ -178,9 +178,9 @@ func get_godot_resource(unityref: Array) -> Resource:
 		else:
 			return ret
 	if found_meta.parsed == null:
-		printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
+		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
 		return null
-	printerr("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")")
+	push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")")
 	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
 	#found_meta.godot_resources[local_id] = res
 	#return res
@@ -206,7 +206,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 		var output_obj = yaml_parser.parse_line(lin, self, false)
 		if output_obj != null:
 			if self.main_object_id == 0:
-				printerr("We have no main_object_id but it should be " + str(output_obj.utype * 100000))
+				push_error("We have no main_object_id but it should be " + str(output_obj.utype * 100000))
 				self.main_object_id = output_obj.utype * 100000
 			parsed.assets[output_obj.fileID] = output_obj
 			var new_basic_id: int = next_basic_id.get(output_obj.utype, output_obj.utype * 100000)
