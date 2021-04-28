@@ -361,6 +361,7 @@ func _asset_processing_finished(tw: Object):
 	ti.set_custom_color(0, Color("#888822"))
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
+	print("Asset database object is now " + str(asset_database))
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	print("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
@@ -426,6 +427,7 @@ func _asset_tree_window_confirmed():
 		return
 	tree_dialog_state = STATE_PREPROCESSING
 	asset_database = asset_database_class.get_singleton()
+	print("Asset database object returned " + str(asset_database))
 	import_worker.start_threads(0) # DISABLE_THREADING
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())
 	if num_processing == 0:

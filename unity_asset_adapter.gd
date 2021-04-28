@@ -211,31 +211,33 @@ class BaseModelHandler extends AssetHandler:
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			push_error("Failed to load .import config file for " + pkgasset.pathname)
 			return
-		cfile.set_value("params", "nodes/custom_script", post_import_material_remap_script.resource_path)
-		cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
-		cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value("params", "meshes/light_baking", 0)
+		cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
+		# I think these are the default settings now?? The option no longer exists???
+		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
+		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
 		cfile.set_value("params", "animation/fps", 30)
 		cfile.set_value("params", "animation/import", importer.animation_import)
-		var anim_clips: Array = importer.get_animation_clips()
-		# animation/clips don't seem to work at least in 4.0.... why even bother?
-		# We should use an import script I guess.
-		cfile.set_value("params", "animation/clips/amount", len(anim_clips))
-		var idx: int = 0
-		for anim_clip in anim_clips:
-			idx += 1 # 1-indexed
-			var prefix: String = "animation/clip_" + str(idx)
-			cfile.set_value("params", prefix + "/name", anim_clip.get("name"))
-			cfile.set_value("params", prefix + "/start_frame", anim_clip.get("start_frame"))
-			cfile.set_value("params", prefix + "/end_frame", anim_clip.get("end_frame"))
-			cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
-			# animation/import
+		#var anim_clips: Array = importer.get_animation_clips()
+		## animation/clips don't seem to work at least in 4.0.... why even bother?
+		## We should use an import script I guess.
+		#cfile.set_value("params", "animation/clips/amount", len(anim_clips))
+		#var idx: int = 0
+		#for anim_clip in anim_clips:
+		#	idx += 1 # 1-indexed
+		#	var prefix: String = "animation/clip_" + str(idx)
+		#	cfile.set_value("params", prefix + "/name", anim_clip.get("name"))
+		#	cfile.set_value("params", prefix + "/start_frame", anim_clip.get("start_frame"))
+		#	cfile.set_value("params", prefix + "/end_frame", anim_clip.get("end_frame"))
+		#	cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
+		#	# animation/import
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
-		cfile.set_value("params", "meshes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
+		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		# addCollider???? TODO
+		
+		# ??? animation/optimizer setting seems to be missing?
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		cfile.set_value("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
 		cfile.set_value("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
@@ -414,6 +416,16 @@ class FbxHandler extends BaseModelHandler:
 
 		return output_path
 
+class DisabledHandler extends AssetHandler:
+	func preprocess_asset(pkgasset, tmpdir: String, path: String) -> String:
+		return "asset_not_supported"
+
+	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
+		return "asset_not_supported"
+
+	func write_godot_asset(pkgasset: Object, temp_path: String):
+		pass
+
 var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
 var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
 var model_handler: FbxHandler = FbxHandler.new().create_with_constant(STUB_GLB_FILE) # FBX needs to rewrite to GLB for compatibility.
@@ -421,8 +433,10 @@ var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_P
 
 var file_handlers: Dictionary = {
 	"fbx": model_handler,
-	"obj": obj_handler,
-	"dae": dae_handler,
+	#"obj": obj_handler,
+	#"dae": dae_handler,
+	"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
+	"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
 	"glb": model_handler,
 	"jpg": image_handler,
 	"jpeg": image_handler,

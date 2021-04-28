@@ -45,6 +45,12 @@ func _init():
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
 func parse_value(line: String, keyname: String) -> Variant:
+
+	# WHAT THE FUCK IS THIS AND WHY DOES IT FIX line.begins_with("{") always returning false???
+	# EXPLOIT HEISENBUG NATURE TO FIX OUR PROBLEM
+	#      - _Outline_Color: {r: 1, g: 1, b: 1, a: 1}
+	str(str(line.substr(0, 1)).begins_with(str(line.substr(0, 1))))
+
 	if keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash":
 		return line # User must decode this as desired.
 	if len(line) < 24 and line.is_valid_integer():
@@ -149,14 +155,20 @@ func parse_value(line: String, keyname: String) -> Variant:
 	elif line.begins_with('\"'):
 		return JSON.parse(line).result
 	elif line.begins_with("'"):
-		return line.substr(1, len(line)-1).replace("''", "")
+		var s: String = line.substr(1, len(line)-1)
+		str(str(typeof(s)) + "/" + str(line))
+		return s.replace("''", "")
 	else:
 		return line
 
-func parse_line(line: String, meta: Object, is_meta: bool) -> Resource: # unity_object_adapter.UnityObject
+func xprint(s: String):
+	pass
+
+func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity_object_adapter.UnityObject
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
 		print("guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
+	str(str(typeof(line)) + "/" + str(line))
 	line = line.replace("\r", "")
 	while line.ends_with("\r"):
 		line = line.substr(0, len(line) - 1)

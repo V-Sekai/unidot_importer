@@ -4,12 +4,15 @@ extends Resource
 const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 
-var database: Resource = null
+class DatabaseHolder extends Reference:
+	var database: Resource = null
+
+var database_holder
 @export var path: String = ""
 @export var guid: String = ""
 @export var importer_keys: Dictionary = {}
 @export var importer_type: String = ""
-var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclass
+var importer # unity_object_adapter.UnityAssetImporter subclass
 # for .fbx, must use fileIDToRecycleName in meta.
 @export var internal_data: Dictionary = {}
 
@@ -19,9 +22,9 @@ var importer: Reference = null # unity_object_adapter.UnityAssetImporter subclas
 #####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
 #####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
 
-var prefab_fileid_to_nodepath: Dictionary = {}
-var prefab_fileid_to_skeleton_bone: Dictionary = {} # int -> string
-var prefab_fileid_to_utype: Dictionary = {} # int -> int
+var prefab_fileid_to_nodepath = {}
+var prefab_fileid_to_skeleton_bone = {} # int -> string
+var prefab_fileid_to_utype = {} # int -> int
 
 @export var fileid_to_nodepath: Dictionary = {}
 @export var fileid_to_skeleton_bone: Dictionary = {} # int -> string
@@ -41,6 +44,9 @@ var parsed: ParsedAsset = null
 class TopsortTmp extends Reference:
 	var visited: Dictionary = {}.duplicate()
 	var output: Array = [].duplicate()
+
+func get_database() -> Resource:
+	return null if database_holder == null else database_holder.database
 
 func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 	for target_guid in meta.prefab_dependency_guids:
@@ -99,11 +105,12 @@ func insert_resource(fileID: int, godot_resource: Resource):
 	godot_resources[fileID] = str(godot_resource.resource_path)
 
 func rename(new_path: String):
-	database.rename_meta(self, new_path)
+	get_database().rename_meta(self, new_path)
 
 # Some properties cannot be serialized.
 func initialize(database: Resource):
-	self.database = database
+	self.database_holder = DatabaseHolder.new()
+	self.database_holder.database = database
 	self.prefab_fileid_to_nodepath = {}
 	self.prefab_fileid_to_skeleton_bone = {}
 	self.prefab_fileid_to_utype = {}
@@ -114,18 +121,18 @@ func initialize(database: Resource):
 	self.importer.keys = importer_keys
 
 func lookup_meta_by_guid_noinit(target_guid: String) -> Reference: # returns asset_meta type
-	var found_path: String = database.guid_to_path.get(target_guid, "")
+	var found_path: String = get_database().guid_to_path.get(target_guid, "")
 	var found_meta: Resource = null
 	if found_path != "":
-		found_meta = database.path_to_meta.get(found_path, null)
+		found_meta = get_database().path_to_meta.get(found_path, null)
 	return found_meta
 
 func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta type
 	var found_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
 	if found_meta == null:
 		return null
-	if found_meta.database == null:
-		found_meta.initialize(self.database)
+	if found_meta.get_database() == null:
+		found_meta.initialize(self.get_database())
 	return found_meta
 
 func lookup_meta(unityref: Array) -> Reference: # returns asset_meta type
@@ -163,7 +170,7 @@ func get_godot_resource(unityref: Array) -> Resource:
 	var found_meta: Resource = lookup_meta(unityref)
 	if found_meta == null:
 		if len(unityref) == 4 and unityref[1] != 0:
-			var found_path: String = database.guid_to_path.get(unityref[2], "")
+			var found_path: String = get_database().guid_to_path.get(unityref[2], "")
 			push_error("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
 			return load("res://" + found_path)
 		return null

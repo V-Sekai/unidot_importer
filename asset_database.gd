@@ -32,7 +32,7 @@ func save():
 	ResourceSaver.save(ASSET_DATABASE_PATH, self)
 
 func insert_meta(meta: Resource): # asset_meta
-	if meta.database == null:
+	if meta.get_database() == null:
 		meta.initialize(self)
 	guid_to_path[meta.guid] = meta.path
 	path_to_meta[meta.path] = meta
@@ -50,7 +50,7 @@ func rename_meta(meta: Resource, new_path: String):
 func get_meta_at_path(path: String) -> Resource: # asset_meta
 	var ret: Resource = path_to_meta.get(path)
 	if ret != null:
-		if ret.database == null:
+		if ret.get_database() == null:
 			ret.initialize(self)
 	return ret
 
@@ -89,7 +89,7 @@ func preload_builtin_assets():
 	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
 
 	var unity_builtin = asset_meta_class.new()
-	unity_builtin.database = self
+	unity_builtin.initialize(self)
 	unity_builtin.resource_name = "Library/unity default resources"
 	unity_builtin.path = unity_builtin.resource_name
 	unity_builtin.guid = "0000000000000000e000000000000000"
@@ -133,7 +133,7 @@ func preload_builtin_assets():
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
 	var unity_extra = asset_meta_class.new()
-	unity_extra.database = self
+	unity_extra.initialize(self)
 	unity_extra.resource_name = "Resources/unity_builtin_extra"
 	unity_extra.path = unity_extra.resource_name
 	unity_extra.guid = "0000000000000000f000000000000000"

@@ -156,7 +156,7 @@ class Skelley extends Reference:
 		var par_key: String = par_transform.uniq_key
 		var contains_stripped_bones: bool = false
 		for bone in intermediate_bones:
-			if bone.is_stripped_or_prefab_instance:
+			if bone.is_stripped_or_prefab_instance():
 				continue
 			if bone.parent_no_stripped == null or bone.parent_no_stripped.uniq_key == par_key:
 				root_bones.push_back(bone)

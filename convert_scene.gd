@@ -60,7 +60,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
-	var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.database, pkgasset.parsed_meta, scene_contents)
+	var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
 
 	var ps: Reference = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():

@@ -82,9 +82,8 @@ class UnityObject extends Reference:
 	# and properties of prefabbed objects seem to have no effect anyway.
 	var is_stripped: bool = false
 
-	var is_stripped_or_prefab_instance: bool:
-		get:
-			return is_stripped
+	func is_stripped_or_prefab_instance() -> bool:
+		return is_stripped
 
 	var uniq_key: String:
 		get:
@@ -99,23 +98,34 @@ class UnityObject extends Reference:
 
 	var name: String:
 		get:
-			return str(keys.get("m_Name","NO_NAME:"+uniq_key))
+			return get_name()
+
+	func get_name() -> String:
+		return str(keys.get("m_Name","NO_NAME:"+uniq_key))
 
 	var toplevel: bool:
 		get:
-			return true
+			return is_toplevel()
 
-	var is_collider: bool:
-		get:
-			return false
+	func is_toplevel() -> bool:
+		return true
+
+	func is_collider() -> bool:
+		return false
 
 	var transform: Object:
 		get:
-			return null
+			return get_transform()
+
+	func get_transform() -> Object:
+		return null
 
 	var gameObject: UnityGameObject:
 		get:
-			return null
+			return get_gameObject()
+
+	func get_gameObject() -> UnityGameObject:
+		return null
 
 	# Belongs in UnityComponent, but we haven't implemented all types yet.
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
@@ -427,6 +437,7 @@ class UnityMesh extends UnityObject:
 
 	var local_aabb: AABB:
 		get:
+			print(str(typeof(keys.get("m_LocalAABB", {}).get("m_Center"))) +"/" + str(keys.get("m_LocalAABB", {}).get("m_Center")))
 			return AABB(keys.get("m_LocalAABB", {}).get("m_Center") * Vector3(-1,1,1), keys.get("m_LocalAABB", {}).get("m_Extent"))
 
 	var pre2018_skin: Array:
@@ -548,7 +559,7 @@ class UnityMaterial extends UnityObject:
 		ret.resource_name = self.name
 		# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unity
 		# But it seems to workaround a problem with some materials for now.
-		ret.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+		ret.depth_draw_mode = true ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_tex_force_srgb = true # Nothing works if this isn't set to true explicitly. Stupid default.
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.white)
 		ret.albedo_texture = get_texture(texProperties, "_MainTex2") ### ONLY USED IN ONE SHADER. This case should be removed.
@@ -739,7 +750,7 @@ class UnityGameObject extends UnityObject:
 				component.configure_node(ret)
 				extra_fileID.push_back(transform)
 				state = state.state_with_body(ret)
-			if component.is_collider:
+			if component.is_collider():
 				extra_fileID.push_back(component)
 				print("Has a collider " + self.name)
 				has_collider = true
@@ -789,26 +800,25 @@ class UnityGameObject extends UnityObject:
 				return 12345.678 # ???? 
 			return keys.get("m_Component")
 
-	var transform: Variant: # UnityTransform:
-		get:
-			if is_stripped:
-				push_error("Attempted to access the transform of a stripped " + type + " " + uniq_key)
-				# FIXME: Stripped objects do not know their name.
-				return 12345.678 # ???? 
-			if typeof(components) != TYPE_ARRAY:
-				push_error(uniq_key + " has component array: " + str(components))
-			elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
-				push_error(uniq_key + " has invalid first component: " + str(components))
-			elif len(components[0].get("component", [])) < 3:
-				push_error(uniq_key + " has invalid component: " + str(components))
-			else:
-				var component = meta.lookup(components[0].get("component"))
-				if component.type != "Transform" and component.type != "RectTransform":
-					push_error(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
-				return component
-			return null
+	func get_transform() -> Variant: # UnityTransform:
+		if is_stripped:
+			push_error("Attempted to access the transform of a stripped " + type + " " + uniq_key)
+			# FIXME: Stripped objects do not know their name.
+			return 12345.678 # ???? 
+		if typeof(components) != TYPE_ARRAY:
+			push_error(uniq_key + " has component array: " + str(components))
+		elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
+			push_error(uniq_key + " has invalid first component: " + str(components))
+		elif len(components[0].get("component", [])) < 3:
+			push_error(uniq_key + " has invalid component: " + str(components))
+		else:
+			var component = meta.lookup(components[0].get("component"))
+			if component.type != "Transform" and component.type != "RectTransform":
+				push_error(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
+			return component
+		return null
 
-	func GetComponent(typ: String) -> UnityObject:
+	func GetComponent(typ: String) -> Reference:
 		for component_ref in components:
 			var component = meta.lookup(component_ref.get("component"))
 			if component.type == typ:
@@ -833,28 +843,29 @@ class UnityGameObject extends UnityObject:
 		get:
 			return keys.get("m_IsActive")
 
-	var toplevel: Variant: # bool:
-		get:
-			if is_stripped:
-				# Stripped objects are part of a Prefab, so by definition will never be toplevel
-				# (The PrefabInstance itself will be the toplevel object)
-				return false
-			if typeof(transform) == TYPE_NIL:
-				push_error(uniq_key + " has no transform in toplevel: " + str(transform))
-				return null
-			if typeof(transform.parent_ref) != TYPE_ARRAY:
-				push_error(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
-				return null
-			return transform.parent_ref[1] == 0
+	func is_toplevel() -> Variant: # bool
+		if is_stripped:
+			# Stripped objects are part of a Prefab, so by definition will never be toplevel
+			# (The PrefabInstance itself will be the toplevel object)
+			return false
+		if typeof(transform) == TYPE_NIL:
+			push_error(uniq_key + " has no transform in toplevel: " + str(transform))
+			return null
+		if typeof(transform.parent_ref) != TYPE_ARRAY:
+			push_error(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
+			return null
+		return transform.parent_ref[1] == 0
 
-	var gameObject: UnityGameObject:
-		get:
-			return self
+	func get_gameObject() -> UnityGameObject:
+		return self
 
 
 # Is a PrefabInstance a GameObject? Unity seems to treat it that way at times. Other times not...
 # Is this canon? We'll never know because the documentation denies even the existence of a "PrefabInstance" class
 class UnityPrefabInstance extends UnityGameObject:
+
+	func is_stripped_or_prefab_instance() -> bool:
+		return true
 
 	func set_owner_rec(node: Node, owner: Node):
 		node.owner = owner
@@ -914,15 +925,16 @@ class UnityPrefabInstance extends UnityGameObject:
 			fres.close()
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
 			instanced_scene = temp_packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			state.add_child(instanced_scene, new_parent, self)
 		else:
 			# Traditional instanced scene case: It only requires calling instance() and setting the filename.
 			instanced_scene = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			#instanced_scene.filename = packed_scene.resource_path
+			state.add_child(instanced_scene, new_parent, self)
 
-		state.add_child(instanced_scene, new_parent, self)
-		if set_editable_children(state, instanced_scene) != instanced_scene:
-			instanced_scene.filename = ""
-			set_owner_rec(instanced_scene, state.owner)
+			if set_editable_children(state, instanced_scene) != instanced_scene:
+				instanced_scene.filename = ""
+				set_owner_rec(instanced_scene, state.owner)
 		## using _bundled.editable_instance happens after the data is discarded...
 		## This whole system doesn't work. We need an engine mod instead that allows set_editable_instance.
 		##if new_parent != null:
@@ -954,7 +966,6 @@ class UnityPrefabInstance extends UnityGameObject:
 			if not fileID_to_keys.has(fileID):
 				fileID_to_keys[fileID] = {}.duplicate()
 			fileID_to_keys.get(fileID)[property_key] = (obj_value if obj_value[1] != 0 else value)
-
 		for fileID in fileID_to_keys:
 			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID,
 					target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
@@ -962,7 +973,9 @@ class UnityPrefabInstance extends UnityGameObject:
 					target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID,
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
+			print("XXXc")
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
+			print("XXXd " + str(target_prefab_meta.guid) +"/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
@@ -1125,17 +1138,15 @@ class UnityPrefabInstance extends UnityGameObject:
 		#	pass
 		return instanced_scene
 
-	var transform: UnityPrefabInstance: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
-		get:
-			return self
+	func get_transform() -> UnityPrefabInstance: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
+		return self
 
 	var rootOrder: int:
 		get:
 			return 0 # no idea..
 
-	var gameObject: UnityPrefabInstance:
-		get:
-			return self
+	func get_gameObject() -> UnityPrefabInstance:
+		return self
 
 	var parent_ref: Array: # UnityRef
 		get:
@@ -1146,13 +1157,12 @@ class UnityPrefabInstance extends UnityGameObject:
 		get:
 			return null # meta.lookup(parent_ref)
 
-	var parent: Array: # UnityRef
+	var parent: UnityObject:
 		get:
 			return meta.lookup(parent_ref)
 
-	var toplevel: bool:
-		get:
-			return not is_legacy_parent_prefab and parent_ref[1] == 0
+	func is_toplevel() -> bool:
+		return not is_legacy_parent_prefab and parent_ref[1] == 0
 
 	var modifications: Array:
 		get:
@@ -1174,10 +1184,6 @@ class UnityPrefabInstance extends UnityGameObject:
 			# the same way modern prefabs do, the only GameObject whose Transform has m_Father == null
 			return keys.get("m_IsPrefabParent", false)
 
-	var is_stripped_or_prefab_instance: bool:
-		get:
-			return true
-
 class UnityPrefabLegacyUnused extends UnityPrefabInstance:
 	# I think this will never exist in practice, but it's here anyway:
 	# Old Unity's "Prefab" used utype 1001 which is now "PrefabInstance", not 1001480554.
@@ -1197,31 +1203,28 @@ class UnityComponent extends UnityObject:
 		new_node.editor_description = str(self)
 		return new_node
 
-	var gameObject: Variant: # UnityGameObject:
-		get:
-			if is_stripped:
-				push_error("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
-				# FIXME: Stripped objects do not know their name.
-				return 12345.678 # ???? 
-			return meta.lookup(keys.get("m_GameObject", []))
+	func get_gameObject() -> Variant: # UnityGameObject
+		if is_stripped:
+			push_error("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
+			# FIXME: Stripped objects do not know their name.
+			return 12345.678 # ???? 
+		return meta.lookup(keys.get("m_GameObject", []))
 
-	var name: Variant:
-		get:
-			if is_stripped:
-				push_error("Attempted to access the name of a stripped " + type + " " + uniq_key)
-				# FIXME: Stripped objects do not know their name.
-				# FIXME: Make the calling function crash, since we don't have stacktraces wwww
-				return 12345.678 # ???? 
-			return str(gameObject.name)
+	func get_name() -> Variant:
+		if is_stripped:
+			push_error("Attempted to access the name of a stripped " + type + " " + uniq_key)
+			# FIXME: Stripped objects do not know their name.
+			# FIXME: Make the calling function crash, since we don't have stacktraces wwww
+			return 12345.678 # ????
+		return str(gameObject.name)
 
-	var toplevel: bool:
-		get:
-			return false
+	func is_toplevel() -> bool:
+		return false
 
 	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
 		const material_prefix: String = ":UNIDOT_PROXY:"
-		var truncated_mat_prefix: String = meta.database.truncated_material_reference.resource_name
-		var null_mat_prefix: String = meta.database.null_material_reference.resource_name
+		var truncated_mat_prefix: String = meta.get_database().truncated_material_reference.resource_name
+		var null_mat_prefix: String = meta.get_database().null_material_reference.resource_name
 		var last_material: Object = null
 		var old_surface_count: int = 0
 		if node.mesh == null or node.mesh.get_surface_count() == 0:
@@ -1230,14 +1233,14 @@ class UnityComponent extends UnityObject:
 				old_surface_count = 1
 		else:
 			old_surface_count = node.mesh.get_surface_count()
-			last_material = node.get_surface_material(old_surface_count - 1)
+			last_material = node.get_active_material(old_surface_count - 1)
 
 		while last_material != null and last_material.resource_name.begins_with(truncated_mat_prefix):
 			old_surface_count -= 1
 			if old_surface_count == 0:
 				last_material = null
 				break
-			last_material = node.get_surface_material(old_surface_count - 1)
+			last_material = node.get_active_material(old_surface_count - 1)
 
 		var last_extra_material: Resource = last_material
 		var current_materials: Array = [].duplicate()
@@ -1247,7 +1250,7 @@ class UnityComponent extends UnityObject:
 
 		var material_idx: int = 0
 		while material_idx < old_surface_count:
-			var mat: Resource = node.get_surface_material(material_idx)
+			var mat: Resource = node.get_active_material(material_idx)
 			if mat != null and str(mat.resource_name).begins_with(prefix):
 				break
 			current_materials.push_back(mat)
@@ -1281,9 +1284,9 @@ class UnityComponent extends UnityObject:
 		if new_surface_count != 0 and node.mesh != null:
 			if new_materials_size < new_surface_count:
 				for i in range(new_materials_size, new_surface_count):
-					node.mesh.set_surface_material(i, meta.database.truncated_material_reference)
+					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
 			#for i in range(new_materials_size):
-			#	#node.mesh.set_surface_material(
+			#	#node.mesh.set_surface_override_material(
 
 		# surface_get_material
 		#for i in range(new_surface_count)
@@ -1426,17 +1429,18 @@ class UnityCollider extends UnityBehaviour:
 
 	var shape: Shape3D:
 		get:
-			return null
+			return get_shape()
 
-	var is_collider: bool:
-		get:
-			return true
+	func get_shape() -> Shape3D:
+		return null
+
+	func is_collider() -> bool:
+		return true
 
 class UnityBoxCollider extends UnityCollider:
-	var shape: Shape3D:
-		get:
-			var bs: BoxShape3D = BoxShape3D.new()
-			return bs
+	func get_shape() -> Shape3D:
+		var bs: BoxShape3D = BoxShape3D.new()
+		return bs
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
@@ -1444,10 +1448,9 @@ class UnityBoxCollider extends UnityCollider:
 		return outdict
 
 class UnitySphereCollider extends UnityCollider:
-	var shape: Shape3D:
-		get:
-			var bs: SphereShape3D = SphereShape3D.new()
-			return bs
+	func get_shape() -> Shape3D:
+		var bs: SphereShape3D = SphereShape3D.new()
+		return bs
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
@@ -1455,10 +1458,9 @@ class UnitySphereCollider extends UnityCollider:
 		return outdict
 
 class UnityCapsuleCollider extends UnityCollider:
-	var shape: Shape3D:
-		get:
-			var bs: CapsuleShape3D = CapsuleShape3D.new()
-			return bs
+	func get_shape() -> Shape3D:
+		var bs: CapsuleShape3D = CapsuleShape3D.new()
+		return bs
 
 	func get_basis_from_direction(direction: int):
 		if direction == 0: # Along the X-Axis
@@ -1484,16 +1486,15 @@ class UnityCapsuleCollider extends UnityCollider:
 class UnityMeshCollider extends UnityCollider:
 
 	# Not making these animatable?
-	var convex: Shape3D:
+	var convex: bool:
 		get:
-			return keys.get("m_Convex")
+			return keys.get("m_Convex", 0) != 0
 
-	var shape: Shape3D:
-		get:
-			if convex:
-				return meta.get_godot_resource(get_mesh(keys)).create_convex_shape()
-			else:
-				return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
+	func get_shape() -> Shape3D:
+		if convex:
+			return meta.get_godot_resource(get_mesh(keys)).create_convex_shape()
+		else:
+			return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
@@ -1507,7 +1508,7 @@ class UnityMeshCollider extends UnityCollider:
 			if mesh_ref[1] == 0:
 				var mf: UnityMeshFilter = gameObject.meshFilter
 				if mf != null:
-					new_mesh = gameObject.meshFilter.mesh
+					new_mesh = meta.get_godot_resource(gameObject.meshFilter.mesh)
 			else:
 				new_mesh = meta.get_godot_resource(mesh_ref)
 			if new_mesh != null:
@@ -1601,7 +1602,7 @@ class UnityMeshRenderer extends UnityRenderer:
 			state.add_fileID(new_node, mf)
 		var idx: int = 0
 		for m in materials:
-			new_node.set_surface_material(idx, meta.get_godot_resource(m))
+			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
 
@@ -1642,10 +1643,12 @@ class UnityMeshRenderer extends UnityRenderer:
 
 	var mesh: Array: # UnityRef
 		get:
-			var mf: UnityMeshFilter = gameObject.meshFilter
-			if mf != null:
-				return mf.mesh
-			return [null,0,"",null]
+			return get_mesh()
+	func get_mesh() -> Array: # UnityRef
+		var mf: UnityMeshFilter = gameObject.meshFilter
+		if mf != null:
+			return mf.mesh
+		return [null,0,"",null]
 
 class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 
@@ -1662,7 +1665,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self, self.mesh, null, [])
 		var idx: int = 0
 		for m in materials:
-			new_node.set_surface_material(idx, meta.get_godot_resource(m))
+			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
 
@@ -1741,9 +1744,8 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			var ret: Array = keys.get("m_Mesh", [null,0,"",null])
 			return [null, -ret[1], ret[2], ret[3]]
 
-	var mesh: Array: # UnityRef
-		get:
-			return keys.get("m_Mesh", [null,0,"",null])
+	func get_mesh() -> Array: # UnityRef
+		return keys.get("m_Mesh", [null,0,"",null])
 
 class UnityCloth extends UnityBehaviour:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
@@ -1992,9 +1994,11 @@ class UnityLight extends UnityBehaviour:
 
 ### ================ IMPORTER TYPES ================
 class UnityAssetImporter extends UnityObject:
+	func get_main_object_id() -> int:
+		return 0 # Unknown
 	var main_object_id: int:
 		get:
-			return 0 # Unknown
+			return get_main_object_id() # Unknown
 
 	func get_external_objects() -> Dictionary:
 		var eo: Dictionary = {}.duplicate()
@@ -2083,14 +2087,12 @@ class UnityModelImporter extends UnityAssetImporter:
 			"max_angular_error": rotErrorHalfRevs, # Godot defaults this value to 
 		}
 
-	var main_object_id: int:
-		get:
-			return 100100000 # a model is a type of Prefab
+	func get_main_object_id() -> int:
+		return 100100000 # a model is a type of Prefab
 
 class UnityShaderImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			return 4800000 # Shader
+	func get_main_object_id() -> int:
+		return 4800000 # Shader
 
 class UnityTextureImporter extends UnityAssetImporter:
 	var textureShape: int:
@@ -2113,67 +2115,59 @@ class UnityTextureImporter extends UnityAssetImporter:
 			# bumpmap.convertToNormalMap?
 			return keys.get("textureType", 0)
 
-	var main_object_id: int:
-		# Note: some textureType will add a Sprite or other asset as well.
-		get:
-			match textureShape:
-				0, 1:
-					return 2800000 # "Texture2D",
-				2:
-					return 8900000 # "Cubemap",
-				3:
-					return 18700000 # "Texture2DArray",
-				4:
-					return 11700000 # "Texture3D",
-				_:
-					return 0
+	func get_main_object_id() -> int:
+		match textureShape:
+			0, 1:
+				return 2800000 # "Texture2D",
+			2:
+				return 8900000 # "Cubemap",
+			3:
+				return 18700000 # "Texture2DArray",
+			4:
+				return 11700000 # "Texture3D",
+			_:
+				return 0
 
 class UnityTrueTypeFontImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			return 12800000 # Font
+	func get_main_object_id() -> int:
+		return 12800000 # Font
 
 class UnityNativeFormatImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			return keys.get("mainObjectFileID", 0)
+	func get_main_object_id() -> int:
+		return keys.get("mainObjectFileID", 0)
 
 class UnityPrefabImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			# PrefabInstance is 1001. Multiply by 100000 to create default ID.
-			return 100100000 # Always should be this ID.
+	func get_main_object_id() -> int:
+		# PrefabInstance is 1001. Multiply by 100000 to create default ID.
+		return 100100000 # Always should be this ID.
 
 class UnityTextScriptImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			return 4900000 # TextAsset
+	func get_main_object_id() -> int:
+		return 4900000 # TextAsset
 
 class UnityAudioImporter extends UnityAssetImporter:
-	var main_object_id: int:
-		get:
-			return 8300000 # AudioClip
+	func get_main_object_id() -> int:
+		return 8300000 # AudioClip
 
 class UnityDefaultImporter extends UnityAssetImporter:
 	# Will depend on filetype or file extension?
 	# Check file extension from `meta.path`???
-	var main_object_id: int:
-		get:
-			match meta.path.get_extension():
-				"unity":
-					# Scene file.
-					# 1: OcclusionCullingSettings (29),
-					# 2: RenderSettings (104),
-					# 3: LightmapSettings (157),
-					# 4: NavMeshSettings (196),
-					# We choose 1 to represent the default id, but there is no actual root node.
-					return 1
-				"txt", "html", "htm", "xml", "bytes", "json", "csv", "yaml", "fnt":
-					# Supported file extensions for text (.bytes is special)
-					return 4900000 # TextAsset
-				_:
-					# Folder, or unsupported type.
-					return 102900000 # DefaultAsset
+	func get_main_object_id() -> int:
+		match meta.path.get_extension():
+			"unity":
+				# Scene file.
+				# 1: OcclusionCullingSettings (29),
+				# 2: RenderSettings (104),
+				# 3: LightmapSettings (157),
+				# 4: NavMeshSettings (196),
+				# We choose 1 to represent the default id, but there is no actual root node.
+				return 1
+			"txt", "html", "htm", "xml", "bytes", "json", "csv", "yaml", "fnt":
+				# Supported file extensions for text (.bytes is special)
+				return 4900000 # TextAsset
+			_:
+				# Folder, or unsupported type.
+				return 102900000 # DefaultAsset
 
 var _type_dictionary: Dictionary = {
 	# "AimConstraint": UnityAimConstraint,

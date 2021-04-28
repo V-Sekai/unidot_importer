@@ -45,7 +45,10 @@ class ParseState:
 
 	func sanitize_bone_name(bone_name: String) -> String:
 		# Note: Spaces do not add _, but captial characters do??? Let's just clean everything for now.
-		return bone_name.replace("/", "").replace(":", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
+		print ("todo postimp bone replace " + str(bone_name))
+		var xret = bone_name.replace("/", "").replace(":", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
+		print ("todone postimp bone replace " + str(xret))
+		return xret
 
 	func iterate(node: Node):
 		var sm = StandardMaterial3D.new()
@@ -360,6 +363,7 @@ class ParseState:
 
 func post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
+	print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
 	var asset_database = asset_database_class.get_singleton()
@@ -414,6 +418,8 @@ func post_import(p_scene: Node) -> Object:
 		if external_objects.get(type, {}).has(og_obj_name):
 			ps.external_objects_by_id[fileId] = external_objects.get(type).get(og_obj_name)
 
+	print("Ext objs by id: "+ str(ps.external_objects_by_id))
+	print("objtype name by id: "+ str(ps.objtype_to_name_to_id))
 	ps.iterate(p_scene)
 
 	for fileId in ps.fileid_to_nodepath:
