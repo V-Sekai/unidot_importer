@@ -76,6 +76,7 @@ class UnityObject extends Reference:
 	var adapter: Reference = null # Reference to containing scope.
 
 	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const BAS_FLIP_X: Basis = Basis.FLIP_X # Basis(-1,0,0,1,0,0,1,0,0)
 
 	# Some components or game objects within a prefab are "stripped" dummy objects.
 	# Setting the stripped flag is not required...
@@ -178,9 +179,8 @@ class UnityObject extends Reference:
 		if not has_trs:
 			return props
 
-		quat = (FLIP_X.affine_inverse() * Transform(Basis(quat)) * FLIP_X).basis.get_rotation_quat()
-		scale = (FLIP_X.affine_inverse() * Transform(Basis.IDENTITY.scaled(scale)) * FLIP_X).basis.get_scale()
-		translation = (FLIP_X.affine_inverse() * Transform(Basis.IDENTITY, translation) * FLIP_X).origin
+		quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
+		translation = Vector3(-1, 1, 1) * translation
 
 		matn = Transform(Basis(quat).scaled(scale), translation)
 
@@ -202,10 +202,40 @@ class UnityObject extends Reference:
 		if (props.has("_quaternion")):
 			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
 
+		var has_translation_x: bool = props.has("translation:x")
+		var has_translation_y: bool = props.has("translation:y")
+		var has_translation_z: bool = props.has("translation:z")
+		if has_translation_x or has_translation_y or has_translation_z:
+			var per_axis_translation: Vector3 = node.translation
+			if has_translation_x:
+				per_axis_translation.x = props.get("translation:x")
+			if has_translation_y:
+				per_axis_translation.y = props.get("translation:y")
+			if has_translation_z:
+				per_axis_translation.z = props.get("translation:z")
+			node.translation = per_axis_translation
+		var has_scale_x: bool = props.has("scale:x")
+		var has_scale_y: bool = props.has("scale:y")
+		var has_scale_z: bool = props.has("scale:z")
+		if has_scale_x or has_scale_y or has_scale_z:
+			var per_axis_scale: Vector3 = node.scale
+			if has_scale_x:
+				per_axis_scale.x = props.get("scale:x")
+			if has_scale_y:
+				per_axis_scale.y = props.get("scale:y")
+			if has_scale_z:
+				per_axis_scale.z = props.get("scale:z")
+			node.scale = per_axis_scale
 		for propname in props:
 			if typeof(props.get(propname)) == TYPE_NIL:
 				continue
-			if str(propname) != "_quaternion": # .begins_with("_"):
+			elif str(propname) == "_quaternion": # .begins_with("_"):
+				pass
+			elif str(propname).ends_with(":x") or str(propname).ends_with(":y") or str(propname).ends_with(":z"):
+				pass
+			elif str(propname) == "name":
+				pass # We cannot do Name here because it will break existing NodePath of outer prefab to children.
+			else:
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
 				node.set(propname, props.get(propname))
 
@@ -218,11 +248,14 @@ class UnityObject extends Reference:
 	static func get_vector(uprops: Dictionary, key: String) -> Variant:
 		if uprops.has(key):
 			return uprops.get(key)
+		print("key is " + str(key) + "; " + str(uprops))
 		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
-			return Vector3(
+			var xreturn: Vector3 = Vector3(
 				uprops.get(key + ".x", 0.0),
 				uprops.get(key + ".y", 0.0),
 				uprops.get(key + ".z", 0.0))
+			print("xreturn is " + str(xreturn))
+			return xreturn
 		return null
 
 	static func get_quat(uprops: Dictionary, key: String) -> Variant:
@@ -693,9 +726,10 @@ class UnityGameObject extends UnityObject:
 		var skeleton_bone_index: int = transform.skeleton_bone_index
 		var skeleton_bone_name: String = godot_skeleton.get_bone_name(skeleton_bone_index)
 		var ret: Node3D = null
-		if self.rigidbody != null:
-			ret = self.rigidbody.create_physical_bone(state, godot_skeleton, skeleton_bone_name)
-			self.rigidbody.configure_node(ret)
+		var rigidbody = GetComponent("Rigidbody")
+		if rigidbody != null:
+			ret = rigidbody.create_physical_bone(state, godot_skeleton, skeleton_bone_name)
+			rigidbody.configure_node(ret)
 			state.add_fileID(ret, self)
 			state.add_fileID(ret, transform)
 		elif len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
@@ -829,15 +863,15 @@ class UnityGameObject extends UnityObject:
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_IsActive"):
 			outdict["visible"] = uprops.get("m_IsActive")
+		if uprops.has("m_Name"):
+			outdict["name"] = uprops.get("m_Name")
 		return outdict
 
-	var meshFilter: UnityMeshFilter:
-		get:
-			return GetComponent("MeshFilter")
-
-	var rigidbody: UnityRigidbody:
-		get:
-			return GetComponent("Rigidbody")
+	var meshFilter: UnityMeshFilter = null
+	func get_meshFilter() -> UnityMeshFilter:
+		if meshFilter != null:
+			return meshFilter
+		return GetComponent("MeshFilter")
 
 	var enabled: bool:
 		get:
@@ -1001,8 +1035,11 @@ class UnityPrefabInstance extends UnityGameObject:
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			var props: Dictionary = nodepath_to_keys.get(target_nodepath)
 			if existing_node != null:
-				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props))
+				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props) + "/" + str(props.has("name")))
 				virtual_unity_object.apply_node_props(existing_node, props)
+				if target_nodepath == NodePath(".") and props.has("name"):
+					print("Applying name " + str(props.get("name")))
+					existing_node.name = props.get("name")
 			else:
 				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(props))
 
@@ -1044,11 +1081,11 @@ class UnityPrefabInstance extends UnityGameObject:
 					godot_skeleton = target_parent_obj.get_parent()
 				for comp in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 					if comp.type == "Rigidbody":
-						var physattach: PhysicalBone3D = self.rigidbody.create_physical_bone(state, godot_skeleton, target_skel_bone)
+						var physattach: PhysicalBone3D = comp.create_physical_bone(state, godot_skeleton, target_skel_bone)
 						state.body = physattach
 						attachment = physattach
 						state.add_fileID(attachment, gameobject_asset)
-						self.rigidbody.configure_node(physattach)
+						comp.configure_node(physattach)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
 						#state.fileid_to_nodepath[transform_asset.fileID] = gameobject_asset.fileID
 				if attachment == null:
@@ -1059,6 +1096,9 @@ class UnityPrefabInstance extends UnityGameObject:
 						attachment.bone_name = target_skel_bone
 						state.add_child(attachment, godot_skeleton, gameobject_asset)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
+			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
+				if component.type == "MeshFilter":
+					gameobject_asset.meshFilter = component
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				var tmp = component.create_godot_node(state, attachment)
 				component.configure_node(tmp)
@@ -1306,26 +1346,45 @@ class UnityTransform extends UnityComponent:
 
 	var skeleton_bone_index: int = -1
 	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const BAS_FLIP_X: Basis = Basis.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
 
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node3D:
 		return null
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		print("Node " + str(node.name) + " uprops " + str(uprops))
 		var outdict = convert_properties_component(node, uprops)
-		var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
-		if typeof(pos_vec) == TYPE_VECTOR3:
-			outdict["translation"] = FLIP_X.affine_inverse() * pos_vec * FLIP_X
+		if uprops.has("m_LocalPosition.x"):
+			outdict["translation:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
+		if uprops.has("m_LocalPosition.y"):
+			outdict["translation:y"] = 1.0 * uprops.get("m_LocalPosition.y")
+		if uprops.has("m_LocalPosition.z"):
+			outdict["translation:z"] = 1.0 * uprops.get("m_LocalPosition.z")
+		if uprops.has("m_LocalPosition"):
+			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
+			outdict["translation"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUAT:
-			outdict["_quaternion"] = rot_vec
-		var scale: Variant = get_vector(uprops, "m_LocalScale")
-		if typeof(scale) == TYPE_VECTOR3:
-			if scale.x > -1e-7 && scale.x < 1e-7:
-				scale.x = 1e-7
-			if scale.y > -1e-7 && scale.y < 1e-7:
-				scale.y = 1e-7
-			if scale.z > -1e-7 && scale.z < 1e-7:
-				scale.z = 1e-7
+			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quat()
+		var tmp: float
+		if uprops.has("m_LocalScale.x"):
+			tmp = 1.0 * uprops.get("m_LocalScale.x")
+			outdict["scale:x"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
+		if uprops.has("m_LocalScale.y"):
+			tmp = 1.0 * uprops.get("m_LocalScale.y")
+			outdict["scale:y"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
+		if uprops.has("m_LocalScale.z"):
+			tmp = 1.0 * uprops.get("m_LocalScale.z")
+			outdict["scale:z"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
+		if uprops.has("m_LocalScale"):
+			var scale: Variant = get_vector(uprops, "m_LocalScale")
+			if typeof(scale) == TYPE_VECTOR3:
+				if scale.x > -1e-7 && scale.x < 1e-7:
+					scale.x = 1e-7
+				if scale.y > -1e-7 && scale.y < 1e-7:
+					scale.y = 1e-7
+				if scale.z > -1e-7 && scale.z < 1e-7:
+					scale.z = 1e-7
 			outdict["scale"] = scale
 		return outdict
 
@@ -1403,7 +1462,7 @@ class UnityCollider extends UnityBehaviour:
 		return new_node
 
 	# TODO: Colliders are complicated because of the transform hierarchy issue above.
-	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+	func convert_properties_collider(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		var complex_xform: Node3D = node.get_node("__xform_storage")
 		var center: Vector3 = Vector3()
@@ -1443,7 +1502,7 @@ class UnityBoxCollider extends UnityCollider:
 		return bs
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
+		var outdict = self.convert_properties_collider(node, uprops)
 		outdict["shape:size"] = get_vector(uprops, "m_Size")
 		return outdict
 
@@ -1453,8 +1512,9 @@ class UnitySphereCollider extends UnityCollider:
 		return bs
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
+		var outdict = self.convert_properties_collider(node, uprops)
 		outdict["shape:radius"] = uprops.get("m_Radius", null)
+		print("**** SPHERE COLLIDER RADIUS " + str(outdict))
 		return outdict
 
 class UnityCapsuleCollider extends UnityCollider:
@@ -1471,7 +1531,7 @@ class UnityCapsuleCollider extends UnityCollider:
 			return Basis(Vector3(PI/2.0, 0.0, 0.0))
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
+		var outdict = self.convert_properties_collider(node, uprops)
 		outdict["shape:radius"] = uprops.get("m_Radius", null)
 		var radius = node.shape.radius
 		if typeof(uprops.get("m_Radius")) != TYPE_NIL:
@@ -1497,7 +1557,7 @@ class UnityMeshCollider extends UnityCollider:
 			return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
+		var outdict = self.convert_properties_collider(node, uprops)
 		var new_convex = node.shape is ConvexPolygonShape3D
 		if uprops.has("m_Convex"):
 			new_convex = uprops.get("m_Convex", new_convex)
@@ -1505,26 +1565,33 @@ class UnityMeshCollider extends UnityCollider:
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
 			var new_mesh: Mesh = null
-			if mesh_ref[1] == 0:
-				var mf: UnityMeshFilter = gameObject.meshFilter
-				if mf != null:
-					new_mesh = meta.get_godot_resource(gameObject.meshFilter.mesh)
+			if mesh_ref[1] == 0 and (is_stripped or gameObject.is_stripped):
+				pass
 			else:
-				new_mesh = meta.get_godot_resource(mesh_ref)
-			if new_mesh != null:
-				if new_convex:
-					outdict["shape"] = meta.get_godot_resource(new_mesh).create_convex_shape()
+				if mesh_ref[1] == 0:
+					if is_stripped or gameObject.is_stripped:
+						push_error("Oh no i am stripped MC")
+					var mf: Reference = gameObject.get_meshFilter()
+					if mf != null:
+						new_mesh = meta.get_godot_resource(mf.mesh)
 				else:
-					outdict["shape"] = meta.get_godot_resource(new_mesh).create_trimesh_shape()
+					new_mesh = meta.get_godot_resource(mesh_ref)
+				if new_mesh != null:
+					if new_convex:
+						outdict["shape"] = new_mesh.create_convex_shape()
+					else:
+						outdict["shape"] = new_mesh.create_trimesh_shape()
 			
 		return outdict
 
 	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
 		var ret = uprops.get("m_Mesh", [null,0,"",null])
 		if ret[1] == 0:
-			var mf: UnityMeshFilter = gameObject.meshFilter
+			if is_stripped or gameObject.is_stripped:
+				push_error("Oh no i am stripped MCgm")
+			var mf: Reference = gameObject.get_meshFilter()
 			if mf != null:
-				return gameObject.meshFilter.mesh
+				return mf.mesh
 		return ret
 
 class UnityRigidbody extends UnityComponent:
@@ -1597,7 +1664,9 @@ class UnityMeshRenderer extends UnityRenderer:
 		new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(self.mesh)
 
-		var mf: UnityMeshFilter = gameObject.meshFilter
+		if is_stripped or gameObject.is_stripped:
+			push_error("Oh no i am stripped MRcgno")
+		var mf: Reference = gameObject.get_meshFilter()
 		if mf != null:
 			state.add_fileID(new_node, mf)
 		var idx: int = 0
@@ -1645,7 +1714,9 @@ class UnityMeshRenderer extends UnityRenderer:
 		get:
 			return get_mesh()
 	func get_mesh() -> Array: # UnityRef
-		var mf: UnityMeshFilter = gameObject.meshFilter
+		if is_stripped or gameObject.is_stripped:
+			push_error("Oh no i am stripped MR")
+		var mf: Reference = gameObject.get_meshFilter()
 		if mf != null:
 			return mf.mesh
 		return [null,0,"",null]
@@ -2060,6 +2131,10 @@ class UnityModelImporter extends UnityAssetImporter:
 	var useFileScale: bool:
 		get:
 			return keys.get("meshes").get("useFileScale", 0) == 1
+
+	var extractLegacyMaterials: bool:
+		get:
+			return keys.get("materials").get("materialLocation", 0) == 0
 
 	var globalScale: float:
 		get:

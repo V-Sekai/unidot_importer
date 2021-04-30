@@ -64,6 +64,18 @@ func toposort_prefab_dependency_guids() -> Array:
 	toposort_prefab_recurse(self, tt)
 	return tt.output
 
+static func toposort_prefab_recurse_toplevel(guid_to_meta):
+	var tt: TopsortTmp = TopsortTmp.new()
+	for target_guid in guid_to_meta:
+		if not tt.visited.has(target_guid):
+			tt.visited[target_guid] = true
+			var child_meta: Resource = guid_to_meta.get(target_guid)
+			if child_meta == null:
+				push_error("Unable to find dependency " + str(target_guid))
+			else:
+				child_meta.toposort_prefab_recurse(child_meta, tt)
+	return tt.output
+
 # Expected to be called in topological order
 func calculate_prefab_nodepaths():
 	#if not is_toplevel:

@@ -6,6 +6,7 @@ const tarfile: GDScript = preload("./tarfile.gd")
 const import_worker_class: GDScript = preload("./import_worker.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
+const asset_meta_class: GDScript = preload("./asset_meta.gd")
 const static_storage: GDScript = preload("./static_storage.gd")
 
 const STATE_DIALOG_SHOWING = 0
@@ -279,8 +280,19 @@ func _editor_filesystem_scan_tick():
 			asset_models = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MODELS:
 			tree_dialog_state = STATE_IMPORTING_PREFABS
+			var guid_to_meta = {}.duplicate()
+			var guid_to_tw = {}.duplicate()
 			for tw in asset_prefabs:
-				start_godot_import(tw)
+				guid_to_meta[tw.asset.guid] = tw.asset.parsed_meta
+				guid_to_tw[tw.asset.guid] = tw
+			var toposorted: Array = asset_meta_class.toposort_prefab_recurse_toplevel(guid_to_meta)
+			var tmpprint: Array = [].duplicate()
+			for meta in toposorted:
+				tmpprint.push_back(meta.path)
+			print("Toposorted prefab dependencies: " + str(tmpprint))
+			for meta in toposorted:
+				if guid_to_tw.has(meta.guid):
+					start_godot_import(guid_to_tw.get(meta.guid))
 			asset_prefabs = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
 			tree_dialog_state = STATE_IMPORTING_SCENES

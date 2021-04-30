@@ -10,6 +10,7 @@ var object_adapter = unity_object_adapter_class.new()
 
 class ParseState:
 	var scene: Node
+	var toplevel_node: Node
 	var metaobj: Resource
 	var source_file_path: String
 	var external_objects_by_id: Dictionary = {}.duplicate() # fileId -> UnityRef Array
@@ -32,6 +33,8 @@ class ParseState:
 	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
 	var use_scene_root: bool = true
+	var mesh_is_toplevel: bool = false
+	var extractLegacyMaterials: bool = false
 
 	# Do we actually need this? Ordering?
 	#var materials = [].duplicate()
@@ -43,12 +46,29 @@ class ParseState:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
 		return source_file_path.get_basename() + "." + sanitized_name + extension
 
+	func get_materials_path(material_name: String) -> String:
+		# return source_file_path.get_basename() + "." + str(fileId) + extension
+		return source_file_path.get_base_dir() + "/Materials/" + str(material_name) + ".mat.tres"
+
 	func sanitize_bone_name(bone_name: String) -> String:
 		# Note: Spaces do not add _, but captial characters do??? Let's just clean everything for now.
 		print ("todo postimp bone replace " + str(bone_name))
 		var xret = bone_name.replace("/", "").replace(":", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
 		print ("todone postimp bone replace " + str(xret))
 		return xret
+
+	func fold_transforms_into_mesh(node: Node3D, p_transform: Transform = Transform.IDENTITY) -> Node3D:
+		var transform: Transform = p_transform * node.transform
+		if node is VisualInstance3D:
+			node.transform = transform
+			return node
+		node.transform = Transform.IDENTITY
+		var result: Node3D = null
+		for child in node.get_children():
+			var ret: Node3D = fold_transforms_into_mesh(child, transform)
+			if ret != null:
+				result = ret
+		return result
 
 	func iterate(node: Node):
 		var sm = StandardMaterial3D.new()
@@ -103,8 +123,8 @@ class ParseState:
 							fileid_to_skeleton_bone[fileId] = og_bone_name
 			elif path == NodePath("RootNode"):
 				pass
-			elif node_name not in nodes_by_name and (path != NodePath(".") or use_scene_root):
-				if path == NodePath("."):
+			elif node_name not in nodes_by_name and (node != toplevel_node or use_scene_root):
+				if node == toplevel_node:
 					node_name = ""
 				if node is BoneAttachment3D:
 					node_name = sanitize_bone_name(node.bone_name)
@@ -113,14 +133,18 @@ class ParseState:
 				print("Found node " + str(node_name) + " : " + str(scene.get_path_to(node)))
 				nodes_by_name[node_name] = node
 				fileId = objtype_to_name_to_id.get("Transform", {}).get(node_name, 0)
-				if fileId == 0:
+				if node == toplevel_node:
+					pass # Transform nodes always point to the toplevel node.
+				elif fileId == 0:
 					push_error("Missing fileId for Transform " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
 				fileId = objtype_to_name_to_id.get("GameObject", {}).get(node_name, 0)
-				if fileId == 0:
+				if node == toplevel_node:
+					pass # GameObject nodes always point to the toplevel node.
+				elif fileId == 0:
 					push_error("Missing fileId for GameObject " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
@@ -144,7 +168,9 @@ class ParseState:
 						push_error("No Skeleton exists for SkinnedMeshRenderer " + str(node_name))
 				var mesh: Mesh = node.mesh
 				# FIXME: mesh_name is broken on master branch, maybe 3.2 as well.
-				var mesh_name: String = mesh.resource_name
+				var mesh_name: String = str(mesh.resource_name)
+				if mesh_name.begins_with("Root Scene_"):
+					mesh_name = mesh_name.substr(11)
 				if is_obj:
 					mesh_name = "default"
 				if  meshes_by_name.has(mesh_name):
@@ -160,6 +186,8 @@ class ParseState:
 						if mat == null:
 							continue
 						var mat_name: String = mat.resource_name
+						if mat_name == "DefaultMaterial":
+							mat_name = "No Name"
 						if is_obj:
 							mat_name = "default"
 						if materials_by_name.has(mat_name):
@@ -169,10 +197,12 @@ class ParseState:
 							continue
 						materials_by_name[mat_name] = mat
 						fileId = objtype_to_name_to_id.get("Material", {}).get(mat_name, 0)
-						if fileId == 0:
+						if not extractLegacyMaterials and fileId == 0:
 							push_error("Missing fileId for Material " + str(mat_name))
 						else:
-							if external_objects_by_id.has(fileId):
+							if extractLegacyMaterials:
+								mat = load(get_materials_path(mat_name))
+							elif external_objects_by_id.has(fileId):
 								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 							else:
 								var respath: String = get_resource_path(mat_name, ".res")
@@ -388,6 +418,7 @@ func post_import(p_scene: Node) -> Object:
 	ps.source_file_path = source_file_path
 	ps.metaobj = metaobj
 	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
+	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials").get("materialLocation", 0) == 0
 	ps.is_obj = is_obj
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
@@ -407,8 +438,12 @@ func post_import(p_scene: Node) -> Object:
 			#	obj_name = obj_name.substr(2)
 		var fileId: int = int(str(fileIdStr).to_int())
 		var type: String = str(object_adapter.to_classname(fileId / 100000))
-		if (type == "Transform" or type == "GameObject" or type == "MeshRenderer"
-				or type == "MeshFilter" or type == "SkinnedMeshRenderer" or type == "Animator"):
+		if (type == "Transform" or type == "GameObject" or type == "Animator"):
+			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
+			obj_name = ps.sanitize_bone_name(obj_name)
+		elif (type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer"):
+			if obj_name.is_empty():
+				ps.mesh_is_toplevel = true
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			obj_name = ps.sanitize_bone_name(obj_name)
 		if not ps.objtype_to_name_to_id.has(type):
@@ -420,7 +455,19 @@ func post_import(p_scene: Node) -> Object:
 
 	print("Ext objs by id: "+ str(ps.external_objects_by_id))
 	print("objtype name by id: "+ str(ps.objtype_to_name_to_id))
-	ps.iterate(p_scene)
+	ps.toplevel_node = p_scene
+	p_scene.name = source_file_path.get_file().get_basename()
+	if ps.mesh_is_toplevel:
+		var new_toplevel: Node3D = ps.fold_transforms_into_mesh(ps.toplevel_node)
+		if new_toplevel != null:
+			ps.toplevel_node.transform = new_toplevel.transform
+			new_toplevel.transform = Transform.IDENTITY
+			ps.toplevel_node = new_toplevel
+
+	# GameObject references always point to the toplevel node:
+	ps.fileid_to_nodepath[ps.objtype_to_name_to_id.get("GameObject", {}).get("", 0)] = NodePath(".")
+	ps.fileid_to_nodepath[ps.objtype_to_name_to_id.get("Transform", {}).get("", 0)] = NodePath(".")
+	ps.iterate(ps.toplevel_node)
 
 	for fileId in ps.fileid_to_nodepath:
 		# Guaranteed for imported files

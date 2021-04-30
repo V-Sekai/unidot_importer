@@ -50,13 +50,15 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		arr.sort_custom(smallestTransform)
 		arr = [arr[0]]
 	else:
-		#scene_contents = Node3D.new()
-		#scene_contents.name = "RootNode3D"
-		var tmpps: PackedScene = load("res://Assets/2A-7-4/XXXX/testscene1 - Copy.tscn")
-		scene_contents = tmpps.instance(PackedScene.GEN_EDIT_STATE_MAIN)
-		scene_contents.remove_child(scene_contents.find_node("XXXX_lc_200522VRC"))
-		scene_contents.remove_child(scene_contents.find_node("Main Camera"))
-		scene_contents.remove_child(scene_contents.find_node("Directional Light"))
+		
+		
+		scene_contents = Node3D.new()
+		scene_contents.name = "RootNode3D"
+		#var tmpps: PackedScene = load("res://Assets/2A-7-4/XXXX/testscene1 - Copy.tscn")
+		#scene_contents = tmpps.instance(PackedScene.GEN_EDIT_STATE_MAIN)
+		#scene_contents.remove_child(scene_contents.find_node("XXXX_lc_200522VRC"))
+		#scene_contents.remove_child(scene_contents.find_node("Main Camera"))
+		#scene_contents.remove_child(scene_contents.find_node("Directional Light"))
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 

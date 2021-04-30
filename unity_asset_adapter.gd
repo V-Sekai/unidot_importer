@@ -235,6 +235,7 @@ class BaseModelHandler extends AssetHandler:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
+		cfile.set_value("params", "nodes/root_name", "Root Sccene")
 		# addCollider???? TODO
 		
 		# ??? animation/optimizer setting seems to be missing?
@@ -299,6 +300,9 @@ class FbxHandler extends BaseModelHandler:
 		pkgasset.parsed_meta.internal_data["output_fbx_scale"] = output_scale
 		return output_scale
 
+	func convert_to_float(s: String) -> Variant:
+		return s.to_float()
+
 	func _preprocess_fbx_scale(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
 		var filename: String = pkgasset.pathname
 		if useFileScale and is_equal_approx(globalScale, 1.0):
@@ -353,6 +357,7 @@ class FbxHandler extends BaseModelHandler:
 				spb.put_float(new_scale)
 			return spb.data_array
 		else:
+			str(str(typeof(fbx_file_binary)) + "/" + str(fbx_file_binary))
 			var buffer_as_ascii: String = fbx_file_binary.get_string_from_ascii()
 			var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
 			if scale_factor_pos == -1:
@@ -364,7 +369,13 @@ class FbxHandler extends BaseModelHandler:
 				push_error(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
 				return output_buf
 
-			var scale: float = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges().to_float()
+			var scale_string: Variant = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
+			print("Scale as string is " + str(scale_string))
+			var scale: float = convert_to_float(str(scale_string + str(NodePath())))
+			print("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
+			print(str(scale_string + str(NodePath())).to_float())
+			print("Scale is " + str(scale))
+			print("Also Scale is " + str(scale + 0.0))
 			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
 			print(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
 					" (Scale Factor = " + str(globalScale) +
