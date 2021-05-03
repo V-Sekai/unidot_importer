@@ -1,0 +1,533 @@
+extends Reference
+# -!- coding: utf-8 -!-
+#
+# Copyright 2016 Hector Martin <marcan@marcan.st>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#	 http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+const object_adapter_class: GDScript = preload("../unity_object_adapter.gd")
+
+var object_adapter = object_adapter_class.new()
+
+const baseStrings: Dictionary = {
+	0: "AABB",
+	5: "AnimationClip",
+	19: "AnimationCurve",
+	34: "AnimationState",
+	49: "Array",
+	55: "Base",
+	60: "BitField",
+	69: "bitset",
+	76: "bool",
+	81: "char",
+	86: "ColorRGBA",
+	106: "data",
+	117: "double",
+	138: "FastPropertyName",
+	155: "first",
+	161: "float",
+	167: "Font",
+	172: "GameObject",
+	183: "Generic Mono",
+	208: "GUID",
+	222: "int",
+	226: "list",
+	231: "long long",
+	241: "map",
+	245: "Matrix4x4f",
+	262: "NavMeshSettings",
+	263: "MonoBehaviour",
+	277: "MonoScript",
+	299: "m_Curve",
+	307: "m_EditorClassIdentifier",
+	331: "m_EditorHideFlags",
+	349: "m_Enabled",
+	374: "m_GameObject",
+	427: "m_Name",
+	434: "m_ObjectHideFlags",
+	452: "m_PrefabInternal",
+	469: "m_PrefabParentObject",
+	490: "m_Script",
+	499: "m_StaticEditorFlags",
+	519: "m_Type",
+	526: "m_Version",
+	536: "Object",
+	543: "pair",
+	548: "PPtr<Component>",
+	564: "PPtr<GameObject>",
+	581: "PPtr<Material>",
+	596: "PPtr<MonoBehaviour>",
+	616: "PPtr<MonoScript>",
+	633: "PPtr<Object>",
+	646: "PPtr<Prefab>",
+	659: "PPtr<Sprite>",
+	672: "PPtr<TextAsset>",
+	688: "PPtr<Texture>",
+	702: "PPtr<Texture2D>",
+	718: "PPtr<Transform>",
+	734: "Prefab",
+	741: "Quaternionf",
+	753: "Rectf",
+	778: "second",
+	785: "set",
+	789: "short",
+	795: "size",
+	800: "SInt16",
+	807: "SInt32",
+	814: "SInt64",
+	840: "string",
+	847: "TextAsset",
+	857: "TextMesh",
+	866: "Texture",
+	874: "Texture2D",
+	884: "Transform",
+	894: "TypelessData",
+	907: "UInt16",
+	928: "UInt8",
+	934: "unsigned int",
+	947: "unsigned long long",
+	966: "unsigned short",
+	981: "vector",
+	988: "Vector2f",
+	997: "Vector3f",
+	1006: "Vector4f",
+}
+
+class Stream extends StreamPeerBuffer:
+	var d: PackedByteArray = self.data_array
+	var align_off: int = 0
+	func _init(d: PackedByteArray, p: int=0):
+		self.d = d
+		self.data_array = d
+		self.seek(p)
+	func tell() -> int:
+		return self.get_position()
+	func seek_end(p: int) -> void:
+		self.seek(self.get_size() - p)
+	func skip(off: int) -> void:
+		self.seek(self.get_position() + off)
+	func read(cnt: int=-1):
+		if cnt == -1:
+			cnt = self.get_size() - self.get_position()
+		return self.get_data(cnt)[1]
+	func align(n: int):
+		var old_pos: int = self.tell()
+		var new_pos: int = ((old_pos - self.align_off + n - 1) & ~(n - 1)) + self.align_off
+		#if old_pos != new_pos:
+		#	print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
+		self.seek(new_pos)
+	func read_str() -> String:
+		var initial_pos: int = self.get_position()
+		for i in range(initial_pos, self.get_size()):
+			if d[i] == 0:
+				# automatically Nul-terminates.
+				self.seek(i + 1)
+				return self.d.subarray(initial_pos, i).get_string_from_ascii()
+		return self.d.subarray(initial_pos, self.get_size() - 1).get_string_from_ascii()
+
+
+class Def extends Reference:
+	var children: Array = [].duplicate()
+	var name: String = ""
+	var type_name: String = ""
+	var size: int = 0
+	var flags: int = 0
+	var array: bool = false
+	func _init(name: String, type_name: String, size: int, flags: int, array: bool):
+		self.children = [].duplicate()
+		self.name = name
+		self.type_name = type_name
+		self.size = size
+		self.flags = flags
+		self.array = array
+	
+	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array) -> Variant:
+		var x: int = s.tell()
+		if self.array:
+			if self.children.is_empty():
+				push_error("Children is empty for " + str(name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+				return []
+			#print "a", self.name
+			size = self.children[0].read(s, referenced_guids, referenced_reftypes)
+			if not (size < 10000000):
+				push_error("Attempting to read " + str(size) + " in array " + str(name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+				return []
+			if self.children[1].type_name == "UInt8" or self.children[1].type_name == "char":
+				#print "s", size
+				var ret: String = s.read(size).get_string_from_utf8()
+				#print("reading string @" + str(x) + " " + self.name + "/" + self.type_name + ": " + ret)
+				return ret
+			else:
+				var arr: Array = [].duplicate()
+				for i in range(size):
+					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+				#print("reading arr @" + str(x) + " " + self.name + "/" + self.type_name + ": " + str(arr))
+				return arr
+		elif not self.children.is_empty():
+			#print "o", self.name
+			var v: Dictionary = {}.duplicate()
+			for i in self.children:
+				v[i.name] = i.read(s, referenced_guids, referenced_reftypes)
+			match self.type_name:
+				"string":
+					if v.has("Array"):
+						#print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+						return v.get("Array")
+				"ColorRGBA":
+					#print("reading color @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
+				"Vector2f":
+					#print("reading vec2 @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					return Vector2(v.get("x"), v.get("y"))
+				"Vector3f":
+					#print("reading vec3 @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					return Vector3(v.get("x"), v.get("y"), v.get("z"))
+				"Rectf":
+					#print("reading rect @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					return Rect2(v.get("x"), v.get("y"), v.get("width"), v.get("height"))
+				"Vector4f", "Quaternionf":
+					#print("reading quat @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					return Quat(v.get("x"), v.get("y"), v.get("z"), v.get("w"))
+				"GUID":
+					return "%08x%08x%08x%08x" % [v.get("data[0]"), v.get("data[1]"), v.get("data[2]"), v.get("data[3]")]
+				_:
+					#if v.has("propertyPath") and v.has("value"):
+					#	v["value"] = parseValue(v.get("value"))
+					if v.has("Array"):
+						#print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+						return v.get("Array")
+					if self.type_name.begins_with("PPtr"):
+						if v.get("m_PathID", 0) == 0:
+							return [null, v.get("m_PathID", 0), null, 0]
+						elif v.get("m_FileID", 0) >= len(referenced_guids) or v.get("m_FileID", 0) < 0:
+							push_error("Asset " + self.name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
+						else:
+							return [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
+			return v
+		else:
+			s.align(min(self.size,4))
+			var ret: Variant = null
+			match self.type_name:
+				"signed char", "SInt8":
+					ret = s.get_u8()
+					s.skip(self.size - 1)
+				"unsigned char", "char", "UInt8":
+					ret = s.get_u8()
+					s.skip(self.size - 1)
+				"bool":
+					ret = s.get_u8() != 0
+					s.skip(self.size - 1)
+				"SInt16", "short":
+					ret = s.get_16()
+					s.skip(self.size - 2)
+				"SInt32", "int", "long":
+					ret = s.get_32()
+					s.skip(self.size - 4)
+				"SInt64", "int64", "long long":
+					ret = s.get_64()
+					s.skip(self.size - 8)
+				"UInt16", "unsigned short":
+					ret = s.get_u16()
+					s.skip(self.size - 2)
+				"UInt32", "unsigned int":
+					ret = s.get_u32()
+					s.skip(self.size - 4)
+				"UInt64", "unsigned long long":
+					ret = s.get_u64()
+					s.skip(self.size - 8)
+				"float":
+					ret = s.get_float()
+					s.skip(self.size - 4)
+				"double":
+					ret = s.get_double()
+					s.skip(self.size - 8)
+				_:
+					s.skip(self.size)
+			#print("reading @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(ret))
+			return ret
+
+	func append(d: Variant) -> void:
+		self.children.push_back(d)
+
+
+var s: Stream = null
+var off: int = 0
+var table_size: int = 0
+var data_end: int = 0
+var file_gen: int = 0
+var data_offset: int = 0
+var version: String = ""
+var platform: int = 0
+var class_ids: Array = [].duplicate()
+var defs: Array = [].duplicate()
+var referenced_guids: Array = [].duplicate()
+var referenced_reftypes: Array = [].duplicate()
+var objs: Array = [].duplicate()
+
+var meta: Reference = null
+
+func _init(meta: Reference, file_contents: PackedByteArray):
+	self.meta = meta
+	self.s = Stream.new(file_contents)
+	#t = self.s.read_str() # UnityRaw? or no?
+	#stream_ver = s.get_32()
+	#unity_version = self.s.read_str()
+	#unity_revision = self.s.read_str()
+
+	#size = s.get_32()
+	#hdr_size = s.get_32()
+	#count1 = s.get_32()
+	#count2 = s.get_32()
+	#ptr = hdr_size
+	#self.s.read(count2 * 8)
+	#if stream_ver >= 2:
+	#	self.s.read(4)
+	#if stream_ver >= 3:
+	#	data_hdr_size = s.get_32()
+	#	ptr += data_hdr_size
+	#self.s.seek(ptr)
+	#self.s = Stream(self.s.read())
+
+	self.off = self.s.tell() # always 0
+	self.s.align_off = self.off
+
+	s.big_endian = true
+	self.table_size = s.get_u32()
+	self.data_end = s.get_u32()
+	self.file_gen = s.get_u32()
+	self.data_offset = s.get_u32()
+	s.big_endian = false
+	self.s.read(4)
+	self.version = self.s.read_str()
+	self.platform = s.get_32()
+	self.class_ids = []
+	# print("table size " + str(table_size) + " data end " + str(data_end) + " file gen " + str(file_gen) + " data offset " + str(data_offset) + " version " + str(version) + " platform " + str(platform))
+	self.defs = self.decode_defs()
+	var obj_headers: Array = self.decode_data_headers()
+	self.decode_guids()
+	self.objs = self.decode_data(obj_headers)
+
+func decode_defs() -> Array:
+	var are_defs: bool = s.get_8() != 0
+	var count: int = s.get_32()
+	var defs: Array = [].duplicate()
+	for i in range(count):
+		var def = self.decode_attrtab()
+		defs.push_back(def)
+	return defs
+
+#func decode_guids_backwards() -> void:
+#	var pos: int = s.tell()
+#	s.seek(table_size - 1)
+#	while true:
+#		# String search
+#		while s.get_u8() != 0:
+#			s.seek(s.tell() - 2)
+#		s.seek(s.tell() - 3 - 16)
+#		var guid: String = ""
+#		for i in range(16):
+#			var guidchr: int = s.get_u8()
+#			guid = "%01X%01X" % [guidchr & 15, guidchr >> 4] + guid
+#		s.seek(s.tell() - 1 - 16)
+#		referenced_reftypes.push_back(s.get_u8())
+#		s.seek(s.tell() - 2)
+
+func decode_guids() -> void:
+	# 02 00 00 00 01 00 00 00 5B 21 F1 AA FF FF FF FF 02 00 00 00 FA 19 14 BD FF FF FF FF
+	var unkcount: int = s.get_32()
+	s.skip(12 * unkcount)
+	var count: int = s.get_32()
+	# print("referenced guids count " + str(count) + " at " + str(s.tell()))
+	# null GUID is implied!
+	referenced_guids.push_back(null)
+	referenced_reftypes.push_back(0)
+	for i in range(count):
+		s.get_u8()
+		var guid: String = ""
+		for i in range(16):
+			var guidchr: int = s.get_u8()
+			guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
+		referenced_reftypes.push_back(s.get_u32())
+		var path: String = s.read_str()
+		referenced_guids.push_back(guid)
+
+func decode_data_headers() -> Array:
+	var count: int = s.get_u32()
+	var obj_headers: Array = [].duplicate()
+	if not (count < 1024000):
+		push_error("Invalid count " + str(count))
+		count = 0
+	for i in range(count):
+		self.s.align(4)
+		var pathId: int = -1
+		var size: int = 0
+		var off: int = 0
+		var type_id: int = 0
+		var class_id: int = 0
+		var unk: int = 0
+		if self.file_gen >= 17:
+			# dhdr = self.s.read(20)
+			pathId = s.get_u64()
+			off = s.get_u32()
+			size = s.get_u32()
+			type_id = s.get_u32()
+			class_id = self.class_ids[type_id]
+		else:
+			#dhdr = self.s.read(25)
+			pathId = s.get_u64()
+			off = s.get_u32()
+			size = s.get_u32()
+			type_id = s.get_u32()
+			class_id = s.get_u16()
+			s.get_u16()
+			unk = s.get_u8()
+		# print("pathid " + str(pathId) + " " + str(type_id) + " " + str(class_id))
+		obj_headers.push_back([off + self.data_offset + self.off, class_id, pathId, type_id])
+	return obj_headers
+
+func decode_data(obj_headers: Array) -> Array:
+	# print(str(referenced_guids) + " then " + str(referenced_reftypes))
+	var save: int = self.s.tell()
+	var objs: Array = [].duplicate()
+	for obj_header in obj_headers:
+		self.s.seek(obj_header[0])
+		var class_id: int = obj_header[1]
+		var path_id: int = obj_header[2]
+		var type_id: int = obj_header[3]
+		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes)
+		var type_name: String = self.defs[type_id].type_name
+		var is_stripped: bool = type_name == "EditorExtension"
+		if is_stripped:
+			type_name = object_adapter.to_classname(class_id)
+		var obj: Reference = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
+		obj.is_stripped = is_stripped
+		obj.keys = read_variant
+		if read_variant.has("m_SourcePrefab"):
+			meta.prefab_dependency_guids[read_variant.get("m_SourcePrefab")] = 1
+		if read_variant.has("m_ParentPrefab"):
+			meta.prefab_dependency_guids[read_variant.get("m_ParentPrefab")] = 1
+		objs.push_back(obj)
+	self.s.seek(save)
+	return objs
+
+func lookup_string(stab: PackedByteArray, name_off: int) -> String:
+	var stab_limit: int = len(stab) - 1
+	if name_off & 0x80000000:
+		return baseStrings.get(name_off & 0x7fffffff, str(name_off & 0x7fffffff))
+	else:
+		return str(stab.subarray(min(stab_limit, name_off), min(stab_limit, name_off + 100)).get_string_from_ascii())
+
+func decode_attrtab() -> Def:
+	var code: int = 0
+	var unk: int = 0
+	var unk2: int = 0
+	var ident: PackedByteArray = PackedByteArray()
+	var attr_cnt: int = 0
+	var stab_len: int = 0
+	if self.file_gen >= 14:
+		# hdr = self.s.read(31)
+		code = s.get_u32()
+		unk = s.get_u16()
+		unk2 = s.get_u8()
+		ident = s.read(16)
+		if unk2 == 0:
+			s.read(16)
+		attr_cnt = s.get_u32()
+		stab_len = s.get_u32()
+	else:
+		# hdr = self.s.read(28)
+		code = s.get_u32()
+		ident = s.read(16)
+		attr_cnt = s.get_u32()
+		stab_len = s.get_u32()
+	var guid: String = ""
+	for i in range(16):
+		var guidchr: int = ident[i]
+		guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
+	# print("attr code " + str(code) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
+	# print("attr code " + str(code) + " unk " + str(unk) + " ident " + str(ident) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
+	var attrs: PackedByteArray = self.s.read(attr_cnt*24)
+	var stab: PackedByteArray = self.s.read(stab_len)
+	var attrs_spb: StreamPeerBuffer = StreamPeerBuffer.new()
+	attrs_spb.data_array = attrs
+
+	var def: Def = null
+	if not (attr_cnt < 1024):
+		push_error("Invalid attr_count " + str(attr_cnt))
+		attr_cnt = 0
+	for i in range(attr_cnt):
+		var a1: int = attrs_spb.get_u8()
+		var a2: int = attrs_spb.get_u8()
+		var level: int = attrs_spb.get_u8()
+		var a4: int = attrs_spb.get_u8()
+		var type_off: int = attrs_spb.get_u32()
+		var name_off: int = attrs_spb.get_u32()
+		var size: int = attrs_spb.get_u32()
+		var idx: int = attrs_spb.get_u32()
+		var flags: int = attrs_spb.get_u32()
+		var name: String = lookup_string(stab, name_off)
+		var type_name: String = lookup_string(stab, type_off)
+		# print("code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " name " + str(name) + " type_name " + str(type_name) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
+		if size == 0xffffffff:
+			size = -1
+		if level > 0 and def == null:
+			push_error("Unable to recurse to level " + str(level) + " of null toplevel")
+		elif level > 0:
+			if not (level < 16):
+				push_error("Level is too large: " + str(level) + " of " + str(def.name) + "/" + str(def.type_name))
+				level = 1
+			var d: Def = def
+			for i in range(level - 1):
+				if len(d.children) == 0:
+					push_error("Unable to recurse to level " + str(level) + " of " + str(def.name) + "/" + str(def.type_name))
+					break
+				d = d.children[-1]
+			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
+			d.append(Def.new(name, type_name, size, flags, a4))
+		else:
+			if def == null:
+				def = Def.new(name, type_name, size, flags, a4)
+			else:
+				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
+		#print "%2x %2x %2x %20s %8x %8x %2d: %s%s" % (a1, a2, a4, type_name, size or -1, flags, idx, "  " * level, name)
+
+	if def == null:
+		push_error("Failed to find def")
+	self.class_ids.append(code)
+	return def
+
+#func load_image(fd):
+#	d = Asset(fd)
+#	texes = [i for i in d.objs if "image data" in i]
+#	for tex in texes:
+#		data = tex["image data"]
+#		if not data and "m_StreamData" in tex and d.fs:
+#			sd = tex["m_StreamData"]
+#			name = sd["path"].split("/")[-1]
+#			data = d.fs.files_by_name[name][sd["offset"]:][:sd["size"]]
+#			#print("Streamed")
+#		if not data:
+#			continue
+#		width, height, fmt = tex["m_Width"], tex["m_Height"], tex["m_TextureFormat"]
+#		if fmt == 7: # BGR565
+#			im = Image.frombytes("RGB", (width, height), data, "raw", "BGR;16")
+#		elif fmt == 13: # ABGR4444
+#			im = Image.frombytes("RGBA", (width, height), data, "raw", "RGBA;4B")
+#			r, g, b, a  = im.split()
+#			im = Image.merge("RGBA", (a, b, g, r))
+#		else:
+#			continue
+#		im = im.transpose(Image.FLIP_TOP_BOTTOM)
+#		return im
+#	else:
+#		raise Exception("No supported image formats")

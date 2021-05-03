@@ -254,7 +254,7 @@ class ParseState:
 							node.add_animation(anim_name, anim)
 						continue
 					animations_by_name[anim_name] = anim
-					fileId = objtype_to_name_to_id.get("AnimationClip", {}).get(anim_name, 0)
+					fileId = objtype_to_name_to_id.get("AnimationClip", {}).get(sanitize_bone_name(anim_name), 0)
 					if fileId == 0:
 						push_error("Missing fileId for Animation " + str(anim_name))
 					else:
@@ -438,7 +438,7 @@ func post_import(p_scene: Node) -> Object:
 			#	obj_name = obj_name.substr(2)
 		var fileId: int = int(str(fileIdStr).to_int())
 		var type: String = str(object_adapter.to_classname(fileId / 100000))
-		if (type == "Transform" or type == "GameObject" or type == "Animator"):
+		if (type == "Transform" or type == "GameObject" or type == "AnimationClip" or type == "Animator"):
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			obj_name = ps.sanitize_bone_name(obj_name)
 		elif (type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer"):

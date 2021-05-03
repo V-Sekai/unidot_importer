@@ -79,6 +79,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 		var is_vec2: bool = false
 		var is_color: bool = false
 		var is_vec3: bool = false
+		var is_rect: bool = false
 		var is_quat: bool = false
 		var value_ref: Array = [] # UnityRef
 		# UnityRef, Vector2, Vector3, Quaternion?
@@ -107,10 +108,13 @@ func parse_value(line: String, keyname: String) -> Variant:
 					value_vec3.y = value.to_float()
 					value_vec2.y = value.to_float()
 					is_vec2 = true
-				"z":
+				"z", "width":
 					value_quat.z = value.to_float()
 					value_vec3.z = value.to_float()
 					is_vec3 = true
+				"height":
+					value_quat.w = value.to_float()
+					is_rect = true
 				"w":
 					value_quat.w = value.to_float()
 					is_quat = true
@@ -142,6 +146,8 @@ func parse_value(line: String, keyname: String) -> Variant:
 				break
 		if is_quat:
 			return value_quat
+		elif is_rect:
+			return Rect2(value_quat.x, value_quat.y, value_quat.z, value_quat.w)
 		elif is_color:
 			return value_color
 		elif is_vec3:

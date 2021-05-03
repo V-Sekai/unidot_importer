@@ -115,9 +115,12 @@ class YamlHandler extends AssetHandler:
 		var buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		outfile.store_buffer(buf)
 		outfile.close()
-		var sf: Object = tarfile.StringFile.new()
-		sf.init(buf.get_string_from_utf8())
-		pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
+		if buf[8] == 0 and buf[9] == 0:
+			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_binary_asset(buf)
+		else:
+			var sf: Object = tarfile.StringFile.new()
+			sf.init(buf.get_string_from_utf8())
+			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
 		if pkgasset.parsed_asset == null:
 			push_error("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
 		print("Done with " + path + "/" + pkgasset.guid)

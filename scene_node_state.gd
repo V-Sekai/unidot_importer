@@ -175,9 +175,10 @@ class Skelley extends Reference:
 				bones.push_back(bone)
 		var idx: int = 0
 		for bone in bones:
-			if bone.is_stripped_or_prefab_instance:
+			if bone.is_stripped_or_prefab_instance():
 				# We do not know yet the full extent of the skeleton
 				uniq_key_to_bone[bone.uniq_key] = -1
+				print("bone " + bone.uniq_key + " is stripped " + str(bone.is_stripped) + " or prefab instance. CLEARING SKELETON")
 				contains_stripped_bones = true
 				godot_skeleton = null
 				continue

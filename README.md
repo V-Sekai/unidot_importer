@@ -5,6 +5,7 @@ A Unity compatibility layer and unitypackage importer for Godot.
 ## Features
 
 - Translates unity filetypes (such as .unity, .mat, etc) to Godot native scene or resource types.
+- Supports both binary and text YAML encoding
 - Implementation of an asset database for unity assets by GUID
 - Unitypackage importer and translation shim.
 - The Godot FBX importer is not yet feature complete. We rely on automatic FBX to glTF translation during unitypackage import using FBX2glTF.
@@ -39,4 +40,4 @@ Canvas / UI is not implemented.
 
 This tool is designed to assist with importing or translating source assets made for Unity Engine, and assumes text serialization (such as within a .unitypackage archive) as well as typical asset conventions (for example, an assumption that most files contain only one asset).
 
-Unidot solely translates existing usable source assets into equivalent Godot source assets. There are no plans to add functionality for decompiling binary assets or ripping unity content. That is not a goal of this project.
+Unidot solely translates existing usable source assets into equivalent Godot source assets. There are no plans to add functionality for decompiling asset bundles or ripping unity content. That is not a goal of this project.

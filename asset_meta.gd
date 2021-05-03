@@ -3,6 +3,7 @@ extends Resource
 
 const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const bin_parser_class: GDScript = preload("./deresuteme/decode.gd")
 
 class DatabaseHolder extends Reference:
 	var database: Resource = null
@@ -204,6 +205,27 @@ func get_godot_resource(unityref: Array) -> Resource:
 	#found_meta.godot_resources[local_id] = res
 	#return res
 	return null
+
+func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
+	var parsed = ParsedAsset.new()
+	print("Parsing " + str(guid))
+	var bin_parser = bin_parser_class.new(self, bytearray)
+	print("Parsed " + str(guid) + ":" + str(bin_parser) + " found " + str(len(bin_parser.objs)) + " objects and " + str(len(bin_parser.defs)) + " defs")
+	var next_basic_id: Dictionary = {}.duplicate()
+	var i = 0
+	for output_obj in bin_parser.objs:
+		i += 1
+		if self.main_object_id == 0:
+			push_error("We have no main_object_id but it should be " + str(output_obj.utype * 100000))
+			self.main_object_id = output_obj.utype * 100000
+		parsed.assets[output_obj.fileID] = output_obj
+		var new_basic_id: int = next_basic_id.get(output_obj.utype, output_obj.utype * 100000)
+		next_basic_id[output_obj.utype] = new_basic_id + 1
+		parsed.local_id_alias[new_basic_id] = output_obj.fileID
+
+	self.parsed = parsed
+	print("Done parsing!")
+	return parsed
 
 func parse_asset(file: Object) -> ParsedAsset:
 	var magic = file.get_line()

@@ -179,8 +179,9 @@ class UnityObject extends Reference:
 		if not has_trs:
 			return props
 
-		quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
-		translation = Vector3(-1, 1, 1) * translation
+		# FIXME: Don't we need to flip these???
+		#quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
+		#translation = Vector3(-1, 1, 1) * translation
 
 		matn = Transform(Basis(quat).scaled(scale), translation)
 
@@ -251,9 +252,9 @@ class UnityObject extends Reference:
 		print("key is " + str(key) + "; " + str(uprops))
 		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
 			var xreturn: Vector3 = Vector3(
-				uprops.get(key + ".x", 0.0),
-				uprops.get(key + ".y", 0.0),
-				uprops.get(key + ".z", 0.0))
+				str(uprops.get(key + ".x", 0.0)).to_float(),
+				str(uprops.get(key + ".y", 0.0)).to_float(),
+				str(uprops.get(key + ".z", 0.0)).to_float())
 			print("xreturn is " + str(xreturn))
 			return xreturn
 		return null
@@ -263,10 +264,10 @@ class UnityObject extends Reference:
 			return uprops.get(key)
 		if uprops.has(key + ".x") and uprops.has(key + ".y") and uprops.has(key + ".z") and uprops.has(key + ".w"):
 			return Quat(
-				uprops.get(key + ".x", 0.0),
-				uprops.get(key + ".y", 0.0),
-				uprops.get(key + ".z", 0.0),
-				uprops.get(key + ".w", 1.0))
+				str(uprops.get(key + ".x", 0.0)).to_float(),
+				str(uprops.get(key + ".y", 0.0)).to_float(),
+				str(uprops.get(key + ".z", 0.0)).to_float(),
+				str(uprops.get(key + ".w", 1.0)).to_float())
 		return null
 
 
@@ -817,8 +818,11 @@ class UnityGameObject extends UnityObject:
 
 		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 		for new_skelley in list_of_skelleys:
-			ret.add_child(new_skelley.godot_skeleton)
-			new_skelley.godot_skeleton.owner = state.owner
+			if not new_skelley.godot_skeleton:
+				push_error("Skelley " + str(new_skelley) + " is missing a godot_skeleton")
+			else:
+				ret.add_child(new_skelley.godot_skeleton)
+				new_skelley.godot_skeleton.owner = state.owner
 
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
@@ -1339,7 +1343,7 @@ class UnityComponent extends UnityObject:
 class UnityBehaviour extends UnityComponent:
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = {}
-		outdict["visible"] = uprops.get("m_Enabled")
+		outdict["visible"] = str(uprops.get("m_Enabled")).to_int() != 0
 		return outdict
 
 class UnityTransform extends UnityComponent:
@@ -1355,11 +1359,11 @@ class UnityTransform extends UnityComponent:
 		print("Node " + str(node.name) + " uprops " + str(uprops))
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_LocalPosition.x"):
-			outdict["translation:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
+			outdict["translation:x"] = -1.0 * str(uprops.get("m_LocalPosition.x")).to_float() # * FLIP_X
 		if uprops.has("m_LocalPosition.y"):
-			outdict["translation:y"] = 1.0 * uprops.get("m_LocalPosition.y")
+			outdict["translation:y"] = 1.0 * str(uprops.get("m_LocalPosition.y")).to_float()
 		if uprops.has("m_LocalPosition.z"):
-			outdict["translation:z"] = 1.0 * uprops.get("m_LocalPosition.z")
+			outdict["translation:z"] = 1.0 * str(uprops.get("m_LocalPosition.z")).to_float()
 		if uprops.has("m_LocalPosition"):
 			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
 			outdict["translation"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
@@ -1368,13 +1372,13 @@ class UnityTransform extends UnityComponent:
 			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quat()
 		var tmp: float
 		if uprops.has("m_LocalScale.x"):
-			tmp = 1.0 * uprops.get("m_LocalScale.x")
+			tmp = 1.0 * str(uprops.get("m_LocalScale.x")).to_float()
 			outdict["scale:x"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale.y"):
-			tmp = 1.0 * uprops.get("m_LocalScale.y")
+			tmp = 1.0 * str(uprops.get("m_LocalScale.y")).to_float()
 			outdict["scale:y"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale.z"):
-			tmp = 1.0 * uprops.get("m_LocalScale.z")
+			tmp = 1.0 * str(uprops.get("m_LocalScale.z")).to_float()
 			outdict["scale:z"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale"):
 			var scale: Variant = get_vector(uprops, "m_LocalScale")
@@ -1476,7 +1480,7 @@ class UnityCollider extends UnityBehaviour:
 			else:
 				outdict["translation"] = center
 		if uprops.has("m_Direction"):
-			basis = get_basis_from_direction(uprops.get("m_Direction"))
+			basis = get_basis_from_direction(str(uprops.get("m_Direction")).to_int())
 			if complex_xform != null:
 				outdict["transform"].transform = complex_xform.transform * Transform(basis, center)
 			else:
@@ -1513,7 +1517,8 @@ class UnitySphereCollider extends UnityCollider:
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
-		outdict["shape:radius"] = uprops.get("m_Radius", null)
+		if uprops.has("m_Radius"):
+			outdict["shape:radius"] = str(uprops.get("m_Radius")).to_float()
 		print("**** SPHERE COLLIDER RADIUS " + str(outdict))
 		return outdict
 
@@ -1532,12 +1537,12 @@ class UnityCapsuleCollider extends UnityCollider:
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
-		outdict["shape:radius"] = uprops.get("m_Radius", null)
 		var radius = node.shape.radius
 		if typeof(uprops.get("m_Radius")) != TYPE_NIL:
-			radius = uprops.get("m_Radius")
+			radius = str(uprops.get("m_Radius")).to_float()
+			outdict["shape:radius"] = radius
 		if typeof(uprops.get("m_Height")) != TYPE_NIL:
-			var adj_height: float = uprops.get("m_Height", null) - 2 * radius
+			var adj_height: float = str(uprops.get("m_Height")).to_float() - 2 * radius
 			if adj_height < 0.0:
 				adj_height = 0.0
 			outdict["shape:height"] = adj_height
@@ -1560,7 +1565,7 @@ class UnityMeshCollider extends UnityCollider:
 		var outdict = self.convert_properties_collider(node, uprops)
 		var new_convex = node.shape is ConvexPolygonShape3D
 		if uprops.has("m_Convex"):
-			new_convex = uprops.get("m_Convex", new_convex)
+			new_convex = str(uprops.get("m_Convex", 1 if new_convex else 0)).to_int() != 0
 			# We do not allow animating this without also changing m_Mesh.
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
@@ -1690,7 +1695,7 @@ class UnityMeshRenderer extends UnityRenderer:
 					outdict["_materials/" + str(idx)] = null
 				idx += 1
 		if uprops.has("m_Materials.Array.size"):
-			outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
+			outdict["_materials_size"] = str(uprops.get("m_Materials.Array.size")).to_int()
 		const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
 		for prop in uprops:
 			if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
