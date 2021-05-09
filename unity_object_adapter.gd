@@ -4,6 +4,21 @@ extends Reference
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
 const scene_node_state: GDScript = preload("./scene_node_state.gd")
 
+const STRING_KEYS: Dictionary = {
+	"value": 1,
+	"m_Name": 1,
+	"m_TagString": 1,
+	"name": 1,
+	"first": 1,
+	"propertyPath": 1,
+	"path": 1,
+	"attribute": 1,
+	"m_ShaderKeywords": 1,
+	"typelessdata": 1, # Mesh m_VertexData; Texture image data
+	"m_IndexBuffer": 1,
+	"Hash": 1,
+}
+
 func to_classname(utype: int) -> String:
 	var ret = utype_to_classname.get(utype, "")
 	if ret == "":
@@ -252,9 +267,9 @@ class UnityObject extends Reference:
 		print("key is " + str(key) + "; " + str(uprops))
 		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
 			var xreturn: Vector3 = Vector3(
-				str(uprops.get(key + ".x", 0.0)).to_float(),
-				str(uprops.get(key + ".y", 0.0)).to_float(),
-				str(uprops.get(key + ".z", 0.0)).to_float())
+				uprops.get(key + ".x", 0.0),
+				uprops.get(key + ".y", 0.0),
+				uprops.get(key + ".z", 0.0))
 			print("xreturn is " + str(xreturn))
 			return xreturn
 		return null
@@ -264,10 +279,10 @@ class UnityObject extends Reference:
 			return uprops.get(key)
 		if uprops.has(key + ".x") and uprops.has(key + ".y") and uprops.has(key + ".z") and uprops.has(key + ".w"):
 			return Quat(
-				str(uprops.get(key + ".x", 0.0)).to_float(),
-				str(uprops.get(key + ".y", 0.0)).to_float(),
-				str(uprops.get(key + ".z", 0.0)).to_float(),
-				str(uprops.get(key + ".w", 1.0)).to_float())
+				uprops.get(key + ".x", 0.0),
+				uprops.get(key + ".y", 0.0),
+				uprops.get(key + ".z", 0.0),
+				uprops.get(key + ".w", 1.0))
 		return null
 
 
@@ -999,11 +1014,20 @@ class UnityPrefabInstance extends UnityGameObject:
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
 			var obj_value: Array = mod.get("objectReference", [null,0,"",null])
-			var value: Variant = mod.get("value", 0)
+			var value: String = mod.get("value", "0")
 			var fileID: int = source_obj_ref[1]
 			if not fileID_to_keys.has(fileID):
 				fileID_to_keys[fileID] = {}.duplicate()
-			fileID_to_keys.get(fileID)[property_key] = (obj_value if obj_value[1] != 0 else value)
+			if STRING_KEYS.has(property_key):
+				fileID_to_keys.get(fileID)[property_key] = value
+			elif value.is_empty(): # if obj_value[1] != 0:
+				fileID_to_keys.get(fileID)[property_key] = obj_value
+			elif len(value) < 24 and value.is_valid_integer():
+				fileID_to_keys.get(fileID)[property_key] = value.to_int()
+			elif len(value) < 32 and value.is_valid_float():
+				fileID_to_keys.get(fileID)[property_key] = value.to_float()
+			else:
+				fileID_to_keys.get(fileID)[property_key] = value
 		for fileID in fileID_to_keys:
 			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID,
 					target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
@@ -1017,7 +1041,9 @@ class UnityPrefabInstance extends UnityGameObject:
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
-			if target_skel_bone.is_empty():
+			if target_skel_bone.is_empty() and existing_node == null:
+				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops))
+			elif target_skel_bone.is_empty():
 				if not nodepath_to_first_virtual_object.has(target_nodepath):
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
 					nodepath_to_keys[target_nodepath] = virtual_unity_object.convert_properties(existing_node, uprops)
@@ -1343,7 +1369,8 @@ class UnityComponent extends UnityObject:
 class UnityBehaviour extends UnityComponent:
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = {}
-		outdict["visible"] = str(uprops.get("m_Enabled")).to_int() != 0
+		if uprops.has("m_Enabled"):
+			outdict["visible"] = uprops.get("m_Enabled") != 0
 		return outdict
 
 class UnityTransform extends UnityComponent:
@@ -1359,11 +1386,11 @@ class UnityTransform extends UnityComponent:
 		print("Node " + str(node.name) + " uprops " + str(uprops))
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_LocalPosition.x"):
-			outdict["translation:x"] = -1.0 * str(uprops.get("m_LocalPosition.x")).to_float() # * FLIP_X
+			outdict["translation:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
 		if uprops.has("m_LocalPosition.y"):
-			outdict["translation:y"] = 1.0 * str(uprops.get("m_LocalPosition.y")).to_float()
+			outdict["translation:y"] = 1.0 * uprops.get("m_LocalPosition.y")
 		if uprops.has("m_LocalPosition.z"):
-			outdict["translation:z"] = 1.0 * str(uprops.get("m_LocalPosition.z")).to_float()
+			outdict["translation:z"] = 1.0 * uprops.get("m_LocalPosition.z")
 		if uprops.has("m_LocalPosition"):
 			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
 			outdict["translation"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
@@ -1372,13 +1399,13 @@ class UnityTransform extends UnityComponent:
 			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quat()
 		var tmp: float
 		if uprops.has("m_LocalScale.x"):
-			tmp = 1.0 * str(uprops.get("m_LocalScale.x")).to_float()
+			tmp = 1.0 * uprops.get("m_LocalScale.x")
 			outdict["scale:x"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale.y"):
-			tmp = 1.0 * str(uprops.get("m_LocalScale.y")).to_float()
+			tmp = 1.0 * uprops.get("m_LocalScale.y")
 			outdict["scale:y"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale.z"):
-			tmp = 1.0 * str(uprops.get("m_LocalScale.z")).to_float()
+			tmp = 1.0 * uprops.get("m_LocalScale.z")
 			outdict["scale:z"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
 		if uprops.has("m_LocalScale"):
 			var scale: Variant = get_vector(uprops, "m_LocalScale")
@@ -1450,6 +1477,8 @@ class UnityCollider extends UnityBehaviour:
 				cur_node = cur_node.get_node(str(path_to_body.get_name(i)))
 				if cur_node == null:
 					break
+				print("Found node " + str(cur_node) + " class " + str(cur_node.get_class()))
+				print("Found node " + str(cur_node) + " transform " + str(cur_node.transform))
 				xform = cur_node.transform.affine_inverse() * xform
 		#while cur_node != state.body and cur_node != null:
 		#	xform = cur_node.transform * xform
@@ -1459,16 +1488,18 @@ class UnityCollider extends UnityBehaviour:
 		new_node.shape = self.shape
 		if not xform.is_equal_approx(Transform()):
 			var xform_storage: Node3D = Node3D.new()
+			xform_storage.name = "__xform_storage"
 			new_node.add_child(xform_storage)
-			new_node.name = "__xform_storage"
-			new_node.owner = state.owner
-			new_node.transform = xform
+			xform_storage.owner = state.owner
+			xform_storage.transform = xform
 		return new_node
 
 	# TODO: Colliders are complicated because of the transform hierarchy issue above.
 	func convert_properties_collider(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
-		var complex_xform: Node3D = node.get_node("__xform_storage")
+		var complex_xform: Node3D = null
+		if node.has_node("__xform_storage"):
+			complex_xform = node.get_node("__xform_storage")
 		var center: Vector3 = Vector3()
 		var basis: Basis = Basis.IDENTITY
 
@@ -1480,9 +1511,9 @@ class UnityCollider extends UnityBehaviour:
 			else:
 				outdict["translation"] = center
 		if uprops.has("m_Direction"):
-			basis = get_basis_from_direction(str(uprops.get("m_Direction")).to_int())
+			basis = get_basis_from_direction(uprops.get("m_Direction"))
 			if complex_xform != null:
-				outdict["transform"].transform = complex_xform.transform * Transform(basis, center)
+				outdict["transform"] = complex_xform.transform * Transform(basis, center)
 			else:
 				outdict["rotation_degrees"] = basis.get_euler() * 180 / PI
 		return outdict
@@ -1507,7 +1538,9 @@ class UnityBoxCollider extends UnityCollider:
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
-		outdict["shape:size"] = get_vector(uprops, "m_Size")
+		var size = get_vector(uprops, "m_Size")
+		if typeof(size) != TYPE_NIL:
+			outdict["shape:size"] = size
 		return outdict
 
 class UnitySphereCollider extends UnityCollider:
@@ -1518,7 +1551,7 @@ class UnitySphereCollider extends UnityCollider:
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
 		if uprops.has("m_Radius"):
-			outdict["shape:radius"] = str(uprops.get("m_Radius")).to_float()
+			outdict["shape:radius"] = uprops.get("m_Radius")
 		print("**** SPHERE COLLIDER RADIUS " + str(outdict))
 		return outdict
 
@@ -1539,10 +1572,10 @@ class UnityCapsuleCollider extends UnityCollider:
 		var outdict = self.convert_properties_collider(node, uprops)
 		var radius = node.shape.radius
 		if typeof(uprops.get("m_Radius")) != TYPE_NIL:
-			radius = str(uprops.get("m_Radius")).to_float()
+			radius = uprops.get("m_Radius")
 			outdict["shape:radius"] = radius
 		if typeof(uprops.get("m_Height")) != TYPE_NIL:
-			var adj_height: float = str(uprops.get("m_Height")).to_float() - 2 * radius
+			var adj_height: float = uprops.get("m_Height") - 2 * radius
 			if adj_height < 0.0:
 				adj_height = 0.0
 			outdict["shape:height"] = adj_height
@@ -1565,7 +1598,7 @@ class UnityMeshCollider extends UnityCollider:
 		var outdict = self.convert_properties_collider(node, uprops)
 		var new_convex = node.shape is ConvexPolygonShape3D
 		if uprops.has("m_Convex"):
-			new_convex = str(uprops.get("m_Convex", 1 if new_convex else 0)).to_int() != 0
+			new_convex = uprops.get("m_Convex", 1 if new_convex else 0) != 0
 			# We do not allow animating this without also changing m_Mesh.
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
@@ -1695,16 +1728,16 @@ class UnityMeshRenderer extends UnityRenderer:
 					outdict["_materials/" + str(idx)] = null
 				idx += 1
 		if uprops.has("m_Materials.Array.size"):
-			outdict["_materials_size"] = str(uprops.get("m_Materials.Array.size")).to_int()
+			outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
 		const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
 		for prop in uprops:
 			if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
 				var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
 				var m: Variant = uprops.get(prop)
-				if typeof(m) == TYPE_OBJECT:
+				if typeof(m) == TYPE_ARRAY:
 					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
-				else:
-					outdict["_materials/" + str(idx)] = null
+				#else:
+				#	outdict["_materials/" + str(idx)] = null
 		return outdict
 
 	# TODO: convert_properties
@@ -1802,7 +1835,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
-			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var mesh_ref: Array = uprops.get("m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh)
 			outdict["mesh"] = new_mesh # property track?
 			var skin_ref: Array = mesh_ref
@@ -1981,9 +2014,9 @@ class UnityLight extends UnityBehaviour:
 			# Scriptable Rendering Pipeline: shape and innerSpotAngle not supported.
 			# Assuming RenderSettings.m_SpotCookie: == {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
 			var spot_light: SpotLight3D = SpotLight3D.new()
-			spot_light.set_param(Light3D.PARAM_SPOT_ANGLE, spotAngle)
-			spot_light.set_param(Light3D.PARAM_SPOT_ATTENUATION, 0.25) # Eyeball guess for Unity's default spotlight texture
-			spot_light.set_param(Light3D.PARAM_ATTENUATION, 1.0)
+			spot_light.set_param(Light3D.PARAM_SPOT_ANGLE, spotAngle * 0.5)
+			spot_light.set_param(Light3D.PARAM_SPOT_ATTENUATION, 0.5) # Eyeball guess for Unity's default spotlight texture
+			spot_light.set_param(Light3D.PARAM_ATTENUATION, 0.333) # Was 1.0
 			spot_light.set_param(Light3D.PARAM_RANGE, lightRange)
 			light = spot_light
 		elif unityLightType == 1:

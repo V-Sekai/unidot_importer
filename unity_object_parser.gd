@@ -29,6 +29,9 @@ var brace_line: String = ""
 var continuation_line_indentation_level: int = 0
 var double_quote_line: String = ""
 var single_quote_line: String = ""
+var has_brace_line: bool = false
+var has_double_quote_line: bool = false
+var has_single_quote_line: bool = false
 var prev_key: String = ""
 var current_obj_tree: Array = []
 var current_indent_tree: Array = []
@@ -53,9 +56,9 @@ func parse_value(line: String, keyname: String) -> Variant:
 
 	if keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash":
 		return line # User must decode this as desired.
-	if len(line) < 24 and line.is_valid_integer():
+	if not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_integer():
 		return line.to_int()
-	if len(line) < 32 and line.is_valid_float():
+	if not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
 		return line.to_float()
 	if line == "[]":
 		return [].duplicate()
@@ -178,6 +181,8 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 	line = line.replace("\r", "")
 	while line.ends_with("\r"):
 		line = line.substr(0, len(line) - 1)
+	# The last line of a multiline single-quoted string is not indented if that line is empty
+	var end_single_multiline: bool = (has_single_quote_line and line == "'")
 	var line_plain: String = line.dedent()
 	var obj_key_match: RegExMatch = arr_obj_key_regex.search(line_plain)
 	var value_start: int = 2
@@ -199,7 +204,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 			ending_double_quotes = not ending_double_quotes
 	#print("st=" + str(value_start) + " < " + str(len(line_plain)) + ":" + line_plain)
 	#print(JSON.print(line))
-	if value_start < len(line_plain) and brace_line == "" and single_quote_line == "" and double_quote_line == "":
+	if value_start < len(line_plain) and not has_brace_line and not has_single_quote_line and not has_double_quote_line:
 		missing_brace = line_plain.substr(value_start,1) == '{' and not line_plain.ends_with('}')
 		missing_double_quote = line_plain.substr(value_start,1) == '"' and not line_plain.ends_with('"')
 		missing_single_quote = line_plain.substr(value_start,1) == "'" and ending_single_quotes % 2 == (1 if ending_single_quotes + value_start == len(line_plain) else 0)
@@ -244,47 +249,54 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		current_obj = object_adapter.instantiate_unity_object(meta, current_obj_fileID, current_obj_utype, current_obj_type)
 		if current_obj_stripped:
 			current_obj.is_stripped = true
-	elif line == "" and single_quote_line != "":
+	elif line == "" and has_single_quote_line:
 		single_quote_line += "\n"
-	elif new_indentation_level == 0:
+		#print("Missing single start "  + str(single_quote_line))
+	elif new_indentation_level == 0 and not end_single_multiline:
 		push_error("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r","").substr(128))
 	elif missing_single_quote:
 		single_quote_line = line_plain
+		has_single_quote_line = true
 		continuation_line_indentation_level = new_indentation_level
 		#print("Missing single start "  + str(single_quote_line))
 	elif missing_double_quote:
 		double_quote_line = line_plain
+		has_double_quote_line = true
 		continuation_line_indentation_level = new_indentation_level
 		#print("Missing double start")
 	elif missing_brace:
 		brace_line = line_plain
+		has_brace_line = true
 		continuation_line_indentation_level = new_indentation_level
 		#print("Missing brace start")
-	elif (single_quote_line != "" and new_indentation_level > continuation_line_indentation_level and (ending_single_quotes % 2) == 0):
+	elif (has_single_quote_line and new_indentation_level > continuation_line_indentation_level and (ending_single_quotes % 2) == 0):
 		single_quote_line += line_plain
 		#print("Missing single mid: " + brace_line)
-	elif (double_quote_line != "" and new_indentation_level > continuation_line_indentation_level and not ending_double_quotes):
+	elif (has_double_quote_line and new_indentation_level > continuation_line_indentation_level and not ending_double_quotes):
 		double_quote_line += " " + line_plain
 		#print("Missing double mid: " + brace_line)
-	elif (brace_line != "" and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with('}')):
+	elif (has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with('}')):
 		brace_line += " " + line_plain
 		push_error("Missing brace mid: " + brace_line) # Never seen structs big enough to wrap twice.
 	else:
-		if new_indentation_level > continuation_line_indentation_level:
+		if new_indentation_level > continuation_line_indentation_level or end_single_multiline:
 			var endcontinuation: bool = false
-			if brace_line != "" and line_plain.ends_with('}'):
+			if has_brace_line and line_plain.ends_with('}'):
 				line_plain = brace_line + " " + line_plain
 				brace_line = ""
+				has_brace_line = false
 				endcontinuation = true
 				#print("Missing brace end: " + line_plain)
-			if single_quote_line != "" and (ending_single_quotes % 2) != 0:
+			if has_single_quote_line and (ending_single_quotes % 2) != 0:
 				line_plain = single_quote_line + line_plain
 				single_quote_line = ""
+				has_single_quote_line = false
 				endcontinuation = true
 				#print("Missing single end")
-			if double_quote_line != "" and ending_double_quotes:
+			if has_double_quote_line and ending_double_quotes:
 				line_plain = double_quote_line + " " + line_plain
 				double_quote_line = ""
+				has_double_quote_line = false
 				endcontinuation = true
 				#print("Missing double end")
 			if endcontinuation:

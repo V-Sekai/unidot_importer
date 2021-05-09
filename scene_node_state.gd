@@ -240,6 +240,8 @@ func duplicate() -> Reference:
 func add_child(child: Node, new_parent: Node3D, unityobj: Reference):
 	# meta. # FIXME???
 	if owner != null:
+		if (new_parent == null):
+			push_error("Trying to add child " + str(child) + " named " + str(child.name) + " to null parent")
 		assert(new_parent != null)
 		new_parent.add_child(child)
 		child.owner = owner

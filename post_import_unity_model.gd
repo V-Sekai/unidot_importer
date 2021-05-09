@@ -52,10 +52,16 @@ class ParseState:
 
 	func sanitize_bone_name(bone_name: String) -> String:
 		# Note: Spaces do not add _, but captial characters do??? Let's just clean everything for now.
-		print ("todo postimp bone replace " + str(bone_name))
 		var xret = bone_name.replace("/", "").replace(":", "").replace(".", "").replace(" ", "_").replace("_", "").to_lower()
-		print ("todone postimp bone replace " + str(xret))
 		return xret
+
+	func count_meshes(node: Node3D) -> int:
+		var result: int = 0
+		if node is VisualInstance3D:
+			result += 1
+		for child in node.get_children():
+			result += count_meshes(child)
+		return result
 
 	func fold_transforms_into_mesh(node: Node3D, p_transform: Transform = Transform.IDENTITY) -> Node3D:
 		var transform: Transform = p_transform * node.transform
@@ -138,6 +144,7 @@ class ParseState:
 				elif fileId == 0:
 					push_error("Missing fileId for Transform " + str(node_name))
 				else:
+					# print("Add " + str(fileId) + " name " + str(node_name) + " actual name " + str(node.name) + " path " + str(path))
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
@@ -147,6 +154,7 @@ class ParseState:
 				elif fileId == 0:
 					push_error("Missing fileId for GameObject " + str(node_name))
 				else:
+					# print("Add " + str(fileId) + " name " + str(node_name) + " actual name " + str(node.name) + " path " + str(path))
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
@@ -154,6 +162,8 @@ class ParseState:
 				fileId = objtype_to_name_to_id.get("SkinnedMeshRenderer", {}).get(node_name, 0)
 				var fileId_mr: int = objtype_to_name_to_id.get("MeshRenderer", {}).get(node_name, 0)
 				var fileId_mf: int = objtype_to_name_to_id.get("MeshFilter", {}).get(node_name, 0)
+				if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
+					push_error("Missing fileId for MeshRenderer " + str(node_name))
 				if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
 					push_error("Missing fileId for MeshRenderer " + str(node_name))
 				elif fileId == 0:
@@ -299,15 +309,15 @@ class ParseState:
 			var bsarr: Array = mesh.surface_get_blend_shape_arrays(surf_idx)
 			var lods: Dictionary = {} # mesh.surface_get_lods(surf_idx) # get_lods(mesh, surf_idx)
 			var mat: Material = mesh.surface_get_material(surf_idx)
-			print("About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			#print("About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
 			for i in range(len(arr[ArrayMesh.ARRAY_VERTEX])):
 				arr[ArrayMesh.ARRAY_VERTEX][i] = arr[ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
-			print("Done multiplying mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			#print("Done multiplying mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
 			for bsidx in range(len(bsarr)):
 				for i in range(len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])):
 					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
 				bsarr[bsidx].resize(len(arr))
-				print("Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
+				#print("Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
 				for i in range(len(arr)):
 					if i >= ArrayMesh.ARRAY_INDEX or typeof(arr[i]) == TYPE_NIL:
 						bsarr[bsidx][i] = null
@@ -334,11 +344,11 @@ class ParseState:
 			var fmt_compress_flags: int = surf_data_by_mesh[surf_idx].get("fmt_compress_flags")
 			var name: String = surf_data_by_mesh[surf_idx].get("name")
 			var mat: Material = surf_data_by_mesh[surf_idx].get("mat")
-			print("Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			#print("Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
 			mesh.add_surface_from_arrays(prim, arr, bsarr, lods, fmt_compress_flags)
 			mesh.surface_set_name(surf_idx, name)
 			mesh.surface_set_material(surf_idx, mat)
-			print("Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
+			#print("Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
 		if not is_shadow and mesh.shadow_mesh != mesh and mesh.shadow_mesh != null:
 			adjust_mesh_scale(mesh.shadow_mesh, true)
 
@@ -393,7 +403,7 @@ class ParseState:
 
 func post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
-	print ("todo post import replace " + str(source_file_path))
+	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
 	var asset_database = asset_database_class.get_singleton()
@@ -423,6 +433,7 @@ func post_import(p_scene: Node) -> Object:
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
+	var mesh_count: int = ps.count_meshes(p_scene)
 
 	var recycles: Dictionary = metaobj.importer.fileIDToRecycleName
 	for fileIdStr in recycles:
@@ -442,7 +453,8 @@ func post_import(p_scene: Node) -> Object:
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			obj_name = ps.sanitize_bone_name(obj_name)
 		elif (type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer"):
-			if obj_name.is_empty():
+			if obj_name.is_empty() and mesh_count == 1:
+				print("Found empty obj " + str(og_obj_name) + " tpye " + type)
 				ps.mesh_is_toplevel = true
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			obj_name = ps.sanitize_bone_name(obj_name)
@@ -458,6 +470,7 @@ func post_import(p_scene: Node) -> Object:
 	ps.toplevel_node = p_scene
 	p_scene.name = source_file_path.get_file().get_basename()
 	if ps.mesh_is_toplevel:
+		print("Mesh is toplevel for " + str(source_file_path))
 		var new_toplevel: Node3D = ps.fold_transforms_into_mesh(ps.toplevel_node)
 		if new_toplevel != null:
 			ps.toplevel_node.transform = new_toplevel.transform

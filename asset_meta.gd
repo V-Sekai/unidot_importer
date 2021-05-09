@@ -82,6 +82,11 @@ func calculate_prefab_nodepaths():
 	#if not is_toplevel:
 	for prefab_fileid in self.prefab_id_to_guid:
 		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(self.prefab_id_to_guid.get(prefab_fileid))
+		if target_prefab_meta == null:
+			push_error("Failed to lookup prefab fileid " + str(prefab_fileid) + " guid " + str(self.prefab_id_to_guid.get(prefab_fileid)))
+			continue
+		if target_prefab_meta.get_database() == null:
+			target_prefab_meta.initialize(self.get_database())
 		var my_path_prefix: String = str(fileid_to_nodepath.get(prefab_fileid)) + "/"
 		for target_fileid in target_prefab_meta.fileid_to_nodepath:
 			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
