@@ -147,6 +147,7 @@ class UnityObject extends Reference:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
+		assign_object_meta(new_node)
 		state.add_child(new_node, new_parent, self)
 		return new_node
 
@@ -161,6 +162,10 @@ class UnityObject extends Reference:
 
 	func get_godot_extension() -> String:
 		return ".res"
+
+	func assign_object_meta(ret: Object) -> void:
+		if ret != null:
+			ret.set_meta("unidot_keys", self.keys)
 
 	func configure_skeleton_bone(skel: Skeleton3D, bone_name: String):
 		configure_skeleton_bone_props(skel, bone_name, self.keys)
@@ -667,6 +672,7 @@ class UnityMaterial extends UnityObject:
 		#if kws.get("_DETAIL_MULX2"):
 		#	ret.detail_enabled = true
 		#	ret.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+		assign_object_meta(ret)
 		return ret
 
 	func get_godot_extension() -> String:

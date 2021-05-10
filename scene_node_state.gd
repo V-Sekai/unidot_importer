@@ -26,6 +26,8 @@ class PrefabState extends Reference:
 	var prefab_parents: Dictionary = {}.duplicate()
 	var prefab_instance_paths: Array = [].duplicate()
 
+	var main_cameras: Array = [].duplicate()
+
 var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
 

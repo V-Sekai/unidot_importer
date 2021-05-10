@@ -43,22 +43,44 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	if arr.is_empty():
 		push_error("Scene " + pkgasset.pathname + " has no nodes.")
 		return
+	var env: Environment = null
+	var bakedlm: BakedLightmap = null
+	var navregion: NavigationRegion3D = null
+	var occlusion: OccluderInstance3D = null
+	var dirlight: DirectionalLight3D = null
 	var scene_contents: Node3D = null
+	var main_camera: Reference = null # unity object
 	if is_prefab:
 		if len(arr) > 1:
 			push_error("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
 		arr.sort_custom(smallestTransform)
 		arr = [arr[0]]
 	else:
-		
-		
 		scene_contents = Node3D.new()
 		scene_contents.name = "RootNode3D"
-		#var tmpps: PackedScene = load("res://Assets/2A-7-4/XXXX/testscene1 - Copy.tscn")
-		#scene_contents = tmpps.instance(PackedScene.GEN_EDIT_STATE_MAIN)
-		#scene_contents.remove_child(scene_contents.find_node("XXXX_lc_200522VRC"))
-		#scene_contents.remove_child(scene_contents.find_node("Main Camera"))
-		#scene_contents.remove_child(scene_contents.find_node("Directional Light"))
+		var world_env = WorldEnvironment.new()
+		env = Environment.new()
+		world_env.environment = env
+		# TODO: We need to convert all PostProcessingProfile assets into godot Environment objects
+		# Then, store an array of list of node path, weight, asset and layer_id.
+		# Then, in prefab logic, concat the paths into the outer scene.
+		# finally, the actual scene will loop through all environments and add them by wieght
+		# then, we can assign the final world environment from all this.
+		scene_contents.add_child(world_env)
+		world_env.owner = scene_contents
+		bakedlm = BakedLightmap.new()
+		scene_contents.add_child(bakedlm)
+		bakedlm.owner = scene_contents
+		navregion = NavigationRegion3D.new()
+		scene_contents.add_child(navregion)
+		navregion.owner = scene_contents
+		occlusion = OccluderInstance3D.new()
+		scene_contents.add_child(occlusion)
+		occlusion.owner = scene_contents
+		dirlight = DirectionalLight3D.new()
+		scene_contents.add_child(dirlight)
+		dirlight.owner = scene_contents
+		dirlight.visible = false
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
@@ -86,7 +108,30 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			#	if not ps.prefab_parents.has(uk):
 			#		ps.prefab_parents[uk] = []
 			#	ps.prefab_parents[uk].append(asset)
+		elif asset.type == "RenderSettings":
+			env.fog_enabled = (asset.keys.get("m_Fog", 0) == 1)
+			var c: Color = asset.keys.get("m_FogColor", Color.white)
+			var max_c: float = max(c.r, max(c.g, c.b))
+			if max_c > 1.0:
+				c /= max_c
+			else:
+				max_c = 1.0
+			env.fog_light_color = c
+			env.fog_light_energy = max_c
+			if asset.keys.get("m_FogMode", 3) == 1: # Linear
+				const TARGET_FOG_DENSITY = 0.05
+				env.fog_density = -log(TARGET_FOG_DENSITY) / asset.keys.get("m_LinearFogEnd", 0.0)
+			else:
+				env.fog_density = asset.keys.get("m_FogDensity", 0.0)
+		elif asset.type == "LightmapSettings":
+			pass
+		elif asset.type == "NavMeshSettings":
+			pass
+		elif asset.type == "OcclusionCullingSettings":
+			pass
 		elif asset.type != "GameObject":
+			if asset.type == "Camera":
+				main_camera = asset
 			# alternatively, is it a subclass of UnityComponent?
 			parent = asset.gameObject
 			if parent != null and parent.is_prefab_reference:

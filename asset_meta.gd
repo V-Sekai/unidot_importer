@@ -43,30 +43,39 @@ class ParsedAsset extends Reference:
 var parsed: ParsedAsset = null
 
 class TopsortTmp extends Reference:
+	var database: Reference = null
 	var visited: Dictionary = {}.duplicate()
 	var output: Array = [].duplicate()
 
 func get_database() -> Resource:
+	if database_holder == null or database_holder.database == null:
+		pass#push_error("Meta " + str(guid) + " at " l+ str(path) + " was not initialized!")
+	return null if database_holder == null else database_holder.database
+
+func get_database_int() -> Resource:
 	return null if database_holder == null else database_holder.database
 
 func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 	for target_guid in meta.prefab_dependency_guids:
 		if not tt.visited.has(target_guid):
 			tt.visited[target_guid] = true
-			var child_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
+			var child_meta: Resource = lookup_meta_by_guid_noinit(tt.database, target_guid)
 			if child_meta == null:
 				push_error("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
 			else:
+				child_meta.database_holder = database_holder
 				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
 
 func toposort_prefab_dependency_guids() -> Array:
 	var tt: TopsortTmp = TopsortTmp.new()
+	tt.database = self.get_database()
 	toposort_prefab_recurse(self, tt)
 	return tt.output
 
-static func toposort_prefab_recurse_toplevel(guid_to_meta):
+static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 	var tt: TopsortTmp = TopsortTmp.new()
+	tt.database = database
 	for target_guid in guid_to_meta:
 		if not tt.visited.has(target_guid):
 			tt.visited[target_guid] = true
@@ -78,10 +87,10 @@ static func toposort_prefab_recurse_toplevel(guid_to_meta):
 	return tt.output
 
 # Expected to be called in topological order
-func calculate_prefab_nodepaths():
+func calculate_prefab_nodepaths(database: Resource):
 	#if not is_toplevel:
 	for prefab_fileid in self.prefab_id_to_guid:
-		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(self.prefab_id_to_guid.get(prefab_fileid))
+		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(database, self.prefab_id_to_guid.get(prefab_fileid))
 		if target_prefab_meta == null:
 			push_error("Failed to lookup prefab fileid " + str(prefab_fileid) + " guid " + str(self.prefab_id_to_guid.get(prefab_fileid)))
 			continue
@@ -107,9 +116,10 @@ func calculate_prefab_nodepaths_recursive():
 	if typeof(toposorted) != TYPE_ARRAY:
 		push_error("BLEH BLEH")
 		return
+	var database: Resource = get_database()
 	for process_meta in toposorted:
 		if process_meta != null and process_meta.guid != guid and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter"):
-			process_meta.calculate_prefab_nodepaths()
+			process_meta.calculate_prefab_nodepaths(database)
 
 # This overrides a built-in resource, storing the resource inside the database itself.
 func override_resource(fileID: int, name: String, godot_resource: Resource):
@@ -138,15 +148,15 @@ func initialize(database: Resource):
 		self.importer = object_adapter_class.new().instantiate_unity_object(self, 0, 0, self.importer_type)
 	self.importer.keys = importer_keys
 
-func lookup_meta_by_guid_noinit(target_guid: String) -> Reference: # returns asset_meta type
-	var found_path: String = get_database().guid_to_path.get(target_guid, "")
+static func lookup_meta_by_guid_noinit(database: Resource, target_guid: String) -> Reference: # returns asset_meta type
+	var found_path: String = database.guid_to_path.get(target_guid, "")
 	var found_meta: Resource = null
 	if found_path != "":
-		found_meta = get_database().path_to_meta.get(found_path, null)
+		found_meta = database.path_to_meta.get(found_path, null)
 	return found_meta
 
 func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta type
-	var found_meta: Resource = lookup_meta_by_guid_noinit(target_guid)
+	var found_meta: Resource = lookup_meta_by_guid_noinit(get_database(), target_guid)
 	if found_meta == null:
 		return null
 	if found_meta.get_database() == null:

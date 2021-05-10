@@ -285,7 +285,7 @@ func _editor_filesystem_scan_tick():
 			for tw in asset_prefabs:
 				guid_to_meta[tw.asset.guid] = tw.asset.parsed_meta
 				guid_to_tw[tw.asset.guid] = tw
-			var toposorted: Array = asset_meta_class.toposort_prefab_recurse_toplevel(guid_to_meta)
+			var toposorted: Array = asset_meta_class.toposort_prefab_recurse_toplevel(asset_database, guid_to_meta)
 			var tmpprint: Array = [].duplicate()
 			for meta in toposorted:
 				tmpprint.push_back(meta.path)

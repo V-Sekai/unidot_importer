@@ -32,7 +32,7 @@ func save():
 	ResourceSaver.save(ASSET_DATABASE_PATH, self)
 
 func insert_meta(meta: Resource): # asset_meta
-	if meta.get_database() == null:
+	if meta.get_database_int() == null:
 		meta.initialize(self)
 	guid_to_path[meta.guid] = meta.path
 	path_to_meta[meta.path] = meta
@@ -50,7 +50,7 @@ func rename_meta(meta: Resource, new_path: String):
 func get_meta_at_path(path: String) -> Resource: # asset_meta
 	var ret: Resource = path_to_meta.get(path)
 	if ret != null:
-		if ret.get_database() == null:
+		if ret.get_database_intg() == null:
 			ret.initialize(self)
 	return ret
 
