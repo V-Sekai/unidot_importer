@@ -261,6 +261,12 @@ class UnityObject extends Reference:
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
 		return {}
 
+	static func get_ref(uprops: Dictionary, key: String) -> Array:
+		var ref: Variant = uprops.get(key, null)
+		if typeof(ref) == TYPE_ARRAY:
+			return ref
+		return [null,0,"",0]
+
 	static func get_vector(uprops: Dictionary, key: String) -> Variant:
 		if uprops.has(key):
 			return uprops.get(key)
@@ -1049,9 +1055,13 @@ class UnityPrefabInstance extends UnityGameObject:
 					var orig_meta: Variant = existing_node.get_meta("unidot_keys")
 					var exist_prop: Variant = orig_meta
 					for uprop in uprops:
-						var last_key = ""
-						var this_key = ""
+						var last_key: String = ""
+						var this_key: String = ""
+						var skip_first_piece: bool = true
 						for prop_piece in uprop.split("."):
+							if skip_first_piece:
+								skip_first_piece = false
+								continue
 							if typeof(exist_prop) == TYPE_DICTIONARY:
 								last_key = this_key
 								this_key = prop_piece
@@ -1059,6 +1069,9 @@ class UnityPrefabInstance extends UnityGameObject:
 							elif typeof(exist_prop) == TYPE_ARRAY:
 								if prop_piece == "Array":
 									continue
+								if prop_piece == "size":
+									continue
+								print("Splitting array key: " + str(uprop) + " prop_piece " + str(prop_piece) + ": " + str(exist_prop) + " / all props: " + str(uprops))
 								var idx: int = (prop_piece.split("[")[1].split("]")[0]).to_int()
 								exist_prop = exist_prop[idx]
 							else:
@@ -1650,7 +1663,7 @@ class UnityMeshCollider extends UnityCollider:
 			new_convex = uprops.get("m_Convex", 1 if new_convex else 0) != 0
 			# We do not allow animating this without also changing m_Mesh.
 		if uprops.has("m_Mesh"):
-			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = null
 			if mesh_ref[1] == 0 and (is_stripped or gameObject.is_stripped):
 				pass
@@ -1672,7 +1685,7 @@ class UnityMeshCollider extends UnityCollider:
 		return outdict
 
 	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
-		var ret = uprops.get("m_Mesh", [null,0,"",null])
+		var ret = get_ref(uprops, "m_Mesh")
 		if ret[1] == 0:
 			if is_stripped or gameObject.is_stripped:
 				push_error("Oh no i am stripped MCgm")
@@ -1728,7 +1741,7 @@ class UnityMeshFilter extends UnityComponent:
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
-			var mesh_ref: Array = uprops.get("m_Mesh", [null,0,"",null])
+			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh)
 			outdict["_mesh"] = new_mesh # property track?
 		return outdict
@@ -1783,11 +1796,8 @@ class UnityMeshRenderer extends UnityRenderer:
 		for prop in uprops:
 			if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
 				var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
-				var m: Variant = uprops.get(prop)
-				if typeof(m) == TYPE_ARRAY:
-					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
-				#else:
-				#	outdict["_materials/" + str(idx)] = null
+				var m: Array = get_ref(uprops, prop)
+				outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
 		return outdict
 
 	# TODO: convert_properties
@@ -1885,7 +1895,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
-			var mesh_ref: Array = uprops.get("m_Mesh")
+			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh)
 			outdict["mesh"] = new_mesh # property track?
 			var skin_ref: Array = mesh_ref
@@ -2197,7 +2207,7 @@ class UnityAudioSource extends UnityBehaviour:
 			outdict["stream_paused"] = uprops.get("Mute") == 1
 		# "Loop" not supported?
 		if uprops.has("m_audioClip"):
-			outdict["stream"] = meta.get_godot_resource(uprops.get("m_audioClip"))
+			outdict["stream"] = meta.get_godot_resource(get_ref(uprops, "m_audioClip"))
 		if uprops.has("MaxDistance"):
 			outdict["max_distance"] = uprops.get("MaxDistance")
 		# TODO: how does MinDistance work with falloff curves? Are max_db and unit_db affected?

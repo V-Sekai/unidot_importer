@@ -119,13 +119,20 @@ class Skelley extends Reference:
 		# reverse list
 		for i in range(len(tmp)):
 			bone0_parent_list.push_back(tmp[-1 - i])
+		# print("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 
 	func add_bone(bone: Reference) -> Array: # UnityTransform
 		bones.push_back(bone)
+		# print("Adding a bone: " + str(bones))
 		var added_bones: Array = [].duplicate()
 		var current_parent: Reference = bone #### UnityTransform or UnityPrefabInstance
+		intermediates[current_parent.uniq_key] = current_parent
+		intermediate_bones.push_back(current_parent)
+		added_bones.push_back(current_parent)
+		current_parent = current_parent.parent_no_stripped
 		while current_parent != null and not bone0_parents.has(current_parent.uniq_key):
 			if intermediates.has(current_parent.uniq_key):
+				# print("Already intermediate to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 				return added_bones
 			intermediates[current_parent.uniq_key] = current_parent
 			intermediate_bones.push_back(current_parent)
@@ -142,6 +149,7 @@ class Skelley extends Reference:
 		#	printerr("Warning: Skeleton parented at root " + bone.uniq_key + " at " + current_parent.uniq_key)
 		#	return added_bones
 		if bone0_parent_list.is_empty():
+			# print("b0pl is empty to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
 			return added_bones
 		while bone0_parent_list[-1] != current_parent:
 			bone0_parents.erase(bone0_parent_list[-1].uniq_key)
@@ -160,6 +168,7 @@ class Skelley extends Reference:
 		#	found_prefab_instance = current_parent.parent_no_stripped
 		#	if found_prefab_instance != null:
 		#		added_bones.push_back(found_prefab_instance)
+		# print("success added " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
 		return added_bones
 
 	# if null, this is not mixed with a prefab's nodes
@@ -219,9 +228,11 @@ class Skelley extends Reference:
 		var contains_stripped_bones: bool = false
 		for bone in intermediate_bones:
 			if bone.is_stripped_or_prefab_instance():
+				root_bones.push_back(bone)
 				continue
 			if bone.parent_no_stripped == null or bone.parent_no_stripped.uniq_key == par_key:
 				root_bones.push_back(bone)
+		# print("Construct final bone list bones: " + str(bones))
 		for bone in bones.duplicate():
 			print("Skelley " + str(par_transform.uniq_key) + " has root bone " + str(bone.uniq_key))
 			self.add_nodes_recursively(skel_parents, child_transforms_by_stripped_id, bone)
@@ -404,7 +415,9 @@ func initialize_skelleys(assets: Array) -> Array:
 					if skel_ids.get(uniq_key, this_id) != this_id:
 						# We found a match! Let's merge the Skelley objects.
 						var new_id: int = skel_ids[uniq_key]
+						# print("migrating from " + str(skelleys[this_id].bones))
 						for inst in skelleys[this_id].bones:
+							# print("Loop " + str(inst.uniq_key) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.uniq_key, -1)))
 							if skel_ids.get(inst.uniq_key, -1) == this_id: # FIXME: This seems to be missing??
 								# print("Telling skelley " + str(new_id) + " to merge bone " + inst.uniq_key)
 								skelleys[new_id].add_bone(inst)
@@ -413,7 +426,9 @@ func initialize_skelleys(assets: Array) -> Array:
 								skel_ids[str(i)] = new_id
 						skelleys.erase(this_id) # We merged two skeletons.
 						this_id = new_id
+						this_skelley = skelleys[this_id]
 					skel_ids[uniq_key] = this_id
+					# print("Skel ids now " + str(skel_ids))
 
 	var skelleys_with_no_parent = [].duplicate()
 
@@ -446,6 +461,7 @@ func initialize_skelleys(assets: Array) -> Array:
 		skelley.construct_final_bone_list(skelley_parents, child_transforms_by_stripped_id)
 		for uniq_key in skelley.uniq_key_to_bone:
 			uniq_key_to_skelley[uniq_key] = skelley
+			print("ADDING uniq key " + str(uniq_key) + " skelley " + str(skelley))
 
 	return skelleys_with_no_parent
 
