@@ -50,7 +50,7 @@ func rename_meta(meta: Resource, new_path: String):
 func get_meta_at_path(path: String) -> Resource: # asset_meta
 	var ret: Resource = path_to_meta.get(path)
 	if ret != null:
-		if ret.get_database_intg() == null:
+		if ret.get_database_int() == null:
 			ret.initialize(self)
 	return ret
 

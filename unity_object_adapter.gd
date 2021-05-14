@@ -2,7 +2,6 @@
 extends Reference
 
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
-const scene_node_state: GDScript = preload("./scene_node_state.gd")
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -73,10 +72,6 @@ func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) 
 	ret.utype = classname_to_utype.get(actual_type, utype)
 	ret.type = actual_type
 	return ret
-
-
-static func create_node_state(database: Resource, meta: Resource, root_node: Node3D) -> Reference:
-	return scene_node_state.create_node_state(database, meta, root_node)
 
 
 # Unity types follow:
@@ -900,7 +895,7 @@ class UnityGameObject extends UnityObject:
 
 	var enabled: bool:
 		get:
-			return keys.get("m_IsActive")
+			return keys.get("m_IsActive", 0) != 0
 
 	func is_toplevel() -> Variant: # bool
 		if is_stripped:
@@ -1050,6 +1045,48 @@ class UnityPrefabInstance extends UnityGameObject:
 			if target_skel_bone.is_empty() and existing_node == null:
 				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops))
 			elif target_skel_bone.is_empty():
+				if existing_node.has_meta("unidot_keys"):
+					var orig_meta: Variant = existing_node.get_meta("unidot_keys")
+					var exist_prop: Variant = orig_meta
+					for uprop in uprops:
+						var last_key = ""
+						var this_key = ""
+						for prop_piece in uprop.split("."):
+							if typeof(exist_prop) == TYPE_DICTIONARY:
+								last_key = this_key
+								this_key = prop_piece
+								exist_prop = exist_prop.get(prop_piece, {})
+							elif typeof(exist_prop) == TYPE_ARRAY:
+								if prop_piece == "Array":
+									continue
+								var idx: int = (prop_piece.split("[")[1].split("]")[0]).to_int()
+								exist_prop = exist_prop[idx]
+							else:
+								match prop_piece:
+									"x":
+										exist_prop.x = uprops[uprop]
+									"y":
+										exist_prop.y = uprops[uprop]
+									"z":
+										exist_prop.z = uprops[uprop]
+									"w":
+										exist_prop.w = uprops[uprop]
+									"r":
+										exist_prop.r = uprops[uprop]
+									"g":
+										exist_prop.g = uprops[uprop]
+									"b":
+										exist_prop.b = uprops[uprop]
+									"a":
+										exist_prop.a = uprops[uprop]
+						if typeof(exist_prop) == typeof(uprops[uprop]):
+							exist_prop = uprops[uprop]
+						if typeof(exist_prop) != TYPE_DICTIONARY:
+							if last_key.is_empty():
+								orig_meta[this_key] = exist_prop
+							else:
+								orig_meta[last_key][this_key] = exist_prop
+					existing_node.set_meta("unidot_keys", orig_meta)
 				if not nodepath_to_first_virtual_object.has(target_nodepath):
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
 					nodepath_to_keys[target_nodepath] = virtual_unity_object.convert_properties(existing_node, uprops)
@@ -1069,6 +1106,7 @@ class UnityPrefabInstance extends UnityGameObject:
 		for target_nodepath in nodepath_to_keys:
 			var virtual_unity_object: UnityObject = nodepath_to_first_virtual_object.get(target_nodepath)
 			var existing_node = instanced_scene.get_node(target_nodepath)
+			var uprops: Dictionary = fileID_to_keys.get(fileID)
 			var props: Dictionary = nodepath_to_keys.get(target_nodepath)
 			if existing_node != null:
 				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props) + "/" + str(props.has("name")))
@@ -1276,6 +1314,7 @@ class UnityComponent extends UnityObject:
 		var new_node: Node = Node.new()
 		new_node.name = type
 		state.add_child(new_node, new_parent, self)
+		assign_object_meta(new_node)
 		new_node.editor_description = str(self)
 		return new_node
 
@@ -1378,6 +1417,10 @@ class UnityBehaviour extends UnityComponent:
 		if uprops.has("m_Enabled"):
 			outdict["visible"] = uprops.get("m_Enabled") != 0
 		return outdict
+
+	var enabled: bool:
+		get:
+			return keys.get("m_Enabled", 0) != 0
 
 class UnityTransform extends UnityComponent:
 
@@ -1705,6 +1748,7 @@ class UnityMeshRenderer extends UnityRenderer:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, self)
+		assign_object_meta(new_node)
 		new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(self.mesh)
 
@@ -2013,6 +2057,7 @@ class UnityLight extends UnityBehaviour:
 
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		var light: Light3D
+		# TODO: Change Light to use set()
 		var unityLightType = lightType
 		if unityLightType == 0:
 			# Assuming default cookie
@@ -2106,6 +2151,200 @@ class UnityLight extends UnityBehaviour:
 		get:
 			return keys.get("m_Shadows").get("m_NormalBias")
 
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_CullingMask"):
+			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+		elif uprops.has("m_CullingMask.m_Bits"):
+			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+		return outdict
+
+class UnityAudioSource extends UnityBehaviour:
+	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+		var audio: Node = null
+		var panlevel_curve: Dictionary = keys.get("panLevelCustomCurve", {})
+		var curves: Array = panlevel_curve.get("m_Curve", [])
+		#if len(curves) == 1:
+		#	print("Curve is " + str(curves) + " value is " + str(curves[0].get("value", 1.0)))
+		if len(curves) == 1 and str(curves[0].get("value", 1.0)).to_float() < 0.001:
+			# Completely 2D: use non-spatialized player.
+			audio = AudioStreamPlayer.new()
+		else:
+			audio = AudioStreamPlayer3D.new()
+		assign_object_meta(audio)
+		state.add_child(audio, new_parent, self)
+		return audio
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_CullingMask"):
+			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+		elif uprops.has("m_CullingMask.m_Bits"):
+			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+		if uprops.has("m_Pitch"):
+			outdict["pitch_scale"] = uprops.get("m_Pitch")
+		if uprops.has("m_Volume"):
+			var volume_linear: float = 1.0 * uprops.get("m_Volume")
+			var volume_db: float = -80.0
+			if volume_linear > 0.0001:
+				volume_db = 20.0 * log(volume_linear) / log(10.0)
+			outdict["volume_db"] = volume_db
+			outdict["unit_db"] = volume_db
+			outdict["max_db"] = volume_db
+		if uprops.has("m_PlayOnAwake"):
+			outdict["autoplay"] = uprops.get("m_PlayOnAwake") == 1
+		if uprops.has("Mute"):
+			outdict["stream_paused"] = uprops.get("Mute") == 1
+		# "Loop" not supported?
+		if uprops.has("m_audioClip"):
+			outdict["stream"] = meta.get_godot_resource(uprops.get("m_audioClip"))
+		if uprops.has("MaxDistance"):
+			outdict["max_distance"] = uprops.get("MaxDistance")
+		# TODO: how does MinDistance work with falloff curves? Are max_db and unit_db affected?
+		if uprops.get("rolloffMode", -1) == 0:
+			outdict["attenuation_model"] = AudioStreamPlayer3D.ATTENUATION_LOGARITHMIC
+		if uprops.get("rolloffMode", -1) == 1:
+			outdict["attenuation_model"] = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		if uprops.get("rolloffMode", -1) == 2:
+			# Guess which slope curve it is closest to.
+			var slope_estimate: float = 0.0
+			var curve_points: Array = uprops.get("rolloffCustomCurve", {}).get("m_Curve", [{}])
+			for curvept in curve_points:
+				slope_estimate += curvept.get("outSlope", 0.0)
+			slope_estimate /= len(curve_points)
+			if slope_estimate < -5.0:
+				outdict["attenuation_model"] = AudioStreamPlayer3D.ATTENUATION_LOGARITHMIC
+			elif slope_estimate < -0.1:
+				outdict["attenuation_model"] = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+			else:
+				outdict["attenuation_model"] = AudioStreamPlayer3D.ATTENUATION_DISABLED
+			# TODO: How does unit_size work?
+		return outdict
+
+class UnityCamera extends UnityBehaviour:
+	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+		var par: Node = new_parent
+		var texref: Array = keys.get("m_TargetTexture", [null, 0, null, null])
+		if texref[1] != 0:
+			var rendertex: UnityObject = meta.lookup(texref)
+			var viewport: SubViewport = SubViewport.new()
+			new_parent.add_child(viewport)
+			viewport.owner = state.owner
+			viewport.size = Vector2(
+				rendertex.keys.get("m_Width"),
+				rendertex.keys.get("m_Height"))
+			if keys.get("m_AllowMSAA", 0) == 1:
+				if rendertex.keys.get("m_AntiAliasing", 0) == 1:
+					viewport.msaa = Viewport.MSAA_8X
+			viewport.use_occlusion_culling = keys.get("m_OcclusionCulling", 0)
+			viewport.clear_mode = SubViewport.CLEAR_MODE_ALWAYS if keys.get("m_ClearFlags") < 3 else SubViewport.CLEAR_MODE_NEVER
+			# Godot is always HDR? if keys.get("m_AllowHDR", 0) == 1
+			par = viewport
+		var cam: Camera3D = Camera3D.new()
+		if keys.get("m_ClearFlags") == 2:
+			var cenv: Environment = Environment.new() if state.env == null else state.env.duplicate()
+			cam.environment = cenv
+			cenv.background_mode = Environment.BG_COLOR
+			var ccol: Color = keys.get("m_BackGroundColor", Color.black)
+			var eng = max(ccol.r, max(ccol.g, ccol.b))
+			if eng > 1:
+				ccol /= eng
+			else:
+				eng = 1
+			cenv.background_color = ccol
+			cenv.background_energy = eng
+		assign_object_meta(cam)
+		state.add_child(cam, par, self)
+		return cam
+
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_CullingMask"):
+			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+		elif uprops.has("m_CullingMask.m_Bits"):
+			outdict["cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+		if uprops.has("far clip plane"):
+			outdict["far"] = uprops.get("far clip plane")
+		if uprops.has("near clip plane"):
+			outdict["near"] = uprops.get("near clip plane")
+		if uprops.has("field of view"):
+			outdict["fov"] = uprops.get("field of view")
+		if uprops.has("orthographic"):
+			outdict["projection_mode"] = uprops.get("orthographic")
+		if uprops.has("orthographic size"):
+			outdict["size"] = uprops.get("orthographic size")
+		return outdict
+
+class UnityLightProbeGroup extends UnityComponent:
+	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+		for pos in keys.get("m_SourcePositions", []):
+			var probe: LightmapProbe = LightmapProbe.new()
+			new_parent.add_child(probe)
+			probe.owner = state.owner
+			probe.translation = pos
+		return null
+
+class UnityReflectionProbe extends UnityBehaviour:
+	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+		var probe: ReflectionProbe = ReflectionProbe.new()
+		assign_object_meta(probe)
+		state.add_child(probe, new_parent, self)
+		return probe
+
+	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_BoxProjection"):
+			outdict["interior"] = true if uprops.get("m_BoxProjection") else false
+			outdict["box_projection"] = true if uprops.get("m_BoxProjection") else false
+		if uprops.has("m_BoxOffset"):
+			outdict["translation"] = uprops.get("m_BoxOffset")
+			outdict["origin_offset"] = -uprops.get("m_BoxOffset")
+		if uprops.has("m_BoxSize"):
+			outdict["extents"] = uprops.get("m_BoxSize")
+		if uprops.has("m_CullingMask"):
+			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+		elif uprops.has("m_CullingMask.m_Bits"):
+			outdict["cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+		if uprops.has("m_FarClip"):
+			outdict["max_distance"] = uprops.get("m_FarClip")
+		if uprops.get("m_Mode", 0) == 0:
+			push_error("Reflection Probe = Baked is not supported. Treating as Realtime / Once")
+		if uprops.get("m_Mode", 0) == 2:
+			push_error("Reflection Probe = Custom is not supported. Treating as Realtime / Once")
+		if uprops.get("m_Mode", 0) == 1 and uprops.get("m_RefreshMode", 0) == 1:
+			outdict["update_mode"] = 1
+		if uprops.has("m_Mode"):
+			if uprops.get("m_Mode") == 1:
+				if uprops.get("m_RefreshMode", 1) != 1:
+					outdict["update_mode"] = 0
+			else:
+				outdict["update_mode"] = 0
+		elif uprops.get("m_RefreshMode", 1) != 1:
+			outdict["update_mode"] = 0
+		return outdict
+
+class UnityMonoBehaviour extends UnityBehaviour:
+	var script: Array:
+		get:
+			return keys.get("m_Script", [null,0,null,null])
+
+	# No need yet to override create_godot_node...
+	func create_godot_resource() -> Resource:
+		if script[1] == 11500000:
+			if script[2] == "8e6292b2c06870d4495f009f912b9600":
+				return create_post_processing_profile()
+		return null
+
+	func create_post_processing_profile() -> Environment:
+		var env: Environment = Environment.new()
+		for setting in keys.get("settings"):
+			var sobj = meta.lookup(setting)
+			match str(sobj.script[2]):
+				"adb84e30e02715445aeb9959894e3b4d": # Tonemap
+					env.set_meta("glow", sobj.keys)
+				"48a79b01ea5641d4aa6daa2e23605641": # Glow
+					env.set_meta("glow", sobj.keys)
+		return env
 
 ### ================ IMPORTER TYPES ================
 class UnityAssetImporter extends UnityObject:
@@ -2168,8 +2407,10 @@ class UnityModelImporter extends UnityAssetImporter:
 
 	var meshes_light_baking: int:
 		get:
-			# Godot uses: Disabled,Enabled,GenLightmaps
-			return keys.get("meshes").get("generateSecondaryUV", 0) * 2
+			# Godot uses: Disabled,Dynamic,Static,StaticLightmaps
+			# 2 = Static (defauylt setting)
+			# 3 = StaticLightmaps
+			return keys.get("meshes").get("generateSecondaryUV", 0) + 2
 
 	# The following parameters have special meaning when importing FBX files and do not map one-to-one with godot importer.
 	var useFileScale: bool:
@@ -2288,6 +2529,10 @@ class UnityDefaultImporter extends UnityAssetImporter:
 				# Folder, or unsupported type.
 				return 102900000 # DefaultAsset
 
+class DiscardUnityComponent extends UnityComponent:
+	func create_godot_node(state: Reference, new_parent: Node) -> Node:
+		return null
+
 var _type_dictionary: Dictionary = {
 	# "AimConstraint": UnityAimConstraint,
 	# "AnchoredJoint2D": UnityAnchoredJoint2D,
@@ -2322,8 +2567,8 @@ var _type_dictionary: Dictionary = {
 	# "AudioEchoFilter": UnityAudioEchoFilter,
 	# "AudioFilter": UnityAudioFilter,
 	# "AudioHighPassFilter": UnityAudioHighPassFilter,
-	# "AudioImporter": UnityAudioImporter,
-	# "AudioListener": UnityAudioListener,
+	"AudioImporter": UnityAudioImporter,
+	"AudioListener": DiscardUnityComponent,
 	# "AudioLowPassFilter": UnityAudioLowPassFilter,
 	# "AudioManager": UnityAudioManager,
 	# "AudioMixer": UnityAudioMixer,
@@ -2337,7 +2582,7 @@ var _type_dictionary: Dictionary = {
 	# "AudioMixerSnapshotController": UnityAudioMixerSnapshotController,
 	# "AudioReverbFilter": UnityAudioReverbFilter,
 	# "AudioReverbZone": UnityAudioReverbZone,
-	# "AudioSource": UnityAudioSource,
+	"AudioSource": UnityAudioSource,
 	# "Avatar": UnityAvatar,
 	# "AvatarMask": UnityAvatarMask,
 	# "BaseAnimationTrack": UnityBaseAnimationTrack,
@@ -2354,7 +2599,7 @@ var _type_dictionary: Dictionary = {
 	# "BuoyancyEffector2D": UnityBuoyancyEffector2D,
 	# "CachedSpriteAtlas": UnityCachedSpriteAtlas,
 	# "CachedSpriteAtlasRuntimeData": UnityCachedSpriteAtlasRuntimeData,
-	# "Camera": UnityCamera,
+	"Camera": UnityCamera,
 	# "Canvas": UnityCanvas,
 	# "CanvasGroup": UnityCanvasGroup,
 	# "CanvasRenderer": UnityCanvasRenderer,
@@ -2400,7 +2645,7 @@ var _type_dictionary: Dictionary = {
 	# "FixedJoint": UnityFixedJoint,
 	# "FixedJoint2D": UnityFixedJoint2D,
 	# "Flare": UnityFlare,
-	# "FlareLayer": UnityFlareLayer,
+	"FlareLayer": DiscardUnityComponent,
 	# "float": Unityfloat,
 	# "Font": UnityFont,
 	# "FrictionJoint2D": UnityFrictionJoint2D,
@@ -2412,7 +2657,7 @@ var _type_dictionary: Dictionary = {
 	# "Grid": UnityGrid,
 	# "GridLayout": UnityGridLayout,
 	# "Halo": UnityHalo,
-	# "HaloLayer": UnityHaloLayer,
+	"HaloLayer": DiscardUnityComponent,
 	# "HierarchyState": UnityHierarchyState,
 	# "HingeJoint": UnityHingeJoint,
 	# "HingeJoint2D": UnityHingeJoint2D,
@@ -2430,8 +2675,8 @@ var _type_dictionary: Dictionary = {
 	# "LightingDataAsset": UnityLightingDataAsset,
 	# "LightingDataAssetParent": UnityLightingDataAssetParent,
 	# "LightmapParameters": UnityLightmapParameters,
-	# "LightmapSettings": UnityLightmapSettings,
-	# "LightProbeGroup": UnityLightProbeGroup,
+	"LightmapSettings": DiscardUnityComponent,
+	"LightProbeGroup": UnityLightProbeGroup,
 	# "LightProbeProxyVolume": UnityLightProbeProxyVolume,
 	# "LightProbes": UnityLightProbes,
 	# "LineRenderer": UnityLineRenderer,
@@ -2447,7 +2692,7 @@ var _type_dictionary: Dictionary = {
 	"MeshFilter": UnityMeshFilter,
 	"MeshRenderer": UnityMeshRenderer,
 	"ModelImporter": UnityModelImporter,
-	# "MonoBehaviour": UnityMonoBehaviour,
+	"MonoBehaviour": UnityMonoBehaviour,
 	# "MonoImporter": UnityMonoImporter,
 	# "MonoManager": UnityMonoManager,
 	# "MonoObject": UnityMonoObject,
@@ -2460,12 +2705,12 @@ var _type_dictionary: Dictionary = {
 	# "NavMeshData": UnityNavMeshData,
 	# "NavMeshObstacle": UnityNavMeshObstacle,
 	# "NavMeshProjectSettings": UnityNavMeshProjectSettings,
-	# "NavMeshSettings": UnityNavMeshSettings,
+	"NavMeshSettings": DiscardUnityComponent,
 	# "NewAnimationTrack": UnityNewAnimationTrack,
 	"Object": UnityObject,
 	# "OcclusionArea": UnityOcclusionArea,
 	# "OcclusionCullingData": UnityOcclusionCullingData,
-	# "OcclusionCullingSettings": UnityOcclusionCullingSettings,
+	"OcclusionCullingSettings": DiscardUnityComponent,
 	# "OcclusionPortal": UnityOcclusionPortal,
 	# "OffMeshLink": UnityOffMeshLink,
 	# "PackageManifest": UnityPackageManifest,
@@ -2502,11 +2747,11 @@ var _type_dictionary: Dictionary = {
 	# "RayTracingShaderImporter": UnityRayTracingShaderImporter,
 	"RectTransform": UnityRectTransform,
 	# "ReferencesArtifactGenerator": UnityReferencesArtifactGenerator,
-	# "ReflectionProbe": UnityReflectionProbe,
+	"ReflectionProbe": UnityReflectionProbe,
 	# "RelativeJoint2D": UnityRelativeJoint2D,
 	"Renderer": UnityRenderer,
 	# "RendererFake": UnityRendererFake,
-	# "RenderSettings": UnityRenderSettings,
+	"RenderSettings": DiscardUnityComponent,
 	"RenderTexture": UnityRenderTexture,
 	# "ResourceManager": UnityResourceManager,
 	"Rigidbody": UnityRigidbody,

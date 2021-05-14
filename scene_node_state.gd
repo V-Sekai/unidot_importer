@@ -1,10 +1,13 @@
 @tool
 extends Reference
 
+const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+
 var owner: Node = null
 var body: CollisionObject3D = null
 var database: Resource = null # asset_database instance
 var meta: Resource = null # asset_database.AssetMeta instance
+var env: Environment = null
 
 # Dictionary from parent_transform uniq_key -> array of convert_scene.Skelley
 var skelley_parents: Dictionary = {}.duplicate()
@@ -30,6 +33,63 @@ class PrefabState extends Reference:
 
 var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
+
+func get_godot_node(uo: Reference) -> Node:
+	var np = meta.fileid_to_nodepath.get(uo.fileID, NodePath())
+	if np == NodePath():
+		np = meta.prefab_fileid_to_nodepath.get(uo.fileID, NodePath())
+		if np == NodePath():
+			return null
+	return owner.get_node(np)
+
+func get_object(fileid: int) -> Reference:
+	var parsed_asset: Reference = meta.parsed.assets.get(fileid)
+	if parsed_asset != null and not parsed_asset.is_stripped:
+		return parsed_asset
+	var utype = meta.fileid_to_utype.get(fileid, -1)
+	if utype == -1:
+		utype = meta.prefab_fileid_to_utype.get(fileid, -1)
+		if utype == -1:
+			return null # Not anywhere in the meta.
+	var ret: Reference = object_adapter_class.instantiate_unity_object_from_utype(meta, fileid, utype)
+	var np = meta.fileid_to_nodepath.get(fileid, NodePath())
+	if np == NodePath():
+		np = meta.prefab_fileid_to_nodepath.get(fileid, NodePath())
+		if np == NodePath():
+			return ret
+	var node: Node = owner.get_node(np)
+	if node == null:
+		return ret
+	var keys: Variant = node.get_meta("unidot_keys")
+	if typeof(keys) == TYPE_DICTIONARY:
+		ret.keys = keys
+	return ret
+
+func get_gameobject(uo: Reference) -> Reference:
+	var gofd: int = meta.get_gameobject_fileid(uo.fileID)
+	if gofd == 0:
+		return null
+	return get_object(gofd)
+
+func get_component(uo: Reference, type: String) -> Reference:
+	var compid: int = meta.get_component_fileid(uo.fileID, type)
+	if compid == 0:
+		return null
+	return get_object(compid)
+
+func get_components(uo: Reference, type: String="") -> Array:
+	var fileids: PackedInt64Array = meta.get_components_fileids(uo.fileID, type)
+	var ret: Array = [].duplicate()
+	for f in fileids:
+		ret.push_back(get_object(f))
+	return ret
+
+func find_objects_of_type(type: String) -> Array:
+	var fileids: PackedInt64Array = meta.find_fileids_of_type(type)
+	var ret: Array = [].duplicate()
+	for f in fileids:
+		ret.push_back(get_object(f))
+	return ret
 
 class Skelley extends Reference:
 	var id: int = 0
@@ -230,6 +290,7 @@ static func create_node_state(database: Resource, meta: Resource, root_node: Nod
 
 func duplicate() -> Reference:
 	var state = new()
+	state.env = env
 	state.owner = owner
 	state.body = body
 	state.database = database
@@ -266,7 +327,6 @@ func add_fileID(child: Node, unityobj: Reference):
 	if owner != null:
 		print("Add fileID " + str(unityobj.fileID) + " type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
 		meta.fileid_to_nodepath[unityobj.fileID] = owner.get_path_to(child)
-		meta.fileid_to_utype[unityobj.fileID] = unityobj.utype
 	# FIXME??
 	#else:
 	#	meta.fileid_to_nodepath[fileID] = root_nodepath

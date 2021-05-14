@@ -29,7 +29,8 @@ class ParseState:
 	var fileid_to_nodepath: Dictionary = {}.duplicate()
 	var fileid_to_skeleton_bone: Dictionary = {}.duplicate()
 	var fileid_to_utype: Dictionary = {}.duplicate()
-	
+	var fileid_to_gameobject_fileid: Dictionary = {}.duplicate()
+
 	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
 	var use_scene_root: bool = true
@@ -95,6 +96,8 @@ class ParseState:
 					node_name = "default"
 					node.name = "default" # Does this make sense?? For compatibility?
 			var fileId: int
+			var root_gameobject_fileId: int = objtype_to_name_to_id.get("GameObject", {}).get("", 0)
+			var goFileId: int = root_gameobject_fileId
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			node_name = sanitize_bone_name(node_name)
 			if node is AnimationPlayer:
@@ -107,6 +110,7 @@ class ParseState:
 					push_error("Missing fileId for Animator " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
+					fileid_to_gameobject_fileid[fileId] = root_gameobject_fileId
 			elif node is Skeleton3D:
 				for i in range(node.get_bone_count()):
 					var og_bone_name: String = node.get_bone_name(i)
@@ -121,7 +125,9 @@ class ParseState:
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
-						fileId = objtype_to_name_to_id.get("GameObject", {}).get(bone_name, 0)
+						goFileId = objtype_to_name_to_id.get("GameObject", {}).get(bone_name, 0)
+						fileid_to_gameobject_fileid[fileId] = goFileId
+						fileId = goFileId
 						if fileId == 0:
 							push_error("Missing fileId for bone GameObject " + str(bone_name))
 						else:
@@ -148,7 +154,9 @@ class ParseState:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
-				fileId = objtype_to_name_to_id.get("GameObject", {}).get(node_name, 0)
+				goFileId = objtype_to_name_to_id.get("GameObject", {}).get(node_name, 0)
+				fileid_to_gameobject_fileid[fileId] = goFileId
+				fileId = goFileId
 				if node == toplevel_node:
 					pass # GameObject nodes always point to the toplevel node.
 				elif fileId == 0:
@@ -170,10 +178,13 @@ class ParseState:
 					fileId = fileId_mr
 					fileid_to_nodepath[fileId_mr] = path
 					fileid_to_nodepath[fileId_mf] = path
+					fileid_to_gameobject_fileid[fileId_mr] = goFileId
+					fileid_to_gameobject_fileid[fileId_mf] = goFileId
 					if node.skeleton != NodePath():
 						push_error("A Skeleton exists for MeshRenderer " + str(node_name))
 				else:
 					fileid_to_nodepath[fileId] = path
+					fileid_to_gameobject_fileid[fileId] = goFileId
 					if node.skeleton == NodePath():
 						push_error("No Skeleton exists for SkinnedMeshRenderer " + str(node_name))
 				var mesh: Mesh = node.mesh
@@ -420,6 +431,8 @@ func post_import(p_scene: Node) -> Object:
 			metaobj = asset_database.parse_meta(f, rel_path)
 			f.close()
 		asset_database.insert_meta(metaobj)
+	metaobj.initialize(asset_database)
+	print(str(metaobj.importer))
 
 	# For now, we assume all data is available in the asset database resource.
 	# var metafile = source_file_path + ".meta"
@@ -482,14 +495,34 @@ func post_import(p_scene: Node) -> Object:
 	ps.fileid_to_nodepath[ps.objtype_to_name_to_id.get("Transform", {}).get("", 0)] = NodePath(".")
 	ps.iterate(ps.toplevel_node)
 
+	metaobj.type_to_fileids = {}.duplicate()
+
+	var nodepath_to_gameobject: Dictionary = {}.duplicate()
+	for fileId in ps.fileid_to_nodepath:
+		var utype: int = fileId / 100000
+		if utype == 1:
+			nodepath_to_gameobject[ps.fileid_to_nodepath.get(fileId)] = fileId
+
+	#print(str(nodepath_to_gameobject))
+
 	for fileId in ps.fileid_to_nodepath:
 		# Guaranteed for imported files
 		var utype: int = fileId / 100000
 		ps.fileid_to_utype[fileId] = utype
+		var type: String = object_adapter.to_classname(utype)
+		if not metaobj.type_to_fileids.has(type):
+			metaobj.type_to_fileids[type] = PackedInt64Array()
+		metaobj.type_to_fileids[type].push_back(fileId)
+		#var np: NodePath = ps.fileid_to_nodepath.get(fileId)
+		#if nodepath_to_gameobject.has(np):
+		#	metaobj.fileid_to_gameobject_fileid[fileId] = nodepath_to_gameobject[np]
+		#elif type != "AnimationClip" and type != "Mesh":
+		#	push_error("fileid " + str(fileId) + " at nodepath " + str(np) + " missing GameObject fileid")
 
 	metaobj.fileid_to_nodepath = ps.fileid_to_nodepath
 	metaobj.fileid_to_skeleton_bone = ps.fileid_to_skeleton_bone
 	metaobj.fileid_to_utype = ps.fileid_to_utype
+	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
 
 	asset_database.save()
 

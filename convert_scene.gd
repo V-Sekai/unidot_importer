@@ -2,6 +2,7 @@
 extends Resource
 
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const scene_node_state_class: GDScript = preload("./scene_node_state.gd")
 
 func customComparison(a, b):
 	if typeof(a) != typeof(b):
@@ -49,7 +50,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	var occlusion: OccluderInstance3D = null
 	var dirlight: DirectionalLight3D = null
 	var scene_contents: Node3D = null
-	var main_camera: Reference = null # unity object
 	if is_prefab:
 		if len(arr) > 1:
 			push_error("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
@@ -84,7 +84,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
-	var node_state: Object = object_adapter_class.create_node_state(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
+	var node_state: Object = scene_node_state_class.create_node_state(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
 
 	var ps: Reference = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
@@ -123,15 +123,57 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				env.fog_density = -log(TARGET_FOG_DENSITY) / asset.keys.get("m_LinearFogEnd", 0.0)
 			else:
 				env.fog_density = asset.keys.get("m_FogDensity", 0.0)
+			var sun: Array = asset.keys.get("m_Sun", [null,0,null,null])
+			if sun[1] != 0:
+				scene_contents.remove_child(dirlight)
+				dirlight = null
+			var sky_material: Material = pkgasset.parsed_meta.get_godot_resource(asset.keys.get("m_SkyboxMaterial"))
+			var ambient_mode: int = asset.keys.get("m_AmbientMode", 0)
+			if ambient_mode == 0 and sky_material == null:
+				env.background_mode = Environment.BG_COLOR
+				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.black)
+				var eng: float = max(ccol.r, max(ccol.g, ccol.b))
+				if eng > 1:
+					ccol /= eng
+				else:
+					eng = 1
+				env.background_color = ccol
+				env.background_energy = eng
+				env.ambient_light_color = ccol
+				env.ambient_light_energy = eng
+				env.ambient_light_sky_contribution = 0
+			elif ambient_mode == 1 or ambient_mode == 2 or ambient_mode == 3:
+				# modes 1 or 2 are technically a gradient (2 is blank dropdown)
+				# mode 3 is solid color (same as 0 + null skybox material)
+				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.black)
+				var eng: float = max(ccol.r, max(ccol.g, ccol.b))
+				if eng > 1:
+					ccol /= eng
+				else:
+					eng = 1
+				env.ambient_light_color = ccol
+				env.ambient_light_energy = eng
+				env.ambient_light_sky_contribution = 0
 		elif asset.type == "LightmapSettings":
-			pass
+			var lda: Array = asset.keys.get("m_LightingDataAsset", [null,0,null,null])
+			if lda[1] == 0:
+				scene_contents.remove_child(bakedlm)
+				bakedlm = null
 		elif asset.type == "NavMeshSettings":
-			pass
+			var nmd: Array = asset.keys.get("m_NavMeshData", [null,0,null,null])
+			if nmd[1] == 0:
+				scene_contents.remove_child(navregion)
+				navregion = null
+			else:
+				navregion.navmesh = NavigationMesh.new()
 		elif asset.type == "OcclusionCullingSettings":
-			pass
+			var ocd: Array = asset.keys.get("m_OcclusionCullingData", [null,0,null,null])
+			if ocd[1] == 0:
+				scene_contents.remove_child(occlusion)
+				occlusion = null
+			else:
+				occlusion.occluder = Occluder3D.new()
 		elif asset.type != "GameObject":
-			if asset.type == "Camera":
-				main_camera = asset
 			# alternatively, is it a subclass of UnityComponent?
 			parent = asset.gameObject
 			if parent != null and parent.is_prefab_reference:
@@ -182,6 +224,8 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			else:
 				assert(not is_prefab)
 
+	node_state.env = env
+
 	for asset in pkgasset.parsed_asset.assets.values():
 		if str(asset.type) == "SkinnedMeshRenderer":
 			var ret: Node = asset.create_skinned_mesh(node_state)
@@ -192,6 +236,44 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	if scene_contents == null:
 		push_error("Failed to parse scene " + pkgasset.pathname)
 		return null
+
+	if not is_prefab:
+		# Remove redundant directional light.
+		if dirlight != null:
+			var x: BakedLightmap = null
+			var fileids: Array = [].duplicate()
+			for light in node_state.find_objects_of_type("Light"):
+				if light.lightType == 1: # Directional
+					scene_contents.remove_child(dirlight)
+					dirlight = null
+		var main_camera: Camera3D = null
+		var pp_layer_bits: int = 0
+		for camera_obj in node_state.find_objects_of_type("Camera"):
+			#if not (camera.get_parent() is Viewport) and camera.visible:
+			var go: Reference = node_state.get_gameobject(camera_obj)
+			if camera_obj.enabled and go.enabled:
+				# This is a main camera
+				var camera: Camera3D = node_state.get_godot_node(camera_obj)
+				main_camera = camera
+				if camera.environment != null:
+					env.background_mode = camera.environment.background_mode
+					env.background_color = camera.environment.background_color
+					env.background_energy = camera.environment.background_energy
+				for mono in node_state.get_components(camera_obj, "MonoBehaviour"):
+					if mono.script[2] == "948f4100a11a5c24981795d21301da5c": # PostProcessingLayer
+						pp_layer_bits = mono.keys.get("volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0))
+						break
+				break
+		for mono in node_state.find_objects_of_type("MonoBehaviour"):
+			if mono.script[2] == "8b9a305e18de0c04dbd257a21cd47087": # PostProcessingVolume
+				var go: Reference = node_state.get_gameobject(mono)
+				if not mono.enabled or not go.enabled:
+					continue
+				if ((1 << go.keys.get("m_Layer")) & pp_layer_bits) != 0:
+					# Enabled PostProcessingVolume with matching layer.
+					if mono.keys.get("isGlobal", 0) == 1 and mono.keys.get("weight", 0) > 0.0:
+						print("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
+
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
 	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")

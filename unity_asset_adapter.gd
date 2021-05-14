@@ -104,6 +104,14 @@ class ImageHandler extends AssetHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_TEXTURE
 
+class AudioHandler extends AssetHandler:
+
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String) -> String:
+		return ""
+
+	func get_asset_type(pkgasset: Object) -> int:
+		return self.ASSET_TYPE_TEXTURE
+
 class YamlHandler extends AssetHandler:
 	const tarfile: GDScript = preload("./tarfile.gd")
 
@@ -236,7 +244,7 @@ class BaseModelHandler extends AssetHandler:
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
-		cfile.set_value("params", "meshes/light_baking", 0) #####cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
+		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value("params", "nodes/root_name", "Root Sccene")
 		# addCollider???? TODO
@@ -463,6 +471,10 @@ var file_handlers: Dictionary = {
 	"webp": image_handler,
 	"svg": image_handler,
 	"svgz": image_handler,
+	"wav": AudioHandler.new(),
+	"ogg": AudioHandler.new(),
+	"mp3": AudioHandler.new(),
+	# "aif": audio_handler, # Unsupported.
 	# "tif": image_handler, # Unsupported.
 	"asset": YamlHandler.new(), # Generic file format
 	"unity": SceneHandler.new(), # Unity Scenes
