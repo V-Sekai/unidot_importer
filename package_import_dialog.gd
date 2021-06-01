@@ -65,10 +65,8 @@ func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	#var old_prefix: String = (checkbox_on_unicode if !is_checked else checkbox_off_unicode)
 	#var new_prefix: String  = (checkbox_on_unicode if is_checked else checkbox_off_unicode)
 	#ti.set_text(0, new_prefix + ti.get_text(0).substr(len(old_prefix)))
-	var chld = ti.get_children()
-	while chld != null:
+	for chld in ti.get_children():
 		_check_recursively(chld, is_checked)
-		chld = chld.get_next()
 
 func _cell_selected() -> void:
 	var ti: TreeItem = main_dialog_tree.get_selected()
@@ -109,7 +107,7 @@ func _selected_package(p_path: String) -> void:
 			if i == len(path_names) - 1:
 				ti.set_tooltip(0, path)
 			ti.set_icon_max_width(0, 24)
-			#ti.set_custom_color(0, Color.darkblue)
+			#ti.set_custom_color(0, Color.DARK_BLUE)
 			var icon: Texture = pkg.path_to_pkgasset[path].icon
 			if (icon != null):
 				ti.set_icon(0, icon)
@@ -418,10 +416,8 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 				# ti.set_cell_mode(0, TreeItem.CELL_MODE_ICON)
 				if ti.get_button_count(0) <= 0:
 					ti.add_button(0, spinner_icon, -1, true, "Loading...")
-	var chld: TreeItem = ti.get_children()
-	while chld != null:
+	for chld in ti.get_children():
 		ret += _preprocess_recursively(chld)
-		chld = chld.get_next()
 	return ret
 
 func _asset_tree_window_confirmed_custom(action_name):
@@ -438,7 +434,7 @@ func _asset_tree_window_confirmed():
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
 	tree_dialog_state = STATE_PREPROCESSING
-	asset_database = asset_database_class.get_singleton()
+	asset_database = asset_database_class.new().get_singleton()
 	print("Asset database object returned " + str(asset_database))
 	import_worker.start_threads(0) # DISABLE_THREADING
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())

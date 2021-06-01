@@ -293,14 +293,12 @@ class Skelley extends Reference:
 
 
 
-static func create_node_state(database: Resource, meta: Resource, root_node: Node3D) -> Reference:
-	var state = new()
-	state.init_node_state(database, meta, root_node)
-	return state
+func _init(database: Resource, meta: Resource, root_node: Node3D):
+	init_node_state(database, meta, root_node)
 
 
 func duplicate() -> Reference:
-	var state = new()
+	var state = get_script().new()
 	state.env = env
 	state.owner = owner
 	state.body = body

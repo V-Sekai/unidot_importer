@@ -359,42 +359,30 @@ func parse_asset(file: Object) -> ParsedAsset:
 	self.parsed = parsed
 	return parsed
 
-static func create_dummy_meta(asset_path: String) -> Resource:
-	var meta = new()
-	meta.assets = {}.duplicate()
-	meta.path = asset_path
-	var hc: HashingContext = HashingContext.new()
-	hc.start(HashingContext.HASH_MD5)
-	hc.update("GodotDummyMetaGuid".to_ascii_buffer())
-	hc.update(asset_path.to_ascii_buffer())
-	meta.guid = hc.finish().hex_encode()
-	meta.type_to_fileids = {}.duplicate()
-	return meta
-
-static func parse_meta(file: Object, path: String) -> Resource: # This class...
-	var meta = new()
-	meta.path = path
-	meta.type_to_fileids = {}.duplicate() # push_back is not idempotent. must clear to avoid duplicates.
+func _init(file: Object, path: String):
+	self.path = path
+	type_to_fileids = {}.duplicate() # push_back is not idempotent. must clear to avoid duplicates.
+	if file == null:
+		return  # Dummy meta object
 
 	var magic = file.get_line()
 	print("Parsing meta file! " + file.get_path())
 	if not magic.begins_with("fileFormatVersion:"):
-		return meta
+		return
 
 	var yaml_parser = yaml_parser_class.new()
 	var i = 0
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj: Resource = yaml_parser.parse_line(lin, meta, true)
+		var output_obj: Resource = yaml_parser.parse_line(lin, self, true)
 		# unity_object_adapter.UnityObject
 		if output_obj != null:
 			print("Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
-			meta.importer_keys = output_obj.keys
-			meta.importer_type = output_obj.type
-			meta.importer = output_obj
-			meta.main_object_id = meta.importer.main_object_id
+			self.importer_keys = output_obj.keys
+			self.importer_type = output_obj.type
+			self.importer = output_obj
+			self.main_object_id = self.importer.main_object_id
 		if file.get_error() == ERR_FILE_EOF:
 			break
-	assert(meta.guid != "")
-	return meta;
+	assert(self.guid != "")

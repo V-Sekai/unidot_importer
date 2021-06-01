@@ -417,7 +417,7 @@ func post_import(p_scene: Node) -> Object:
 	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
-	var asset_database = asset_database_class.get_singleton()
+	var asset_database = asset_database_class.new().get_singleton()
 	var is_obj: bool = source_file_path.ends_with(".obj")
 	var is_dae: bool = source_file_path.ends_with(".dae")
 

@@ -84,7 +84,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
-	var node_state: Object = scene_node_state_class.create_node_state(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
+	var node_state: Object = scene_node_state_class.new(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
 
 	var ps: Reference = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
@@ -110,7 +110,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			#	ps.prefab_parents[uk].append(asset)
 		elif asset.type == "RenderSettings":
 			env.fog_enabled = (asset.keys.get("m_Fog", 0) == 1)
-			var c: Color = asset.keys.get("m_FogColor", Color.white)
+			var c: Color = asset.keys.get("m_FogColor", Color.WHITE)
 			var max_c: float = max(c.r, max(c.g, c.b))
 			if max_c > 1.0:
 				c /= max_c
@@ -135,7 +135,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				env.sky.sky_material = sky_material
 			if ambient_mode == 0 and sky_material == null:
 				env.background_mode = Environment.BG_COLOR
-				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.black)
+				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.BLACK)
 				var eng: float = max(ccol.r, max(ccol.g, ccol.b))
 				if eng > 1:
 					ccol /= eng
@@ -149,7 +149,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			elif ambient_mode == 1 or ambient_mode == 2 or ambient_mode == 3:
 				# modes 1 or 2 are technically a gradient (2 is blank dropdown)
 				# mode 3 is solid color (same as 0 + null skybox material)
-				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.black)
+				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.BLACK)
 				var eng: float = max(ccol.r, max(ccol.g, ccol.b))
 				if eng > 1:
 					ccol /= eng

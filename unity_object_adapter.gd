@@ -534,10 +534,10 @@ class UnityMesh extends UnityObject:
 		return ".mesh.res"
 
 	func get_vertex_data() -> Reference:
-		return aligned_byte_buffer.new_with_hex(keys.get("m_VertexData", {}).get("_typelessdata", ""))
+		return aligned_byte_buffer.new(keys.get("m_VertexData", {}).get("_typelessdata", ""))
 
 	func get_index_data() -> Reference:
-		return aligned_byte_buffer.new_with_hex(keys.get("m_IndexBuffer", ""))
+		return aligned_byte_buffer.new(keys.get("m_IndexBuffer", ""))
 
 class UnityMaterial extends UnityObject:
 
@@ -616,7 +616,7 @@ class UnityMaterial extends UnityObject:
 		# But it seems to workaround a problem with some materials for now.
 		ret.depth_draw_mode = true ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_tex_force_srgb = true # Nothing works if this isn't set to true explicitly. Stupid default.
-		ret.albedo_color = get_color(colorProperties, "_Color", Color.white)
+		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
 		ret.albedo_texture = get_texture(texProperties, "_MainTex2") ### ONLY USED IN ONE SHADER. This case should be removed.
 		if ret.albedo_texture == null:
 			ret.albedo_texture = get_texture(texProperties, "_MainTex")
@@ -635,9 +635,9 @@ class UnityMaterial extends UnityObject:
 			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
 		if kws.get("_EMISSION", false):
 			ret.emission_enabled = true
-			var emis_vec: Plane = get_vector(colorProperties, "_EmissionColor", Color.black)
+			var emis_vec: Plane = get_vector(colorProperties, "_EmissionColor", Color.BLACK)
 			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
-			ret.emission = Color.black
+			ret.emission = Color.BLACK
 			if emis_mag > 0:
 				ret.emission = Color(emis_vec.x/emis_mag, emis_vec.y/emis_mag, emis_vec.z/emis_mag)
 				ret.emission_energy = emis_mag
@@ -2255,7 +2255,7 @@ class UnityCamera extends UnityBehaviour:
 			var cenv: Environment = Environment.new() if state.env == null else state.env.duplicate()
 			cam.environment = cenv
 			cenv.background_mode = Environment.BG_COLOR
-			var ccol: Color = keys.get("m_BackGroundColor", Color.black)
+			var ccol: Color = keys.get("m_BackGroundColor", Color.BLACK)
 			var eng = max(ccol.r, max(ccol.g, ccol.b))
 			if eng > 1:
 				ccol /= eng

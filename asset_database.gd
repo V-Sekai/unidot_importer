@@ -18,11 +18,11 @@ var object_adapter = object_adapter_class.new()
 @export var null_material_reference: Material = null
 
 # SEMI-STATIC
-static func get_singleton() -> Object:
+func get_singleton() -> Object:
 
 	var asset_database = load(ASSET_DATABASE_PATH)
 	if asset_database == null:
-		asset_database = new()
+		asset_database = self
 		asset_database.preload_builtin_assets()
 		asset_database.save()
 		asset_database = load(ASSET_DATABASE_PATH)
@@ -64,7 +64,7 @@ func guid_to_asset_path(guid: String) -> String:
 	return guid_to_path.get(guid, "")
 
 static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
-	var meta = asset_meta_class.new()
+	var meta = asset_meta_class.new(null, asset_path)
 	meta.path = asset_path
 	var hc: HashingContext = HashingContext.new()
 	hc.start(HashingContext.HASH_MD5)
@@ -74,7 +74,7 @@ static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
 	return meta
 
 static func parse_meta(file: Object, path: String) -> Resource: # asset_meta
-	return asset_meta_class.parse_meta(file, path)
+	return asset_meta_class.new(file, path)
 
 func preload_builtin_assets():
 	truncated_shader_reference = Shader.new()
@@ -88,10 +88,9 @@ func preload_builtin_assets():
 	null_material_reference.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
 
-	var unity_builtin = asset_meta_class.new()
+	var unity_builtin = asset_meta_class.new(null, "Library/unity default resources")
 	unity_builtin.initialize(self)
-	unity_builtin.resource_name = "Library/unity default resources"
-	unity_builtin.path = unity_builtin.resource_name
+	unity_builtin.resource_name = unity_builtin.path
 	unity_builtin.guid = "0000000000000000e000000000000000"
 	guid_to_path[unity_builtin.guid] = unity_builtin.path
 	path_to_meta[unity_builtin.path] = unity_builtin
@@ -132,10 +131,9 @@ func preload_builtin_assets():
 	quad_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
-	var unity_extra = asset_meta_class.new()
+	var unity_extra = asset_meta_class.new(null, "Resources/unity_builtin_extra")
 	unity_extra.initialize(self)
-	unity_extra.resource_name = "Resources/unity_builtin_extra"
-	unity_extra.path = unity_extra.resource_name
+	unity_extra.resource_name = unity_extra.path
 	unity_extra.guid = "0000000000000000f000000000000000"
 	guid_to_path[unity_extra.guid] = unity_extra.path
 	path_to_meta[unity_extra.path] = unity_extra
