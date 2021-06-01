@@ -127,8 +127,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if sun[1] != 0:
 				scene_contents.remove_child(dirlight)
 				dirlight = null
-			var sky_material: Material = pkgasset.parsed_meta.get_godot_resource(asset.keys.get("m_SkyboxMaterial"))
+			var sky_material: Variant = pkgasset.parsed_meta.get_godot_resource(asset.keys.get("m_SkyboxMaterial"))
 			var ambient_mode: int = asset.keys.get("m_AmbientMode", 0)
+			if sky_material != null:
+				env.background_mode = Environment.BG_SKY
+				env.sky = Sky.new()
+				env.sky.sky_material = sky_material
 			if ambient_mode == 0 and sky_material == null:
 				env.background_mode = Environment.BG_COLOR
 				var ccol: Color = asset.keys.get("m_AmbientSkyColor", Color.black)

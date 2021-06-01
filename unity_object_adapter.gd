@@ -2265,6 +2265,7 @@ class UnityCamera extends UnityBehaviour:
 			cenv.background_energy = eng
 		assign_object_meta(cam)
 		state.add_child(cam, par, self)
+		cam.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))
 		return cam
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:

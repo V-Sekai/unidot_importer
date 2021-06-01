@@ -143,7 +143,7 @@ func preload_builtin_assets():
 	unity_extra.override_resource(10905, "UISprite", stub)
 	unity_extra.override_resource(10302, "Default-Diffuse", StandardMaterial3D.new()) # Legacy Shaders/Diffuse
 	unity_extra.override_resource(10303, "Default-Material", StandardMaterial3D.new()) # Standard
-	unity_extra.override_resource(10304, "Default-Skybox", StandardMaterial3D.new()) # Skybox/Procedural
+	unity_extra.override_resource(10304, "Default-Skybox", ProceduralSkyMaterial.new()) # Skybox/Procedural
 	unity_extra.override_resource(10306, "Default-Line", StandardMaterial3D.new()) # Particles/Alpha Blended
 	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new()) # Particles/Standard Unlit
 	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new()) # Sprites/Default
