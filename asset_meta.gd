@@ -359,8 +359,12 @@ func parse_asset(file: Object) -> ParsedAsset:
 	self.parsed = parsed
 	return parsed
 
-func _init(file: Object, path: String):
+func _init():
+	pass
+
+func init_with_file(file: Object, path: String):
 	self.path = path
+	self.resource_name = path
 	type_to_fileids = {}.duplicate() # push_back is not idempotent. must clear to avoid duplicates.
 	if file == null:
 		return  # Dummy meta object

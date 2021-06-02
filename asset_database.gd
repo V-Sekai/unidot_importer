@@ -64,7 +64,8 @@ func guid_to_asset_path(guid: String) -> String:
 	return guid_to_path.get(guid, "")
 
 static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
-	var meta = asset_meta_class.new(null, asset_path)
+	var meta = asset_meta_class.new()
+	meta.init_with_file(null, asset_path)
 	meta.path = asset_path
 	var hc: HashingContext = HashingContext.new()
 	hc.start(HashingContext.HASH_MD5)
@@ -74,7 +75,9 @@ static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
 	return meta
 
 static func parse_meta(file: Object, path: String) -> Resource: # asset_meta
-	return asset_meta_class.new(file, path)
+	var ret: Resource = asset_meta_class.new()
+	ret.init_with_file(file, path)
+	return ret
 
 func preload_builtin_assets():
 	truncated_shader_reference = Shader.new()
@@ -88,7 +91,8 @@ func preload_builtin_assets():
 	null_material_reference.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
 
-	var unity_builtin = asset_meta_class.new(null, "Library/unity default resources")
+	var unity_builtin = asset_meta_class.new()
+	unity_builtin.init_with_file(null, "Library/unity default resources")
 	unity_builtin.initialize(self)
 	unity_builtin.resource_name = unity_builtin.path
 	unity_builtin.guid = "0000000000000000e000000000000000"
@@ -131,7 +135,8 @@ func preload_builtin_assets():
 	quad_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
-	var unity_extra = asset_meta_class.new(null, "Resources/unity_builtin_extra")
+	var unity_extra = asset_meta_class.new()
+	unity_extra.init_with_file(null, "Resources/unity_builtin_extra")
 	unity_extra.initialize(self)
 	unity_extra.resource_name = unity_extra.path
 	unity_extra.guid = "0000000000000000f000000000000000"

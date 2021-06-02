@@ -97,6 +97,7 @@ class Skelley extends Reference:
 	
 	var root_bones: Array = [].duplicate()
 	
+	var bones_set: Dictionary = {}.duplicate()
 	var uniq_key_to_bone: Dictionary = {}.duplicate()
 	var godot_skeleton: Skeleton3D = Skeleton3D.new()
 	
@@ -122,7 +123,11 @@ class Skelley extends Reference:
 		# print("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 
 	func add_bone(bone: Reference) -> Array: # UnityTransform
+		if bones_set.has(bone.uniq_key):
+			push_error("Already added bone " + str(bone.uniq_key))
+			return []
 		bones.push_back(bone)
+		bones_set[bone.uniq_key] = true
 		# print("Adding a bone: " + str(bones))
 		var added_bones: Array = [].duplicate()
 		var current_parent: Reference = bone #### UnityTransform or UnityPrefabInstance
@@ -245,7 +250,11 @@ class Skelley extends Reference:
 				# FIXME: Do cases exist in which we are required to add intermediate stripped bones?
 				continue
 			if intermediates.has(bone.uniq_key):
-				bones.push_back(bone)
+				if bones_set.has(bone.uniq_key):
+					push_error("Already added intermediate bone " + str(bone.uniq_key))
+				else:
+					bones_set[bone.uniq_key] = true
+					bones.push_back(bone)
 		var idx: int = 0
 		for bone in bones:
 			if bone.is_stripped_or_prefab_instance():
@@ -298,12 +307,9 @@ func _init(database: Resource, meta: Resource, root_node: Node3D):
 
 
 func duplicate() -> Reference:
-	var state = get_script().new()
+	var state = get_script().new(database, meta, owner)
 	state.env = env
-	state.owner = owner
 	state.body = body
-	state.database = database
-	state.meta = meta
 	state.skelley_parents = skelley_parents
 	state.uniq_key_to_skelley = uniq_key_to_skelley
 	state.prefab_state = prefab_state
