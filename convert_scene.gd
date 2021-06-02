@@ -37,6 +37,8 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	for asset in pkgasset.parsed_asset.assets.values():
 		if (asset.type == "GameObject" or asset.type == "PrefabInstance") and asset.toplevel:
+			if asset.is_non_stripped_prefab_reference:
+				continue # We don't want these.
 			if asset.is_stripped:
 				push_error("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 			arr.push_back(asset)
@@ -91,6 +93,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		var parent: Reference = null # UnityTransform
 		if asset.is_stripped:
 			pass # Ignore stripped components.
+		elif asset.is_non_stripped_prefab_reference:
+			var prefab_instance_id: int = asset.prefab_instance[1]
+			var prefab_source_object: int = asset.prefab_source_object[1]
+			if not ps.non_stripped_prefab_references.has(prefab_instance_id):
+				ps.non_stripped_prefab_references[prefab_instance_id] = [].duplicate()
+			ps.non_stripped_prefab_references[prefab_instance_id].push_back(asset)
 		elif asset.type == "Transform" or asset.type == "PrefabInstance":
 			parent = asset.parent
 			if parent != null and parent.is_prefab_reference:

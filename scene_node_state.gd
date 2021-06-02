@@ -25,6 +25,8 @@ class PrefabState extends Reference:
 	#var gameobjects_by_parented_prefab_source_obj: Dictionary = {}.duplicate()
 	var skelleys_by_parented_prefab: Dictionary = {}.duplicate()
 
+	var non_stripped_prefab_references: Dictionary = {}.duplicate() # some legacy 5.6 thing I think
+
 	# Dictionary from parent_transform uniq_key -> array of UnityPrefabInstance
 	var prefab_parents: Dictionary = {}.duplicate()
 	var prefab_instance_paths: Array = [].duplicate()

@@ -242,7 +242,7 @@ func get_godot_resource(unityref: Array) -> Resource:
 		return load("res://" + found_meta.path)
 	if found_meta.godot_resources.has(local_id):
 		var ret: Variant = found_meta.godot_resources.get(local_id, null)
-		if typeof(ret) == TYPE_STRING:
+		if typeof(ret) != TYPE_OBJECT and typeof(ret) != TYPE_NIL:
 			return load(ret)
 		else:
 			return ret

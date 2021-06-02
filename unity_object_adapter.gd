@@ -94,7 +94,7 @@ class UnityObject extends Reference:
 	var is_stripped: bool = false
 
 	func is_stripped_or_prefab_instance() -> bool:
-		return is_stripped
+		return is_stripped or is_non_stripped_prefab_reference
 
 	var uniq_key: String:
 		get:
@@ -311,11 +311,19 @@ class UnityObject extends Reference:
 		get:
 			# new: m_PrefabInstance; old: m_PrefabInternal
 			return keys.get("m_PrefabInstance", keys.get("m_PrefabInternal", [null, 0, "", 0]))
+
+	var is_non_stripped_prefab_reference: bool:
+		get:
+			# Might be some 5.6 content. See arktoon Shaders/ExampleScene.unity
+			# non-stripped prefab references are allowed to override properties.
+			return not is_stripped and not (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
 	
 	var is_prefab_reference: bool:
 		get:
 			if not is_stripped:
-				assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
+				#if not (prefab_source_object[1] == 0 or prefab_instance[1] == 0):
+				#	print(str(self.uniq_key) + " WITHIN " + str(self.meta.guid) + " / " + str(self.meta.path) + " keys:" + str(self.keys))
+				pass #assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
 			else:
 				# Might have source object=0 if the object is a dummy / broken prefab?
 				pass # assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
@@ -1017,17 +1025,20 @@ class UnityPrefabInstance extends UnityGameObject:
 		var nodepath_to_first_virtual_object = {}.duplicate()
 		var nodepath_to_keys = {}.duplicate()
 		for mod in modifications:
-			# print("Preparing to apply mod: Mod is " + str(mod))
+			print("Preparing to apply mod: Mod is " + str(mod))
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
 			var obj_value: Array = mod.get("objectReference", [null,0,"",null])
-			var value: String = mod.get("value", "0")
+			var value: String = mod.get("value", "")
 			var fileID: int = source_obj_ref[1]
 			if not fileID_to_keys.has(fileID):
 				fileID_to_keys[fileID] = {}.duplicate()
 			if STRING_KEYS.has(property_key):
 				fileID_to_keys.get(fileID)[property_key] = value
-			elif value.is_empty(): # if obj_value[1] != 0:
+			elif value.is_empty():
+				fileID_to_keys.get(fileID)[property_key] = obj_value
+			elif obj_value[1] != 0:
+				push_error("Object has both value " + str(value) + " and objref " + str(obj_value) + " for " + str(mod))
 				fileID_to_keys.get(fileID)[property_key] = obj_value
 			elif len(value) < 24 and value.is_valid_integer():
 				fileID_to_keys.get(fileID)[property_key] = value.to_int()
@@ -1035,6 +1046,15 @@ class UnityPrefabInstance extends UnityGameObject:
 				fileID_to_keys.get(fileID)[property_key] = value.to_float()
 			else:
 				fileID_to_keys.get(fileID)[property_key] = value
+		# Some legacy unity "feature" where objects part of a prefab might be not stripped
+		# In that case, the 'non-stripped' copy will override even the modifications.
+		for asset in ps.non_stripped_prefab_references.get(self.fileID, []):
+			var fileID: int = asset.prefab_source_object[1]
+			if not fileID_to_keys.has(fileID):
+				fileID_to_keys[fileID] = {}.duplicate()
+			for key in asset.keys:
+				# print("Legacy prefab override fileID " + str(fileID) + " key " + str(key) + " value " + str(asset.keys[key]))
+				fileID_to_keys[fileID][key] = asset.keys[key]
 		for fileID in fileID_to_keys:
 			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID,
 					target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
@@ -1351,6 +1371,7 @@ class UnityComponent extends UnityObject:
 
 	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
 		const material_prefix: String = ":UNIDOT_PROXY:"
+		print("Apply mesh renderer props: " + str(props) + " / " + str(node.mesh))
 		var truncated_mat_prefix: String = meta.get_database().truncated_material_reference.resource_name
 		var null_mat_prefix: String = meta.get_database().null_material_reference.resource_name
 		var last_material: Object = null
@@ -1413,8 +1434,8 @@ class UnityComponent extends UnityObject:
 			if new_materials_size < new_surface_count:
 				for i in range(new_materials_size, new_surface_count):
 					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
-			#for i in range(new_materials_size):
-			#	#node.mesh.set_surface_override_material(
+			for i in range(new_materials_size):
+				node.set_surface_override_material(i, current_materials[i])
 
 		# surface_get_material
 		#for i in range(new_surface_count)
@@ -1495,7 +1516,7 @@ class UnityTransform extends UnityComponent:
 
 	var parent_no_stripped: UnityObject: # UnityTransform
 		get:
-			if is_stripped:
+			if is_stripped or is_non_stripped_prefab_reference:
 				return meta.lookup(self.prefab_instance) # Not a UnityTransform, but sufficient for determining a common "ancestor" for skeleton bones.
 			return meta.lookup(parent_ref)
 
@@ -1701,7 +1722,7 @@ class UnityRigidbody extends UnityComponent:
 
 	func create_physics_body(state: Reference, new_parent: Node3D, name: String) -> Node:
 		var new_node: Node3D;
-		if isKinematic:
+		if keys.get("m_IsKinematic") != 0:
 			var kinematic: KinematicBody3D = KinematicBody3D.new()
 			new_node = kinematic
 		else:
@@ -1725,10 +1746,6 @@ class UnityRigidbody extends UnityComponent:
 		state.add_child(new_node, godot_skeleton, self)
 		return new_node
 
-	var isKinematic: bool:
-		get:
-			return keys.get("m_IsKinematic") != 0
-
 
 
 class UnityMeshFilter extends UnityComponent:
@@ -1742,13 +1759,13 @@ class UnityMeshFilter extends UnityComponent:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
-			var new_mesh: Mesh = meta.get_godot_resource(mesh)
+			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
+			print("MeshFilter " + str(self.uniq_key) + " ref " + str(mesh_ref) + " new mesh " + str(new_mesh) + " old mesh " + str(node.mesh))
 			outdict["_mesh"] = new_mesh # property track?
 		return outdict
 
-	var mesh: Array: # UnityRef
-		get:
-			return keys.get("m_Mesh", [null,0,"",null])
+	func get_filter_mesh() -> Array: # UnityRef
+		return keys.get("m_Mesh", [null,0,"",null])
 
 class UnityRenderer extends UnityBehaviour:
 	pass
@@ -1763,7 +1780,7 @@ class UnityMeshRenderer extends UnityRenderer:
 		state.add_child(new_node, new_parent, self)
 		assign_object_meta(new_node)
 		new_node.editor_description = str(self)
-		new_node.mesh = meta.get_godot_resource(self.mesh)
+		new_node.mesh = meta.get_godot_resource(self.get_mesh())
 
 		if is_stripped or gameObject.is_stripped:
 			push_error("Oh no i am stripped MRcgno")
@@ -1771,7 +1788,7 @@ class UnityMeshRenderer extends UnityRenderer:
 		if mf != null:
 			state.add_fileID(new_node, mf)
 		var idx: int = 0
-		for m in materials:
+		for m in keys.get("m_Materials", []):
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
@@ -1784,39 +1801,32 @@ class UnityMeshRenderer extends UnityRenderer:
 		if uprops.has("m_Materials"):
 			outdict["_materials_size"] = len(uprops.get("m_Materials"))
 			var idx: int = 0
-			for m in keys.get("m_Materials", []):
-				if typeof(m) == TYPE_OBJECT:
-					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
-				else:
-					outdict["_materials/" + str(idx)] = null
-				idx += 1
-		if uprops.has("m_Materials.Array.size"):
-			outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
-		const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
-		for prop in uprops:
-			if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
-				var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
-				var m: Array = get_ref(uprops, prop)
+			for m in uprops.get("m_Materials", []):
 				outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+				idx += 1
+			print("Converted mesh prop " + str(outdict))
+		else:
+			if uprops.has("m_Materials.Array.size"):
+				outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
+			const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
+			for prop in uprops:
+				if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
+					var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
+					var m: Array = get_ref(uprops, prop)
+					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+			print("Converted mesh prop " + str(outdict) + "  for uprop " + str(uprops))
 		return outdict
 
 	# TODO: convert_properties
 	# both material properties as well as material references??
 	# anything else to animate?
 
-	var materials: Array:
-		get:
-			return keys.get("m_Materials", [])
-
-	var mesh: Array: # UnityRef
-		get:
-			return get_mesh()
 	func get_mesh() -> Array: # UnityRef
 		if is_stripped or gameObject.is_stripped:
 			push_error("Oh no i am stripped MR")
 		var mf: Reference = gameObject.get_meshFilter()
 		if mf != null:
-			return mf.mesh
+			return mf.get_filter_mesh()
 		return [null,0,"",null]
 
 class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
@@ -1833,7 +1843,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
 		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self, self.mesh, null, [])
 		var idx: int = 0
-		for m in materials:
+		for m in keys.get("m_Materials", []):
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
@@ -1867,7 +1877,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			ret = create_godot_node_orig(state, gdskel, component_name)
 		# ret.skeleton = NodePath("..") # default?
 		# TODO: skin??
-		ret.skin = meta.get_godot_resource(skin)
+		ret.skin = meta.get_godot_resource(get_skin())
 		if ret.skin == null:
 			push_error("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " has null skin")
 		elif len(bones) != ret.skin.get_bind_count():
@@ -1896,11 +1906,11 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
-			var new_mesh: Mesh = meta.get_godot_resource(mesh)
-			outdict["mesh"] = new_mesh # property track?
+			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
+			outdict["_mesh"] = new_mesh # property track?
 			var skin_ref: Array = mesh_ref
 			skin_ref = [null, -skin_ref[1], skin_ref[2], skin_ref[3]]
-			var new_skin: Mesh = meta.get_godot_resource(mesh)
+			var new_skin: Mesh = meta.get_godot_resource(skin_ref)
 			outdict["skin"] = new_skin # property track?
 
 			# TODO: blend shapes
@@ -1908,10 +1918,9 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			# TODO: m_Bones modifications? what even is the syntax. I think we shouldn't allow changes to bones.
 		return outdict
 
-	var skin: Array: # UnityRef
-		get:
-			var ret: Array = keys.get("m_Mesh", [null,0,"",null])
-			return [null, -ret[1], ret[2], ret[3]]
+	func get_skin() -> Array: # UnityRef
+		var ret: Array = keys.get("m_Mesh", [null,0,"",null])
+		return [null, -ret[1], ret[2], ret[3]]
 
 	func get_mesh() -> Array: # UnityRef
 		return keys.get("m_Mesh", [null,0,"",null])
