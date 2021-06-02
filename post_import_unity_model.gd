@@ -321,12 +321,18 @@ class ParseState:
 			var lods: Dictionary = {} # mesh.surface_get_lods(surf_idx) # get_lods(mesh, surf_idx)
 			var mat: Material = mesh.surface_get_material(surf_idx)
 			#print("About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
-			for i in range(len(arr[ArrayMesh.ARRAY_VERTEX])):
+			var vert_arr_len: int = (len(arr[ArrayMesh.ARRAY_VERTEX]))
+			var i: int = 0
+			while i < vert_arr_len:
 				arr[ArrayMesh.ARRAY_VERTEX][i] = arr[ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
+				i += 1
 			#print("Done multiplying mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
 			for bsidx in range(len(bsarr)):
-				for i in range(len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])):
+				i = 0
+				var ilen: int = (len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX]))
+				while i < ilen:
 					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
+					i += 1
 				bsarr[bsidx].resize(len(arr))
 				#print("Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
 				for i in range(len(arr)):
@@ -374,36 +380,47 @@ class ParseState:
 			match anim.get("tracks/" + str(trackidx) + "/type"):
 				"transform":
 					var xform_keys: PackedFloat32Array = anim.get("tracks/" + str(trackidx) + "/keys")
-					for i in range(0, len(xform_keys), 12):
+					var i: int = 0
+					var ilen: int = len(xform_keys)
+					while i < ilen:
 						xform_keys[i + 2] *= scale_correction_factor
 						xform_keys[i + 3] *= scale_correction_factor
 						xform_keys[i + 4] *= scale_correction_factor
+						i += 12
 					anim.set("tracks/" + str(trackidx) + "/keys", xform_keys)
 				"value":
 					if path.ends_with(":translation") or path.ends_with(":transform"):
 						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
 						var track_values: Array = track_dict.get("values")
+						var i: int = 0
+						var ilen: int = len(track_values)
 						if path.ends_with(":transform"):
-							for i in range(len(track_values)):
+							while i < ilen:
 								track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+								i += 1
 						else:
-							for i in range(len(track_values)):
+							while i < ilen:
 								track_values[i] *= scale_correction_factor
+								i += 1
 						track_dict["values"] = track_values
 						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
 				"bezier":
 					if path.ends_with(":translation") or path.ends_with(":transform"):
 						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
 						var track_values: Variant = track_dict.get("points") # Some sort of packed array?
+						var i: int = 0
+						var ilen: int = len(track_values)
 						# VALUE, inX, inY, outX, outY
 						if path.ends_with(":transform"):
-							for i in range(len(track_values)):
+							while i < ilen:
 								if ((i % 5) % 2) != 1:
 									track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+								i += 1
 						else:
-							for i in range(len(track_values)):
+							while i < ilen:
 								if ((i % 5) % 2) != 1:
 									track_values[i] *= scale_correction_factor
+								i += 1
 						track_dict["points"] = track_values
 						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
 

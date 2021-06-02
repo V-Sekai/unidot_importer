@@ -128,11 +128,17 @@ class Stream extends StreamPeerBuffer:
 		self.seek(new_pos)
 	func read_str() -> String:
 		var initial_pos: int = self.get_position()
-		for i in range(initial_pos, self.get_size()):
+		if initial_pos == self.get_size():
+			print("Already at end for read_str " + str(initial_pos) +" " + str(self.get_size()))
+			return ""
+		var i: int = initial_pos
+		var ilen: int = self.get_size()
+		while i < ilen:
 			if d[i] == 0:
 				# automatically Nul-terminates.
 				self.seek(i + 1)
 				return self.d.subarray(initial_pos, i).get_string_from_ascii()
+			i += 1
 		return self.d.subarray(initial_pos, self.get_size() - 1).get_string_from_ascii()
 
 
@@ -169,8 +175,11 @@ class Def extends Reference:
 				return ret
 			else:
 				var arr: Array = [].duplicate()
-				for i in range(size):
+				var i: int = 0
+				var ilen: int = size
+				while i < ilen:
 					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+					i += 1
 				#print("reading arr @" + str(x) + " " + self.name + "/" + self.type_name + ": " + str(arr))
 				return arr
 		elif not self.children.is_empty():
@@ -321,9 +330,11 @@ func decode_defs() -> Array:
 	var are_defs: bool = s.get_8() != 0
 	var count: int = s.get_32()
 	var defs: Array = [].duplicate()
-	for i in range(count):
+	var i: int = 0
+	while i < count:
 		var def = self.decode_attrtab()
 		defs.push_back(def)
+		i += 1
 	return defs
 
 #func decode_guids_backwards() -> void:
@@ -351,7 +362,8 @@ func decode_guids() -> void:
 	# null GUID is implied!
 	referenced_guids.push_back(null)
 	referenced_reftypes.push_back(0)
-	for i in range(count):
+	var i: int = 0
+	while i < count:
 		s.get_u8()
 		var guid: String = ""
 		for i in range(16):
@@ -360,6 +372,7 @@ func decode_guids() -> void:
 		referenced_reftypes.push_back(s.get_u32())
 		var path: String = s.read_str()
 		referenced_guids.push_back(guid)
+		i += 1
 
 func decode_data_headers() -> Array:
 	var count: int = s.get_u32()
@@ -367,7 +380,8 @@ func decode_data_headers() -> Array:
 	if not (count < 1024000):
 		push_error("Invalid count " + str(count))
 		count = 0
-	for i in range(count):
+	var i: int = 0
+	while i < count:
 		self.s.align(4)
 		var pathId: int = -1
 		var size: int = 0
@@ -393,6 +407,7 @@ func decode_data_headers() -> Array:
 			unk = s.get_u8()
 		# print("pathid " + str(pathId) + " " + str(type_id) + " " + str(class_id))
 		obj_headers.push_back([off + self.data_offset + self.off, class_id, pathId, type_id])
+		i += 1
 	return obj_headers
 
 func decode_data(obj_headers: Array) -> Array:
@@ -465,7 +480,8 @@ func decode_attrtab() -> Def:
 	if not (attr_cnt < 1024):
 		push_error("Invalid attr_count " + str(attr_cnt))
 		attr_cnt = 0
-	for i in range(attr_cnt):
+	var i: int = 0
+	while i < attr_cnt:
 		var a1: int = attrs_spb.get_u8()
 		var a2: int = attrs_spb.get_u8()
 		var level: int = attrs_spb.get_u8()
@@ -487,19 +503,24 @@ func decode_attrtab() -> Def:
 				push_error("Level is too large: " + str(level) + " of " + str(def.name) + "/" + str(def.type_name))
 				level = 1
 			var d: Def = def
-			for i in range(level - 1):
+			for ii in range(level - 1):
 				if len(d.children) == 0:
 					push_error("Unable to recurse to level " + str(level) + " of " + str(def.name) + "/" + str(def.type_name))
 					break
 				d = d.children[-1]
 			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
-			d.append(Def.new(name, type_name, size, flags, a4))
+			var newdef: Def = Def.new(name, type_name, size, flags, a4)
+			d.append(newdef)
 		else:
 			if def == null:
 				def = Def.new(name, type_name, size, flags, a4)
 			else:
 				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
-		#print "%2x %2x %2x %20s %8x %8x %2d: %s%s" % (a1, a2, a4, type_name, size or -1, flags, idx, "  " * level, name)
+		#var indstr: String = ""
+		#for lv in range(level):
+		#	indstr += "  "
+		#print("%2x %2x %2x %20s %8x %8x %2d: %s%s" % [a1, a2, a4, type_name, size, flags, idx, indstr, name])
+		i += 1
 
 	if def == null:
 		push_error("Failed to find def")

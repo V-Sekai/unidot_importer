@@ -266,9 +266,12 @@ class FbxHandler extends BaseModelHandler:
 			xlen = p_to
 		if (src_len == 0 or xlen == 0):
 			return -1 # won't find anything!
-		for i in range(p_from, xlen - src_len):
+		var i: int = p_from
+		var ilen: int = (xlen - src_len)
+		while i < ilen:
 			var found: bool = true
-			for j in range(src_len):
+			var j: int = 0
+			while j < src_len:
 				var read_pos: int = i + j
 				if (read_pos >= xlen):
 					push_error("read_pos>=len")
@@ -276,9 +279,11 @@ class FbxHandler extends BaseModelHandler:
 				if (p_buf[read_pos] != p_str[j]):
 					found = false
 					break
+				j += 1
 
 			if (found):
 				return i
+			i += 1
 
 		return -1
 

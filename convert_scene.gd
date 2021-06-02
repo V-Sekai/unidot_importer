@@ -272,12 +272,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					env.background_color = camera.environment.background_color
 					env.background_energy = camera.environment.background_energy
 				for mono in node_state.get_components(camera_obj, "MonoBehaviour"):
-					if mono.script[2] == "948f4100a11a5c24981795d21301da5c": # PostProcessingLayer
+					if str(mono.script[2]) == "948f4100a11a5c24981795d21301da5c": # PostProcessingLayer
 						pp_layer_bits = mono.keys.get("volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0))
 						break
 				break
 		for mono in node_state.find_objects_of_type("MonoBehaviour"):
-			if mono.script[2] == "8b9a305e18de0c04dbd257a21cd47087": # PostProcessingVolume
+			if str(mono.script[2]) == "8b9a305e18de0c04dbd257a21cd47087": # PostProcessingVolume
 				var go: Reference = node_state.get_gameobject(mono)
 				if not mono.enabled or not go.enabled:
 					continue

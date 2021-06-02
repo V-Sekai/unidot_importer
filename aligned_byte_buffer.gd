@@ -41,8 +41,11 @@ func hex_decode(s: String, prefix: PackedByteArray = PackedByteArray()) -> Packe
 	var larger_sz: int = (len(s)/2 + 12 + 3)
 	pba.resize(larger_sz - (larger_sz & 3) + offset)
 	var hlt: PackedByteArray = HEX_LOOKUP_TABLE
-	for i in range(len(s)/2):
+	var i: int = 0
+	var iend: int = (len(s)/2)
+	while i < iend:
 		pba[i + offset] = 16 * hlt[s.unicode_at(i * 2)] + hlt[s.unicode_at(i * 2 + 1)]
+		i += 1
 	return pba
 
 func clear_views():
@@ -90,8 +93,11 @@ func uint8_subarray(offset_arg: int, length_arg: int, stride: int=4, cluster: in
 	var ret: PackedInt32Array = PackedInt32Array()
 	ret.resize(length)
 	for cidx in range(cluster):
-		for i in range(length / cluster):
+		var i: int = 0
+		var iend: int = (length / cluster)
+		while i < iend:
 			ret[i * cluster + cidx] = _buffer[offset + i * stride + cidx]
+			i += 1
 	return ret
 
 func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedFloat32Array:
@@ -105,11 +111,17 @@ func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: i
 
 	var ret: PackedFloat32Array = PackedFloat32Array()
 	# GDScript bug with F32Array # ret.resize(length)
-	for i in range(length / cluster):
-		for cidx in range(cluster):
+	var range_cluster = []
+	for cidx in range(cluster):
+		range_cluster.append(cidx)
+	var i: int = 0
+	var iend: int = (length / cluster)
+	while i < iend:
+		for cidx in range_cluster:
 			var found: int = _buffer[offset + i * stride + cidx]
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = (found - sign_mul * (found & 0x8000)) / divisor
 			ret.push_back((found - sign_mul * (found & 0x8000)) / divisor)
+		i += 1
 	return ret
 
 ####################### 16-bit formats
@@ -120,9 +132,12 @@ func _initialize_uint16_array():
 	if _int16_buf.is_empty():
 		_int16_buf = PackedInt32Array()
 		_int16_buf.resize(len(_int32_buf) * 2)
-		for i in range(len(_int32_buf)):
+		var i: int = 0
+		var iend: int = (len(_int32_buf))
+		while i < iend:
 			_int16_buf[i * 2] = (_int32_buf[i] & 0xffff)
 			_int16_buf[i * 2 + 1] = ((_int32_buf[i] >> 16) & 0xffff)
+			i += 1
 
 func uint16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedInt32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
@@ -134,8 +149,11 @@ func uint16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1
 	var ret: PackedInt32Array = PackedInt32Array()
 	ret.resize(length)
 	for cidx in range(cluster):
-		for i in range(length / cluster):
+		var i: int = 0
+		var iend: int = (length / cluster)
+		while i < iend:
 			ret[i * cluster + cidx] = _int16_buf[(offset + i * stride) / 2 + cidx]
+			i += 1
 	return ret
 
 func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedFloat32Array:
@@ -148,12 +166,18 @@ func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int=
 	_initialize_uint16_array()
 
 	var ret: PackedFloat32Array = PackedFloat32Array()
+	var range_cluster = []
+	for cidx in range(cluster):
+		range_cluster.append(cidx)
 	# GDScript bug with F32Array # ret.resize(length)
-	for i in range(length / cluster):
-		for cidx in range(cluster):
+	var i: int = 0
+	var iend: int = (length / cluster)
+	while i < iend:
+		for cidx in range_cluster:
 			var found: int = _int16_buf[(offset + i * stride) / 2 + cidx]
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = (found - sign_mul * (found & 0x8000)) / divisor
 			ret.push_back((found - sign_mul * (found & 0x8000)) / divisor)
+		i += 1
 	return ret
 
 func float16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedFloat32Array:
@@ -161,27 +185,38 @@ func float16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
 	assert(_validate_word_alignment(offset * 2, stride * 2))
+	var i: int = 0
+	var iend: int = 0
 	if _float16_buf.is_empty():
 		_initialize_uint16_array()
 		var tmp16buf: PackedByteArray = FLOAT_PREFIX.duplicate()
 		var tmpoffs: int = len(tmp16buf)
 		tmp16buf.resize(len(tmp16buf) + _buffer_words * 4)
 		# _float16_buf
-		for i in range(len(_int16_buf)):
+		i = 0
+		iend = (len(_int16_buf))
+		while i < iend:
 			var rawflt: int = ((_int16_buf[i] & 0x8000) << 16) | ((((_int16_buf[i] & 0x7c00) + 114688) | (_int16_buf[i] & 0x3ff)) << 13)
 			tmp16buf[tmpoffs + i * 4] = rawflt >> 24
 			tmp16buf[tmpoffs + i * 4 + 1] = rawflt >> 16
 			tmp16buf[tmpoffs + i * 4 + 2] = rawflt >> 8
 			# tmp16buf[tmpoffs + i * 4 + 3] = 0 # rest of mantissa is zero, which is default.
+			i += 1
 		# FIXME: Cast to Array as a GDScript bug workaround
 		_float16_buf = Array(_decode_view_with_prefix([tmp16buf, FLOAT_PREFIX]))
 
 	var ret: PackedFloat32Array = PackedFloat32Array()
 	# GDScript bug with F32Array # ret.resize(length)
-	for i in range(length / cluster):
-		for cidx in range(cluster):
+	var range_cluster = []
+	for cidx in range(cluster):
+		range_cluster.append(cidx)
+	i = 0
+	iend = (length / cluster)
+	while i < iend:
+		for cidx in range_cluster:
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = _float16_buf[offset + i * stride / 2 + cidx]
 			ret.push_back(_float16_buf[(offset + i * stride) / 2 + cidx])
+		i += 1
 
 	return ret
 
@@ -198,8 +233,11 @@ func uint32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=1
 	var ret: PackedInt32Array = PackedInt32Array()
 	ret.resize(length)
 	for cidx in range(cluster):
-		for i in range(length / cluster):
+		var i: int = 0
+		var iend: int = (length / cluster)
+		while i < iend:
 			ret[i * cluster + cidx] = _int32_buf[(offset + i * stride) / 4 + cidx]
+			i += 1
 	return ret
 
 func float32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedFloat32Array:
@@ -214,10 +252,16 @@ func float32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=
 
 	var ret: PackedFloat32Array = PackedFloat32Array()
 	# GDScript bug with F32Array # ret.resize(length)
-	for i in range(length / cluster):
-		for cidx in range(cluster):
+	var range_cluster = []
+	for cidx in range(cluster):
+		range_cluster.append(cidx)
+	var i: int = 0
+	var iend: int = (length / cluster)
+	while i < iend:
+		for cidx in range_cluster:
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = _float32_buf[offset + i * stride / 4 + cidx]
 			ret.push_back(_float32_buf[(offset + i * stride) / 4 + cidx])
+		i += 1
 	return ret
 
 
@@ -277,8 +321,11 @@ func formatted_vector2_subarray(format: int, offset: int, length: int, stride: i
 	vec2_array.resize(len(float_array) / dimension)
 	var flip=1.0 if flipv else 0.0
 	var flop=-1.0 if flipv else 1.0
-	for i in range(len(float_array) / dimension):
+	var i: int = 0
+	var iend: int = (len(float_array) / dimension)
+	while i < iend:
 		vec2_array[i] = Vector2(float_array[i * dimension], flip + flop * float_array[i * dimension + 1])
+		i += 1
 	return vec2_array
 
 # Special case: comes with a vector to flip handedness if used for vertex or normal.
@@ -290,13 +337,19 @@ func formatted_vector3_subarray(handedness_vector: Vector3, format: int, offset:
 	print("Asked for format " + str(format) + " offset " + str(offset) + " length " + str(length) + " stride " + str(stride) + " dim " + str(dimension) + " outarr " + str(len(vec3_array)) + " floatarr " + str(len(float_array)) + " buflen " + str(len(_buffer)) + " floatbuflen " + str(len(_float32_buf)))
 	match dimension:
 		2:
-			for i in range(len(float_array) / 2):
+			var i: int = 0
+			var iend: int = (len(float_array) / 2)
+			while i < iend:
 				var x: float = float_array[i * 2]
 				var y: float = float_array[i * 2 + 1]
 				vec3_array[i] = handedness_vector * Vector3(x, y, sqrt(1 - x * x - y * y))
+				i += 1
 		_:
-			for i in range(len(float_array) / 3):
+			var i: int = 0
+			var iend: int = (len(float_array) / 3)
+			while i < iend:
 				vec3_array[i] = handedness_vector * Vector3(float_array[i * 3], float_array[i * 3 + 1], float_array[i * 3 + 2])
+				i += 1
 	return vec3_array
 
 func formatted_color_subarray(format: int, offset: int, length: int, stride: int, dimension: int=4) -> PackedColorArray:
@@ -306,35 +359,53 @@ func formatted_color_subarray(format: int, offset: int, length: int, stride: int
 	color_array.resize(len(float_array) / dimension)
 	match dimension:
 		1:
-			for i in range(len(float_array)):
+			var i: int = 0
+			var iend: int = (len(float_array))
+			while i < iend:
 				color_array[i] = Color(float_array[i], 0, 0, 1)
+				i += 1
 		2:
-			for i in range(len(float_array) / 2):
+			var i: int = 0
+			var iend: int = (len(float_array) / 2)
+			while i < iend:
 				color_array[i] = Color(float_array[i * 2], float_array[i * 2 + 1], 0, 1)
+				i += 1
 		3:
-			for i in range(len(float_array) / 3):
+			var i: int = 0
+			var iend: int = (len(float_array) / 3)
+			while i < iend:
 				color_array[i] = Color(float_array[i * 3], float_array[i * 3 + 1], float_array[i * 3 + 2], 1)
+				i += 1
 		4:
-			for i in range(len(float_array) / 4):
+			var i: int = 0
+			var iend: int = (len(float_array) / 4)
+			while i < iend:
 				color_array[i] = Color(float_array[i * 4], float_array[i * 4 + 1], float_array[i * 4 + 2], float_array[i * 4 + 3])
+				i += 1
 	return color_array
 
 func formatted_tangent_subarray(format: int, offset: int, length: int, stride: int, dimension: int=4) -> PackedFloat32Array:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * 4, stride, 4))
+
+	var i: int = 0
+	var iend: int = (len(float_array))
 	match dimension:
 		2:
-			for i in range(0, len(float_array), 4):
+			while i < iend:
 				var x: float = float_array[i * 4]
 				var y: float = float_array[i * 4 + 1]
 				float_array[i] *= -1
 				float_array[i + 2] = sqrt(1 - x * x - y * y)
 				float_array[i + 3] = 1
+				i += 4
 		3:
-			for i in range(0, len(float_array), 4):
+			while i < iend:
 				float_array[i] *= -1
 				float_array[i + 3] = 1
+				i += 4
 		_:
-			for i in range(0, len(float_array), 4):
+			while i < iend:
 				float_array[i] *= -1
+				i += 4
 	return PackedFloat32Array(float_array) # FIXME: GDScript bug workaround

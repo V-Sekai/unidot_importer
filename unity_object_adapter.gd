@@ -415,17 +415,24 @@ class UnityMesh extends UnityObject:
 				var new_buf: PackedInt32Array = PackedInt32Array()
 				new_buf.resize(len(surface_index_buf) / 4 * 6)
 				var quad_idx = [0, 1, 2, 2, 1, 3]
-				for i in range(len(surface_index_buf) / 4):
-					for el in range(6):
+				var range_6: Array = [0, 1, 2, 3, 4, 5]
+				var i: int = 0
+				var ilen: int = (len(surface_index_buf) / 4)
+				while i < ilen:
+					for el in range_6:
 						new_buf[i * 6 + el] = surface_index_buf[i * 4 + quad_idx[el]]
+					i += 1
 				surface_index_buf = new_buf
 			var deltaVertex: int = submesh.get("firstVertex", 0)
 			var baseFirstVertex: int = submesh.get("baseVertex", 0) + deltaVertex
 			var vertexCount: int = submesh.get("vertexCount", 0)
 			print("baseFirstVertex "+ str(baseFirstVertex)+ " baseVertex "+ str(submesh.get("baseVertex", 0)) + " deltaVertex " + str(deltaVertex) + " index0 " + str(surface_index_buf[0]))
 			if deltaVertex != 0:
-				for i in range(len(surface_index_buf)):
+				var i: int = 0
+				var ilen: int = (len(surface_index_buf))
+				while i < ilen:
 					surface_index_buf[i] -= deltaVertex
+					i += 1
 			if not pre2018_weights_buf.is_empty():
 				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
 				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
@@ -1998,7 +2005,9 @@ class UnityCloth extends UnityBehaviour:
 		# Seems to match Unity's logic (for meshes with only one surface at least!)
 		# For example 1109/1200 or 104/129 verts
 		# FIXME: I noticed some differences in vertex ordering in some cases. Hmm....
-		for idx in range(len(mesh_verts)):
+		var idx: int = 0
+		var idxlen: int = (len(mesh_verts))
+		while idx < idxlen:
 			var vert: Vector3 = mesh_verts[idx]
 			var key = str(vert.x) + "," + str(vert.y) + "," + str(vert.z)
 			if not bones.is_empty() and not mesh_bones.is_empty():
@@ -2009,6 +2018,7 @@ class UnityCloth extends UnityBehaviour:
 				vertex_info_to_dedupe_index[key] = vert_idx
 				dedupe_vertices.push_back(vert_idx)
 				vert_idx += 1
+			idx += 1
 
 		print("Verts " + str(len(mesh_verts)) + " " + str(len(mesh_bones)) + " " + str(len(mesh_weights)) + " dedupe_len=" + str(vert_idx) + " unity_len=" + str(len(self.coefficients)))
 
@@ -2016,9 +2026,12 @@ class UnityCloth extends UnityBehaviour:
 		var bones_paths: Array = [].duplicate()
 		var offsets: Array = [].duplicate()
 		var unity_coefficients = self.coefficients
-		for vert_idx in range(len(mesh_verts)):
+		vert_idx = 0
+		idxlen = (len(mesh_verts))
+		while vert_idx < idxlen:
 			var dedupe_idx = dedupe_vertices[vert_idx]
 			if dedupe_idx >= len(unity_coefficients):
+				vert_idx += 1
 				continue
 			var coef = unity_coefficients[dedupe_idx]
 			if coef.get("maxDistance", max_dist) / max_dist < 0.01:
@@ -2040,6 +2053,7 @@ class UnityCloth extends UnityBehaviour:
 						bone_idx_to_attachment_path[most_bone] = new_node.get_path_to(attachment)
 					bones_paths.push_back(bone_idx_to_attachment_path.get(most_bone))
 					offsets.push_back(bone_idx_to_bone_transform[most_bone] * mesh_verts[vert_idx])
+			vert_idx += 1
 		# It may be necessary to add BoneAttachment for each vertex, and
 		# then, give a node path and vertex offset for the maximally weighted vertex.
 		# This property isn't even documented, so IDK whatever.
