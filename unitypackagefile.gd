@@ -24,7 +24,7 @@ func init_with_filename(source_file):
 	if file.open(source_file, File.READ) != OK:
 		return null
 
-	var flen: int = file.get_len() # NOTE: 32-bit only
+	var flen: int = file.get_length() # NOTE: 32-bit only
 	var decompress_buf: PackedByteArray = file.get_buffer(flen).decompress(2147483647, 3) # COMPRESSION_GZIP = 3
 	print("Decompressed " + str(flen) + " to " + str(len(decompress_buf)))
 	var buf: PackedByteArray = PackedByteArray()

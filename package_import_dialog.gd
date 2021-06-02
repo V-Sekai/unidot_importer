@@ -7,7 +7,6 @@ const import_worker_class: GDScript = preload("./import_worker.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const static_storage: GDScript = preload("./static_storage.gd")
 
 const STATE_DIALOG_SHOWING = 0
 const STATE_PREPROCESSING = 1
@@ -58,7 +57,7 @@ func _init():
 	import_worker.connect("asset_processing_finished", self._asset_processing_finished, [], CONNECT_DEFERRED)
 	import_worker.connect("asset_processing_started", self._asset_processing_started, [], CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
-	static_storage.new().get_resource_filesystem().connect("sources_changed", self._editor_filesystem_scan_check)
+	EditorPlugin.new().get_editor_interface().get_resource_filesystem().connect("sources_changed", self._editor_filesystem_scan_check)
 
 func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	ti.set_checked(0, is_checked)
@@ -119,11 +118,6 @@ func _selected_package(p_path: String) -> void:
 		file_dialog = null
 
 func show_importer() -> void:
-	#push_error("PKG IMPORT DIALOG INIT BEFORE " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface() if static_storage_singleton != null else null))
-	#if static_storage_singleton == null:
-	#	static_storage_singleton = static_storage.new().singleton()
-	#static_storage.new().set_singleton(static_storage_singleton)
-	#push_error("PKG IMPORT DIALOG INIT AFTER " + str(self) + ": " + str(static_storage_singleton) + "/" + str(static_storage.new().get_editor_interface()))
 	file_dialog = FileDialog.new()
 	file_dialog.set_title("Import Unity Package...")
 	file_dialog.add_filter("*.unitypackage")
@@ -131,8 +125,7 @@ func show_importer() -> void:
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	file_dialog.connect("file_selected", self._selected_package)
-	static_storage.new().get_editor_interface().get_editor_main_control().add_child(file_dialog)
-	#static_storage.new().get_editor_interface().get_editor_viewport().add_child(file_dialog)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog)
 	
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
@@ -147,8 +140,7 @@ func show_importer() -> void:
 	main_dialog_tree.set_column_titles_visible(false)
 	main_dialog_tree.connect("cell_selected", self._cell_selected)
 	n.add_sibling(main_dialog_tree)
-	static_storage.new().get_editor_interface().get_editor_main_control().add_child(main_dialog)
-	#static_storage.new().get_editor_interface().get_editor_viewport().add_child(main_dialog)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(main_dialog)
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
@@ -159,10 +151,10 @@ func show_importer() -> void:
 	timer.wait_time = 0.1
 	timer.autostart = true
 	timer.process_mode = Timer.TIMER_PROCESS_IDLE
-	static_storage.new().get_editor_interface().get_editor_main_control().add_child(timer)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(timer)
 	timer.connect("timeout", self._editor_filesystem_scan_tick)
 
-	var base_control = static_storage.new().get_editor_interface().get_base_control()
+	var base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	fail_icon = base_control.get_theme_icon("ImportFail", "EditorIcons")
 	spinner_icon1 = base_control.get_theme_icon("Progress1", "EditorIcons")
 	spinner_icon = AnimatedTexture.new()
@@ -210,19 +202,20 @@ func on_file_completed_godot_import(tw: Reference, loaded: bool):
 func _editor_filesystem_scan_tick():
 	if tree_dialog_state == STATE_DIALOG_SHOWING:
 		return
-	if static_storage.new().get_resource_filesystem().is_scanning():
-		print("Still Scanning... Percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
+	var editor_filesystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	if editor_filesystem.is_scanning():
+		print("Still Scanning... Percentage: " + str(editor_filesystem.get_scanning_progress()))
 		return
 
 	if _currently_preprocessing_assets != 0:
-		print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
+		print("Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
 		return
 
 	var dres = Directory.new()
 	dres.open("res://")
 	if not dres.file_exists(generate_sentinel_png_filename() + ".import"):
 		print(generate_sentinel_png_filename() + ".import" + " not created yet...")
-		static_storage.new().get_resource_filesystem().scan()
+		editor_filesystem.scan()
 		return
 
 	if _delay_tick < 3:
@@ -242,7 +235,7 @@ func _editor_filesystem_scan_tick():
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
-		static_storage.new().get_resource_filesystem().scan()
+		editor_filesystem.scan()
 		on_import_fully_completed()
 		timer.queue_free()
 		timer = null
@@ -257,7 +250,7 @@ func _editor_filesystem_scan_tick():
 			tw.asset.parsed_meta.insert_resource(tw.asset.parsed_meta.main_object_id, loaded_asset)
 		on_file_completed_godot_import(tw, loaded_asset != null)
 
-	print("Scanning percentage: " + str(static_storage.new().get_resource_filesystem().get_scanning_progress()))
+	print("Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_currently_scanning) == 0 and _currently_preprocessing_assets == 0:
 		asset_database.save()
 		print("Trying to scan more things: state=" + str(tree_dialog_state))
@@ -309,7 +302,7 @@ func _editor_filesystem_scan_tick():
 	var asset_work = asset_work_waiting_scan
 	print("Queueing work: state=" + str(tree_dialog_state))
 	#for tw in asset_work:
-	#	static_storage.new().get_resource_filesystem().update_file(tw.asset.pathname)
+	#	editor_filesystem.update_file(tw.asset.pathname)
 	for tw in asset_work:
 		asset_work_currently_scanning.push_back(tw)
 		var ti: TreeItem = tw.extra
@@ -321,12 +314,11 @@ func _editor_filesystem_scan_tick():
 	print("Writing " + str(generate_sentinel_png_filename()))
 
 	print("Done Queueing work: state=" + str(tree_dialog_state))
-	# static_storage.new().get_resource_filesystem().scan() # We wait for the next timer for this now.
 
 func _editor_filesystem_scan_check(path_count_unused:int = 0):
 	pass
 	#var more_work_to_do: bool = len(asset_work_waiting_scan) != 0 or (tree_dialog_state > STATE_DIALOG_SHOWING and tree_dialog_state < STATE_DONE_IMPORT)
-	#if not static_storage.new().get_resource_filesystem().is_scanning():
+	#if not EditorPlugin.new().get_editor_interface().get_resource_filesystem().is_scanning():
 	#	pass
 	#if more_work_to_do:
 	#	self.call_deferred("_editor_filesystem_scan_check")
@@ -337,7 +329,6 @@ func _done_preprocessing_assets():
 	print("Joined.")
 	asset_database.save()
 	asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
-	# static_storage.new().get_resource_filesystem().scan() # We wait for the next timer for this now.
 
 func _asset_failed(tw: Object):
 	_currently_preprocessing_assets -= 1

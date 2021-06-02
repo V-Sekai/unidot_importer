@@ -1,7 +1,6 @@
 @tool
 extends Resource
 
-const static_storage: GDScript = preload("./static_storage.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
@@ -55,7 +54,6 @@ class AssetHandler:
 	var ASSET_TYPE_UNKNOWN = 6
 
 	var editor_interface: EditorInterface = null
-	const static_storage: GDScript = preload("./static_storage.gd")
 	
 	func set_editor_interface(ei: EditorInterface) -> AssetHandler:
 		editor_interface = ei

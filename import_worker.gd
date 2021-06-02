@@ -4,7 +4,6 @@ extends Reference
 const queue_lib: GDScript = preload("./queue_lib.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
 const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
-const static_storage: GDScript = preload("./static_storage.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 
 var asset_adapter = asset_adapter_class.new()
