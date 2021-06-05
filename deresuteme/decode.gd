@@ -85,6 +85,8 @@ const baseStrings: Dictionary = {
 	800: "SInt16",
 	807: "SInt32",
 	814: "SInt64",
+	821: "SInt8",
+	827: "staticvector",
 	840: "string",
 	847: "TextAsset",
 	857: "TextMesh",
@@ -93,6 +95,8 @@ const baseStrings: Dictionary = {
 	884: "Transform",
 	894: "TypelessData",
 	907: "UInt16",
+	914: "UInt32",
+	921: "UInt64",
 	928: "UInt8",
 	934: "unsigned int",
 	947: "unsigned long long",
@@ -101,11 +105,13 @@ const baseStrings: Dictionary = {
 	988: "Vector2f",
 	997: "Vector3f",
 	1006: "Vector4f",
+	1093: "m_CorrespondingSourceObject",
+	1121: "m_PrefabInstance",
+	1138: "m_PrefabAsset",
 }
 
 class Stream extends StreamPeerBuffer:
 	var d: PackedByteArray = self.data_array
-	var align_off: int = 0
 	func _init(d: PackedByteArray, p: int=0):
 		self.d = d
 		self.data_array = d
@@ -120,16 +126,16 @@ class Stream extends StreamPeerBuffer:
 		if cnt == -1:
 			cnt = self.get_size() - self.get_position()
 		return self.get_data(cnt)[1]
-	func align(n: int):
+	func align(n: int, align_off: int):
 		var old_pos: int = self.tell()
-		var new_pos: int = ((old_pos - self.align_off + n - 1) & ~(n - 1)) + self.align_off
-		#if old_pos != new_pos:
-		#	print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
+		var new_pos: int = ((old_pos - align_off + n - 1) & ~(n - 1)) + align_off
+		# if old_pos != new_pos:
+		# 	print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
 		self.seek(new_pos)
 	func read_str() -> String:
 		var initial_pos: int = self.get_position()
 		if initial_pos == self.get_size():
-			print("Already at end for read_str " + str(initial_pos) +" " + str(self.get_size()))
+			push_error("Already at end for read_str " + str(initial_pos) +" " + str(self.get_size()))
 			return ""
 		var i: int = initial_pos
 		var ilen: int = self.get_size()
@@ -145,97 +151,139 @@ class Stream extends StreamPeerBuffer:
 class Def extends Reference:
 	var children: Array = [].duplicate()
 	var name: String = ""
+	var full_name: String = ""
 	var type_name: String = ""
 	var size: int = 0
 	var flags: int = 0
 	var array: bool = false
+	var parent: Reference = null
 	func _init(name: String, type_name: String, size: int, flags: int, array: bool):
 		self.children = [].duplicate()
 		self.name = name
+		self.full_name = name
 		self.type_name = type_name
 		self.size = size
 		self.flags = flags
 		self.array = array
-	
-	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array) -> Variant:
+
+	func set_parent(new_par: Reference):
+		parent = new_par
+		var par: Reference = new_par
+		while par != null:
+			self.full_name = str(par.name) + "." + self.full_name
+			par = par.parent
+
+	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array, align_off: int=0) -> Variant:
+		if self.size > 1:
+			s.align(min(self.size, 4), align_off)
+		if self.size < 0:
+			s.align(4, align_off)
 		var x: int = s.tell()
 		if self.array:
 			if self.children.is_empty():
-				push_error("Children is empty for " + str(name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+				push_error("Children is empty for " + str(self.full) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
-			#print "a", self.name
-			size = self.children[0].read(s, referenced_guids, referenced_reftypes)
-			if not (size < 10000000):
-				push_error("Attempting to read " + str(size) + " in array " + str(name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+			# print("a " + self.full_name)
+			var arrlen: int = self.children[0].read(s, referenced_guids, referenced_reftypes, x)
+			if not (arrlen < 100000000):
+				push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
-			if self.children[1].type_name == "UInt8" or self.children[1].type_name == "char":
-				#print "s", size
-				var ret: String = s.read(size).get_string_from_utf8()
-				#print("reading string @" + str(x) + " " + self.name + "/" + self.type_name + ": " + ret)
+			if self.children[1].type_name == "char":
+				# print("s " + str(arrlen))
+				var ret: String = s.read(arrlen).get_string_from_utf8()
+				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + ret)
+				if self.size >= 1:
+					s.seek(x + self.size)
+				return ret
+			elif self.children[1].type_name == "UInt8":
+				# print("u8 " + str(arrlen))
+				var ret: PackedByteArray = s.read(arrlen)
+				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(ret)))
+				if self.size >= 1:
+					s.seek(x + self.size)
 				return ret
 			else:
+				if not (arrlen < 100000):
+					push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+					return []
 				var arr: Array = [].duplicate()
 				var i: int = 0
-				var ilen: int = size
-				while i < ilen:
-					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+				var pad: bool = true
+				if self.flags == 0x4000 and self.children[1].flags == 0x0:
+					pad = false
+				var pad_off: int = x
+				while i < arrlen:
+					if not pad:
+						pad_off = s.tell()
+					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes, pad_off))
 					i += 1
-				#print("reading arr @" + str(x) + " " + self.name + "/" + self.type_name + ": " + str(arr))
+				# print("reading arr @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(arr)))
+				if self.size >= 1:
+					s.seek(x + self.size)
 				return arr
 		elif not self.children.is_empty():
-			#print "o", self.name
+			# print("o " + self.name)
 			var v: Dictionary = {}.duplicate()
 			for i in self.children:
-				v[i.name] = i.read(s, referenced_guids, referenced_reftypes)
+				v[i.name] = i.read(s, referenced_guids, referenced_reftypes, x)
+			if self.size >= 1:
+				s.seek(x + self.size)
 			match self.type_name:
 				"string":
 					if v.has("Array"):
-						#print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+						# print("reading array @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 						return v.get("Array")
 				"ColorRGBA":
-					#print("reading color @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					# print("reading color @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
 				"Vector2f":
-					#print("reading vec2 @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					# print("reading vec2 @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Vector2(v.get("x"), v.get("y"))
 				"Vector3f":
-					#print("reading vec3 @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					# print("reading vec3 @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Vector3(v.get("x"), v.get("y"), v.get("z"))
 				"Rectf":
-					#print("reading rect @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					# print("reading rect @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Rect2(v.get("x"), v.get("y"), v.get("width"), v.get("height"))
 				"Vector4f", "Quaternionf":
-					#print("reading quat @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+					# print("reading quat @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Quat(v.get("x"), v.get("y"), v.get("z"), v.get("w"))
+				"Matrix3x4f":
+					# print("reading matrix @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
+					return Transform(
+						Vector3(v.get("e00"),v.get("e10"),v.get("e20")),
+						Vector3(v.get("e01"),v.get("e11"),v.get("e21")),
+						Vector3(v.get("e02"),v.get("e12"),v.get("e22")),
+						Vector3(v.get("e03"),v.get("e13"),v.get("e23")))
 				"GUID":
 					return "%08x%08x%08x%08x" % [v.get("data[0]"), v.get("data[1]"), v.get("data[2]"), v.get("data[3]")]
 				_:
 					#if v.has("propertyPath") and v.has("value"):
 					#	v["value"] = parseValue(v.get("value"))
 					if v.has("Array"):
-						#print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(v))
+						# print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(len(v)))
 						return v.get("Array")
 					if self.type_name.begins_with("PPtr"):
 						if v.get("m_PathID", 0) == 0:
 							return [null, v.get("m_PathID", 0), null, 0]
 						elif v.get("m_FileID", 0) >= len(referenced_guids) or v.get("m_FileID", 0) < 0:
-							push_error("Asset " + self.name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
+							push_error("Asset " + self.full_name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
 						else:
 							return [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
 			return v
 		else:
-			s.align(min(self.size,4))
 			var ret: Variant = null
 			match self.type_name:
 				"signed char", "SInt8":
+					ret = s.get_8()
+					s.skip(self.size - 1)
+				"unsigned char", "char", "UInt8", "bool":
+					# We parse bools as integers for consistency with yaml.
 					ret = s.get_u8()
 					s.skip(self.size - 1)
-				"unsigned char", "char", "UInt8":
-					ret = s.get_u8()
-					s.skip(self.size - 1)
-				"bool":
-					ret = s.get_u8() != 0
-					s.skip(self.size - 1)
+				#"bool":
+				#	ret = s.get_u8() != 0
+				#	s.skip(self.size - 1)
 				"SInt16", "short":
 					ret = s.get_16()
 					s.skip(self.size - 2)
@@ -262,7 +310,9 @@ class Def extends Reference:
 					s.skip(self.size - 8)
 				_:
 					s.skip(self.size)
-			#print("reading @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(ret))
+			if self.size >= 1:
+				s.seek(x + self.size)
+			# print("reading @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(ret))
 			return ret
 
 	func append(d: Variant) -> void:
@@ -308,13 +358,18 @@ func _init(meta: Reference, file_contents: PackedByteArray):
 	#self.s = Stream(self.s.read())
 
 	self.off = self.s.tell() # always 0
-	self.s.align_off = self.off
 
 	s.big_endian = true
 	self.table_size = s.get_u32()
 	self.data_end = s.get_u32()
 	self.file_gen = s.get_u32()
 	self.data_offset = s.get_u32()
+	if self.file_gen >= 16 and self.table_size == 0 and self.data_end == 0:
+		file_gen += 100
+		self.table_size = s.get_u64()
+		self.data_end = s.get_u64()
+		self.data_offset = s.get_u64()
+		self.s.read(4)
 	s.big_endian = false
 	self.s.read(4)
 	self.version = self.s.read_str()
@@ -322,7 +377,9 @@ func _init(meta: Reference, file_contents: PackedByteArray):
 	self.class_ids = []
 	# print("table size " + str(table_size) + " data end " + str(data_end) + " file gen " + str(file_gen) + " data offset " + str(data_offset) + " version " + str(version) + " platform " + str(platform))
 	self.defs = self.decode_defs()
+	#print(str(defs))
 	var obj_headers: Array = self.decode_data_headers()
+	#print(str(obj_headers))
 	self.decode_guids()
 	self.objs = self.decode_data(obj_headers)
 
@@ -335,6 +392,8 @@ func decode_defs() -> Array:
 		var def = self.decode_attrtab()
 		defs.push_back(def)
 		i += 1
+		if self.file_gen >= 116:
+			s.get_u32() # zeros
 	return defs
 
 #func decode_guids_backwards() -> void:
@@ -381,8 +440,10 @@ func decode_data_headers() -> Array:
 		push_error("Invalid count " + str(count))
 		count = 0
 	var i: int = 0
+	# print(self.class_ids)
+	# print("Doing " + str(count) + " data")
 	while i < count:
-		self.s.align(4)
+		self.s.align(4, self.off)
 		var pathId: int = -1
 		var size: int = 0
 		var off: int = 0
@@ -393,6 +454,8 @@ func decode_data_headers() -> Array:
 			# dhdr = self.s.read(20)
 			pathId = s.get_u64()
 			off = s.get_u32()
+			if self.file_gen >= 116:
+				var unused0 = s.get_u32()
 			size = s.get_u32()
 			type_id = s.get_u32()
 			class_id = self.class_ids[type_id]
@@ -419,7 +482,7 @@ func decode_data(obj_headers: Array) -> Array:
 		var class_id: int = obj_header[1]
 		var path_id: int = obj_header[2]
 		var type_id: int = obj_header[3]
-		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes)
+		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes, 0)
 		var type_name: String = self.defs[type_id].type_name
 		var is_stripped: bool = type_name == "EditorExtension"
 		if is_stripped:
@@ -428,9 +491,11 @@ func decode_data(obj_headers: Array) -> Array:
 		obj.is_stripped = is_stripped
 		obj.keys = read_variant
 		if read_variant.has("m_SourcePrefab"):
-			meta.prefab_dependency_guids[read_variant.get("m_SourcePrefab")] = 1
+			print("Found a prefab dependency: " + str(read_variant.get("m_SourcePrefab")))
+			meta.prefab_dependency_guids[read_variant.get("m_SourcePrefab")[2]] = 1
 		if read_variant.has("m_ParentPrefab"):
-			meta.prefab_dependency_guids[read_variant.get("m_ParentPrefab")] = 1
+			print("Found an old prefab dependency: " + str(read_variant.get("m_ParentPrefab")))
+			meta.prefab_dependency_guids[read_variant.get("m_ParentPrefab")[2]] = 1
 		objs.push_back(obj)
 	self.s.seek(save)
 	return objs
@@ -439,6 +504,11 @@ func lookup_string(stab: PackedByteArray, name_off: int) -> String:
 	var stab_limit: int = len(stab) - 1
 	if name_off & 0x80000000:
 		return baseStrings.get(name_off & 0x7fffffff, str(name_off & 0x7fffffff))
+	elif name_off == stab_limit + 1:
+		return "" # Cannot index at end of array.
+	elif name_off > stab_limit:
+		push_error("Indexing past end of stab array " + str(name_off) + " " + str(stab_limit))
+		return str(name_off) # Cannot index at end of array.
 	else:
 		return str(stab.subarray(min(stab_limit, name_off), min(stab_limit, name_off + 100)).get_string_from_ascii())
 
@@ -465,13 +535,16 @@ func decode_attrtab() -> Def:
 		ident = s.read(16)
 		attr_cnt = s.get_u32()
 		stab_len = s.get_u32()
+	var size_per: int = 24
+	if self.file_gen >= 116:
+		size_per = 32
 	var guid: String = ""
 	for i in range(16):
 		var guidchr: int = ident[i]
 		guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
 	# print("attr code " + str(code) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
-	# print("attr code " + str(code) + " unk " + str(unk) + " ident " + str(ident) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
-	var attrs: PackedByteArray = self.s.read(attr_cnt*24)
+	print("attr code " + str(code) + " unk " + str(unk) + " ident " + str(ident) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
+	var attrs: PackedByteArray = self.s.read(attr_cnt*size_per)
 	var stab: PackedByteArray = self.s.read(stab_len)
 	var attrs_spb: StreamPeerBuffer = StreamPeerBuffer.new()
 	attrs_spb.data_array = attrs
@@ -491,6 +564,11 @@ func decode_attrtab() -> Def:
 		var size: int = attrs_spb.get_u32()
 		var idx: int = attrs_spb.get_u32()
 		var flags: int = attrs_spb.get_u32()
+		var unk_64b: int = 0
+		if self.file_gen >= 116:
+			unk_64b = attrs_spb.get_u64()
+			if unk_64b != 0:
+				print("Found unknown unk64: " + str(unk_64b) + " code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
 		var name: String = lookup_string(stab, name_off)
 		var type_name: String = lookup_string(stab, type_off)
 		# print("code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " name " + str(name) + " type_name " + str(type_name) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
@@ -510,16 +588,17 @@ func decode_attrtab() -> Def:
 				d = d.children[-1]
 			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
 			var newdef: Def = Def.new(name, type_name, size, flags, a4)
+			newdef.set_parent(d)
 			d.append(newdef)
 		else:
 			if def == null:
 				def = Def.new(name, type_name, size, flags, a4)
 			else:
 				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
-		#var indstr: String = ""
-		#for lv in range(level):
-		#	indstr += "  "
-		#print("%2x %2x %2x %20s %8x %8x %2d: %s%s" % [a1, a2, a4, type_name, size, flags, idx, indstr, name])
+		var indstr: String = ""
+		for lv in range(level):
+			indstr += "  "
+		print("%2x %2x %2x %20s %8x %8x %2d: %s%s" % [a1, a2, a4, type_name, size, flags, idx, indstr, name])
 		i += 1
 
 	if def == null:
