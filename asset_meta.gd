@@ -305,8 +305,8 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	for output_obj in bin_parser.objs:
 		i += 1
 		if self.main_object_id == 0:
-			push_error("We have no main_object_id but it should be " + str(output_obj.utype * 100000))
-			self.main_object_id = output_obj.utype * 100000
+			push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
+			self.main_object_id = output_obj.fileID
 		parsed.assets[output_obj.fileID] = output_obj
 		fileid_to_utype[output_obj.fileID] = output_obj.utype
 		if not type_to_fileids.has(output_obj.type):
@@ -342,8 +342,8 @@ func parse_asset(file: Object) -> ParsedAsset:
 		var output_obj = yaml_parser.parse_line(lin, self, false)
 		if output_obj != null:
 			if self.main_object_id == 0:
-				push_error("We have no main_object_id but it should be " + str(output_obj.utype * 100000))
-				self.main_object_id = output_obj.utype * 100000
+				push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
+				self.main_object_id = output_obj.fileID
 			parsed.assets[output_obj.fileID] = output_obj
 			fileid_to_utype[output_obj.fileID] = output_obj.utype
 			if not type_to_fileids.has(output_obj.type):

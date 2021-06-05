@@ -5,6 +5,7 @@ const asset_database_class: GDScript = preload("./asset_database.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
 const convert_scene: GDScript = preload("./convert_scene.gd")
+const raw_parsed_asset: GDScript = preload("./raw_parsed_asset.gd")
 
 const ASSET_TYPE_YAML = 1
 const ASSET_TYPE_MODEL = 2
@@ -144,28 +145,43 @@ class YamlHandler extends AssetHandler:
 		return self.ASSET_TYPE_YAML
 
 	func write_godot_asset(pkgasset: Object, temp_path: String):
-		if pkgasset.parsed_meta.main_object_id == -1 or pkgasset.parsed_meta.main_object_id == 0:
-			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
-			return
 		if pkgasset.parsed_asset == null:
 			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return
-		var main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
-		var godot_resource: Resource = main_asset.create_godot_resource()
-		if godot_resource != null:
+		var main_asset: Reference = null
+		var godot_resource: Resource = null
+		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
+			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
+			godot_resource = main_asset.create_godot_resource()
+		else:
+			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+		if godot_resource == null:
+			var rpa = raw_parsed_asset.new()
+			rpa.path = pkgasset.pathname
+			rpa.guid = pkgasset.guid
+			rpa.meta = pkgasset.parsed_meta.duplicate()
+			for key in pkgasset.parsed_asset.assets:
+				var parsed_obj: Reference = pkgasset.parsed_asset.assets[key]
+				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
+			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
+			var new_pathname: String = pkgasset.pathname + ".tres"
+			pkgasset.pathname = new_pathname
+			pkgasset.parsed_meta.rename(new_pathname)
+			ResourceSaver.save(pkgasset.pathname, rpa)
+		else:
 			var new_pathname: String = pkgasset.pathname.get_basename() + main_asset.get_godot_extension() # ".mat.tres"
 			pkgasset.pathname = new_pathname
 			pkgasset.parsed_meta.rename(new_pathname)
 			ResourceSaver.save(pkgasset.pathname, godot_resource)
-		var extra_resources: Dictionary = main_asset.get_extra_resources()
-		for extra_asset_fileid in extra_resources:
-			var file_ext: String = extra_resources.get(extra_asset_fileid)
-			var created_res: Resource = main_asset.create_extra_resource(extra_asset_fileid)
-			if created_res != null:
-				var new_pathname: String = pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
-				ResourceSaver.save(new_pathname, created_res)
-				created_res = load(new_pathname)
-				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
+			var extra_resources: Dictionary = main_asset.get_extra_resources()
+			for extra_asset_fileid in extra_resources:
+				var file_ext: String = extra_resources.get(extra_asset_fileid)
+				var created_res: Resource = main_asset.create_extra_resource(extra_asset_fileid)
+				if created_res != null:
+					new_pathname = pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
+					ResourceSaver.save(new_pathname, created_res)
+					created_res = load(new_pathname)
+					pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
 
 class SceneHandler extends YamlHandler:
 

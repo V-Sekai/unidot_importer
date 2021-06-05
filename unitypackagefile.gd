@@ -86,7 +86,7 @@ func external_tar_with_filename(source_file: String):
 		var this_filename: String = full_tmpdir + "/" + str(guid) + "/" + str(type_part)
 		var header = ExtractedTarFile.new(this_filename)
 		if fnparts[1] == 'pathname':
-			pkgasset.pathname = header.get_data().get_string_from_utf8()
+			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			var path = pkgasset.pathname
 			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
 				#if path != "Assets":
@@ -146,7 +146,8 @@ func init_with_filename(source_file: String):
 		if len(fnparts) == 1 or fnparts[1] == '':
 			continue
 		if fnparts[1] == 'pathname':
-			pkgasset.pathname = header.get_data().get_string_from_utf8()
+			# Some pathnames have newline followed by "00". no idea why
+			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			var path = pkgasset.pathname
 			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
 				#if path != "Assets":
