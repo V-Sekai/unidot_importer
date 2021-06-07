@@ -247,7 +247,7 @@ class Def extends Reference:
 					return Rect2(v.get("x"), v.get("y"), v.get("width"), v.get("height"))
 				"Vector4f", "Quaternionf":
 					# print("reading quat @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
-					return Quat(v.get("x"), v.get("y"), v.get("z"), v.get("w"))
+					return Quaternion(v.get("x"), v.get("y"), v.get("z"), v.get("w"))
 				"Matrix3x4f":
 					# print("reading matrix @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Transform(

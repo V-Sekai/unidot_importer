@@ -47,7 +47,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		push_error("Scene " + pkgasset.pathname + " has no nodes.")
 		return
 	var env: Environment = null
-	var bakedlm: BakedLightmap = null
+	var bakedlm: LightmapGI = null
 	var navregion: NavigationRegion3D = null
 	var occlusion: OccluderInstance3D = null
 	var dirlight: DirectionalLight3D = null
@@ -70,7 +70,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		# then, we can assign the final world environment from all this.
 		scene_contents.add_child(world_env)
 		world_env.owner = scene_contents
-		bakedlm = BakedLightmap.new()
+		bakedlm = LightmapGI.new()
 		scene_contents.add_child(bakedlm)
 		bakedlm.owner = scene_contents
 		navregion = NavigationRegion3D.new()
@@ -252,7 +252,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	if not is_prefab:
 		# Remove redundant directional light.
 		if dirlight != null:
-			var x: BakedLightmap = null
+			var x: LightmapGI = null
 			var fileids: Array = [].duplicate()
 			for light in node_state.find_objects_of_type("Light"):
 				if light.lightType == 1: # Directional

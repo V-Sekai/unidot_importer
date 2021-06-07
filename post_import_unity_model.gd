@@ -83,7 +83,7 @@ class ParseState:
 		if node != null:
 			if scale_correction_factor != 1.0:
 				if node is Node3D:
-					node.translation *= scale_correction_factor
+					node.position *= scale_correction_factor
 				if node is Skeleton3D:
 					for i in range(node.get_bone_count()):
 						var rest: Transform = node.get_bone_rest(i)
@@ -389,7 +389,7 @@ class ParseState:
 						i += 12
 					anim.set("tracks/" + str(trackidx) + "/keys", xform_keys)
 				"value":
-					if path.ends_with(":translation") or path.ends_with(":transform"):
+					if path.ends_with(":position") or path.ends_with(":transform"):
 						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
 						var track_values: Array = track_dict.get("values")
 						var i: int = 0
@@ -405,7 +405,7 @@ class ParseState:
 						track_dict["values"] = track_values
 						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
 				"bezier":
-					if path.ends_with(":translation") or path.ends_with(":transform"):
+					if path.ends_with(":position") or path.ends_with(":transform"):
 						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
 						var track_values: Variant = track_dict.get("points") # Some sort of packed array?
 						var i: int = 0

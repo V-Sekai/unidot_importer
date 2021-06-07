@@ -76,7 +76,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 			push_error("Invalid object value " + line.substr(0, 64))
 			return null
 		var value_color: Color = Color()
-		var value_quat: Quat = Quat()
+		var value_quat: Quaternion = Quaternion()
 		var value_vec3: Vector3 = Vector3()
 		var value_vec2: Vector2 = Vector2()
 		var is_vec2: bool = false

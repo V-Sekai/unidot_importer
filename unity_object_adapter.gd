@@ -173,9 +173,9 @@ class UnityObject extends Reference:
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props: Dictionary = self.convert_properties(skel, uprops)
 		var matn: Transform = skel.get_bone_rest(skel.find_bone(bone_name))
-		var quat: Quat = matn.basis.get_rotation_quat()
+		var quat: Quaternion = matn.basis.get_rotation_quaternion()
 		var scale: Vector3 = matn.basis.get_scale()
-		var translation: Vector3 = matn.origin
+		var position: Vector3 = matn.origin
 
 		var has_trs: bool = false
 		if (props.has("_quaternion")):
@@ -183,22 +183,22 @@ class UnityObject extends Reference:
 			quat = props.get("_quaternion")
 		elif props.has("rotation_degrees"):
 			has_trs = true
-			quat = Quat(props.get("rotation_degrees") * PI / 180.0)
+			quat = Quaternion(props.get("rotation_degrees") * PI / 180.0)
 		if (props.has("scale")):
 			has_trs = true
 			scale = props.get("scale")
-		if (props.has("translation")):
+		if (props.has("position")):
 			has_trs = true
-			translation = props.get("translation")
+			position = props.get("position")
 
 		if not has_trs:
 			return props
 
 		# FIXME: Don't we need to flip these???
 		#quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
-		#translation = Vector3(-1, 1, 1) * translation
+		#position = Vector3(-1, 1, 1) * position
 
-		matn = Transform(Basis(quat).scaled(scale), translation)
+		matn = Transform(Basis(quat).scaled(scale), position)
 
 		props[bone_name] = matn
 		return props
@@ -218,18 +218,18 @@ class UnityObject extends Reference:
 		if (props.has("_quaternion")):
 			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
 
-		var has_translation_x: bool = props.has("translation:x")
-		var has_translation_y: bool = props.has("translation:y")
-		var has_translation_z: bool = props.has("translation:z")
-		if has_translation_x or has_translation_y or has_translation_z:
-			var per_axis_translation: Vector3 = node.translation
-			if has_translation_x:
-				per_axis_translation.x = props.get("translation:x")
-			if has_translation_y:
-				per_axis_translation.y = props.get("translation:y")
-			if has_translation_z:
-				per_axis_translation.z = props.get("translation:z")
-			node.translation = per_axis_translation
+		var has_position_x: bool = props.has("position:x")
+		var has_position_y: bool = props.has("position:y")
+		var has_position_z: bool = props.has("position:z")
+		if has_position_x or has_position_y or has_position_z:
+			var per_axis_position: Vector3 = node.position
+			if has_position_x:
+				per_axis_position.x = props.get("position:x")
+			if has_position_y:
+				per_axis_position.y = props.get("position:y")
+			if has_position_z:
+				per_axis_position.z = props.get("position:z")
+			node.position = per_axis_position
 		var has_scale_x: bool = props.has("scale:x")
 		var has_scale_y: bool = props.has("scale:y")
 		var has_scale_z: bool = props.has("scale:z")
@@ -284,7 +284,7 @@ class UnityObject extends Reference:
 		if uprops.has(key):
 			return uprops.get(key)
 		if uprops.has(key + ".x") and uprops.has(key + ".y") and uprops.has(key + ".z") and uprops.has(key + ".w"):
-			return Quat(
+			return Quaternion(
 				uprops.get(key + ".x", 0.0),
 				uprops.get(key + ".y", 0.0),
 				uprops.get(key + ".z", 0.0),
@@ -1476,17 +1476,17 @@ class UnityTransform extends UnityComponent:
 		print("Node " + str(node.name) + " uprops " + str(uprops))
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_LocalPosition.x"):
-			outdict["translation:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
+			outdict["position:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
 		if uprops.has("m_LocalPosition.y"):
-			outdict["translation:y"] = 1.0 * uprops.get("m_LocalPosition.y")
+			outdict["position:y"] = 1.0 * uprops.get("m_LocalPosition.y")
 		if uprops.has("m_LocalPosition.z"):
-			outdict["translation:z"] = 1.0 * uprops.get("m_LocalPosition.z")
+			outdict["position:z"] = 1.0 * uprops.get("m_LocalPosition.z")
 		if uprops.has("m_LocalPosition"):
 			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
-			outdict["translation"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
+			outdict["position"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
-		if typeof(rot_vec) == TYPE_QUAT:
-			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quat()
+		if typeof(rot_vec) == TYPE_QUATERNION:
+			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quaternion()
 		var tmp: float
 		if uprops.has("m_LocalScale.x"):
 			tmp = 1.0 * uprops.get("m_LocalScale.x")
@@ -1599,7 +1599,7 @@ class UnityCollider extends UnityBehaviour:
 			if complex_xform != null:
 				outdict["transform"] = complex_xform.transform * Transform(basis, center)
 			else:
-				outdict["translation"] = center
+				outdict["position"] = center
 		if uprops.has("m_Direction"):
 			basis = get_basis_from_direction(uprops.get("m_Direction"))
 			if complex_xform != null:
@@ -1730,7 +1730,7 @@ class UnityRigidbody extends UnityComponent:
 	func create_physics_body(state: Reference, new_parent: Node3D, name: String) -> Node:
 		var new_node: Node3D;
 		if keys.get("m_IsKinematic") != 0:
-			var kinematic: KinematicBody3D = KinematicBody3D.new()
+			var kinematic: CharacterBody3D = CharacterBody3D.new()
 			new_node = kinematic
 		else:
 			var rigid: RigidBody3D = RigidBody3D.new()
@@ -2315,7 +2315,7 @@ class UnityLightProbeGroup extends UnityComponent:
 			var probe: LightmapProbe = LightmapProbe.new()
 			new_parent.add_child(probe)
 			probe.owner = state.owner
-			probe.translation = pos
+			probe.position = pos
 		return null
 
 class UnityReflectionProbe extends UnityBehaviour:
@@ -2331,7 +2331,7 @@ class UnityReflectionProbe extends UnityBehaviour:
 			outdict["interior"] = true if uprops.get("m_BoxProjection") else false
 			outdict["box_projection"] = true if uprops.get("m_BoxProjection") else false
 		if uprops.has("m_BoxOffset"):
-			outdict["translation"] = uprops.get("m_BoxOffset")
+			outdict["position"] = uprops.get("m_BoxOffset")
 			outdict["origin_offset"] = -uprops.get("m_BoxOffset")
 		if uprops.has("m_BoxSize"):
 			outdict["extents"] = uprops.get("m_BoxSize")
