@@ -14,6 +14,8 @@ const ASSET_TYPE_PREFAB = 4
 const ASSET_TYPE_SCENE = 5
 const ASSET_TYPE_UNKNOWN = 6
 
+const SHOULD_CONVERT_TO_GLB: bool = false
+
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" +
 	"tAAAAABJRU5ErkJggg==")
@@ -21,6 +23,8 @@ var STUB_GLB_FILE: PackedByteArray = Marshalls.base64_to_raw(
 	"Z2xURgIAAACEAAAAcAAAAEpTT057ImFzc2V0Ijp7ImdlbmVyYXRvciI6IiIsInZlcnNpb24i" +
 	"OiIyLjAifSwic2NlbmUiOjAsInNjZW5lcyI6W3sibmFtZSI6IlMiLCJub2RlcyI6WzBdfV0s" +
 	"Im5vZGVzIjpbeyJuYW1lIjoiTiJ9XX0g")
+var STUB_GLTF_FILE: PackedByteArray = ('{"asset":{"generator":"","version":"2.0"},"scene":0,' +
+	'"scenes":[{"name":"temp","nodes":[0]}],"nodes":[{"name":"temp"}]}').to_ascii_buffer()
 var STUB_OBJ_FILE: PackedByteArray = "o a\nv 0 0 0\nf 1 1 1".to_ascii_buffer()
 var STUB_DAE_FILE: PackedByteArray = ("""
 <?xml version="1.0" encoding="utf-8"?>
@@ -60,19 +64,18 @@ class AssetHandler:
 		editor_interface = ei
 		return self
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
 		return ""
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
 		var path: String = tmpdir + "/" + pkgasset.pathname
-		var outfile: File = File.new()
-		var err = outfile.open(path, File.WRITE)
-		print("Open " + path + " => " + str(err))
-		outfile.store_buffer(pkgasset.asset_tar_header.get_data())
-		# outfile.flush()
-		outfile.close()
-		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path)
+		var data_buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path, data_buf)
 		if len(output_path) == 0:
+			var outfile: File = File.new()
+			var err = outfile.open(path, File.WRITE)
+			outfile.store_buffer(data_buf)
+			outfile.close()
 			output_path = path
 		print("Updating file at " + output_path)
 		return output_path
@@ -97,15 +100,65 @@ class ImageHandler extends AssetHandler:
 		ret.STUB_PNG_FILE = stub_file
 		return ret
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String) -> String:
-		return ""
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+		var user_path_base = OS.get_user_data_dir()
+		var is_png: bool = data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47
+		var output_path: String = ""
+		if not is_png and path.to_lower().ends_with(".png"):
+			print("I am a JPG pretending to be a PNG " + str(path))
+			output_path = path.get_basename() + ".jpg"
+		elif is_png and not path.to_lower().ends_with(".png"):
+			print("I am a PNG pretending to be a JPG " + str(path))
+			output_path = path.get_basename() + ".png"
+		var outfile: File = File.new()
+		var err = outfile.open(output_path, File.WRITE)
+		outfile.store_buffer(data_buf)
+		outfile.close()
+		return output_path
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_TEXTURE
 
+	func write_godot_asset(pkgasset: Object, temp_path: String):
+		# super.write_godot_asset(pkgasset, temp_path)
+		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
+		var dres = Directory.new()
+		dres.open("res://")
+		print("Renaming " + temp_path + " to " + pkgasset.pathname)
+		pkgasset.parsed_meta.rename(pkgasset.pathname)
+		dres.rename(temp_path, pkgasset.pathname)
+
+		var importer = pkgasset.parsed_meta.importer
+		var cfile = ConfigFile.new()
+		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
+			push_error("Failed to load .import config file for " + pkgasset.pathname)
+			return
+		var chosen_platform = {}
+		for platform in importer.keys.get("platformSettings", []):
+			if platform.get("buildTarget", "") == "DefaultTexturePlatform":
+				chosen_platform = platform
+		for platform in importer.keys.get("platformSettings", []):
+			if platform.get("buildTarget", "") == "Standalone":
+				chosen_platform = platform
+		var use_tc = chosen_platform.get("textureCompression", importer.keys.get("textureCompression", 1))
+		var tc_level = chosen_platform.get("compressionQuality", importer.keys.get("compressionQuality", 50))
+		var max_texture_size = chosen_platform.get("maxTextureSize", importer.keys.get("maxTextureSize", 0))
+		if max_texture_size < 0:
+			max_texture_size = 0
+		#cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
+		cfile.set_value("params", "compress/mode", 2 * use_tc)
+		cfile.set_value("params", "compress/lossy_quality", tc_level / 100.0)
+		cfile.set_value("params", "compress/normal_map", importer.keys.get("bumpmap", {}).get("convertToNormalMap", 0))
+		cfile.set_value("params", "detect_3d/compress_to", 1 * use_tc)
+		cfile.set_value("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
+		cfile.set_value("params", "process/size_limit", max_texture_size)
+		cfile.set_value("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
+		cfile.save("res://" + pkgasset.pathname + ".import")
+
+
 class AudioHandler extends AssetHandler:
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -133,7 +186,7 @@ class YamlHandler extends AssetHandler:
 		print("Done with " + path + "/" + pkgasset.guid)
 		return path
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -230,6 +283,8 @@ class BaseModelHandler extends AssetHandler:
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
 		dres.rename(temp_path, pkgasset.pathname)
+		if temp_path.ends_with(".gltf"):
+			dres.rename(temp_path.get_basename() + ".bin", pkgasset.pathname.get_basename() + ".bin")
 
 		var importer = pkgasset.parsed_meta.importer
 		var cfile = ConfigFile.new()
@@ -260,7 +315,7 @@ class BaseModelHandler extends AssetHandler:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
-		cfile.set_value("params", "nodes/root_name", "Root Sccene")
+		cfile.set_value("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO
 		
 		# ??? animation/optimizer setting seems to be missing?
@@ -427,17 +482,21 @@ class FbxHandler extends BaseModelHandler:
 		outfile.store_buffer(fbx_file)
 		# outfile.flush()
 		outfile.close()
-		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path)
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path, fbx_file)
 		if len(output_path) == 0:
 			output_path = path
 		print("Updating file at " + output_path)
 		return output_path
 
-	func preprocess_asset(pkgasset, tmpdir: String, path: String) -> String:
-		var user_path_base = OS.get_user_data_dir()
+	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
-		var output_path: String = path.get_basename() + ".glb"
-		var stdout = [].duplicate()
+		var gltf_output_path: String = path.get_basename() + ".gltf"
+		var bin_output_path: String = path.get_basename() + ".bin"
+		var output_path: String = gltf_output_path
+		if SHOULD_CONVERT_TO_GLB:
+			output_path = path.get_basename() + ".glb"
+		var stdout: Array = [].duplicate()
 		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("FBX2glTF.exe")
 		if addon_path.begins_with("res://"):
 			addon_path = addon_path.substr(6)
@@ -448,17 +507,78 @@ class FbxHandler extends BaseModelHandler:
 			"--pbr-metallic-roughness",
 			"--fbx-temp-dir", tmpdir + "/FBX_TEMP",
 			"--normalize-weights", "1",
-			"--binary", "--anim-framerate", "bake30",
+			"--anim-framerate", "bake30",
 			"-i", path,
-			"-o", output_path], stdout)
+			"-o", gltf_output_path], stdout)
 		print("FBX2glTF returned " + str(ret) + " -----")
 		print(str(stdout))
 		print("-----------------------------")
-
+		var d = Directory.new()
+		d.open("res://")
+		d.rename(path.get_base_dir() + "/buffer.bin", bin_output_path)
+		var f: File = File.new()
+		f.open(gltf_output_path, File.READ)
+		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
+		f.close()
+		var json_parse_result: JSONParseResult = JSON.parse(data)
+		var json: Dictionary = json_parse_result.result
+		var bindata: PackedByteArray
+		if SHOULD_CONVERT_TO_GLB:
+			f = File.new()
+			f.open(bin_output_path, File.READ)
+			bindata = f.get_buffer(f.get_length())
+			f.close()
+			json["buffers"][0].erase("uri")
+		else:
+			json["buffers"][0]["uri"] = bin_output_path.get_file()
+		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers"]:
+			if not json.has(key):
+				continue
+			var used_names: Dictionary = {}.duplicate()
+			var jk: Array = json[key]
+			for elem in range(jk.size()):
+				if not jk[elem].has("name"):
+					continue
+				var orig_name: String = jk[elem].get("name")
+				var try_name: String = orig_name
+				var next_num: int = used_names.get(orig_name, 1)
+				# Ensure that objects have a unique name in compliance with Unity's uniqueness rules
+				# Godot's rule is Gizmo, Gizmo2, Gizmo3.
+				# Unity's rule is Gizmo, Gizmo 1, Gizmo 2
+				# While we ignore the extra space anyway, the off-by-one here is killer. :'-(
+				# So we must proactively rename nodes to avoid duplicates...
+				while used_names.has(try_name):
+					try_name = "%s %d" % [orig_name, next_num]
+					next_num += 1
+				json[key][elem]["name"] = try_name
+				used_names[orig_name] = next_num
+				used_names[try_name] = 1
+		var out_json_data: PackedByteArray = JSON.print(json).to_utf8_buffer()
+		if SHOULD_CONVERT_TO_GLB:
+			var out_json_data_length: int = out_json_data.size()
+			var bindata_length: int = bindata.size()
+			f = File.new()
+			f.open(output_path, File.WRITE)
+			f.store_32(0x46546C67)
+			f.store_32(2)
+			f.store_32(20 + out_json_data_length + 8 + bindata_length + 4)
+			f.store_32(out_json_data_length)
+			f.store_32(0x4E4F534A)
+			f.store_buffer(out_json_data)
+			f.store_32(bindata_length)
+			f.store_32(0x4E4942)
+			f.store_buffer(bindata)
+			f.store_32(0)
+			f.close()
+		else:
+			f = File.new()
+			f.open(output_path, File.WRITE)
+			f.store_buffer(out_json_data)
+			f.close()
 		return output_path
 
 class DisabledHandler extends AssetHandler:
-	func preprocess_asset(pkgasset, tmpdir: String, path: String) -> String:
+	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
 		return "asset_not_supported"
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
@@ -469,16 +589,16 @@ class DisabledHandler extends AssetHandler:
 
 var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
 var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
-var model_handler: FbxHandler = FbxHandler.new().create_with_constant(STUB_GLB_FILE) # FBX needs to rewrite to GLB for compatibility.
 var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_PNG_FILE)
 
 var file_handlers: Dictionary = {
-	"fbx": model_handler,
+	"fbx": FbxHandler.new().create_with_constant(STUB_GLB_FILE if SHOULD_CONVERT_TO_GLB else STUB_GLTF_FILE),
 	#"obj": obj_handler,
 	#"dae": dae_handler,
 	"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
 	"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
-	"glb": model_handler,
+	"glb": FbxHandler.new().create_with_constant(STUB_GLB_FILE),
+	"gltf": FbxHandler.new().create_with_constant(STUB_GLTF_FILE),
 	"jpg": image_handler,
 	"jpeg": image_handler,
 	"png": image_handler,

@@ -210,6 +210,8 @@ class UnityObject extends Reference:
 		apply_node_props(node, props)
 
 	func apply_node_props(node: Node, props: Dictionary):
+		if node is MeshInstance3D:
+			self.apply_mesh_renderer_props(meta, node, props)
 		print(str(node.name) + ": " + str(props))
 		# var has_transform_track: bool = false
 		# var transform_position: Vector3 = Vector3()
@@ -254,6 +256,81 @@ class UnityObject extends Reference:
 			else:
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
 				node.set(propname, props.get(propname))
+
+	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
+		const material_prefix: String = ":UNIDOT_PROXY:"
+		print("Apply mesh renderer props: " + str(props) + " / " + str(node.mesh))
+		var truncated_mat_prefix: String = meta.get_database().truncated_material_reference.resource_name
+		var null_mat_prefix: String = meta.get_database().null_material_reference.resource_name
+		var last_material: Object = null
+		var old_surface_count: int = 0
+		if node.mesh == null or node.mesh.get_surface_count() == 0:
+			last_material = node.get_material_override()
+			if last_material != null:
+				old_surface_count = 1
+		else:
+			old_surface_count = node.mesh.get_surface_count()
+			last_material = node.get_active_material(old_surface_count - 1)
+
+		while last_material != null and last_material.resource_name.begins_with(truncated_mat_prefix):
+			old_surface_count -= 1
+			if old_surface_count == 0:
+				last_material = null
+				break
+			last_material = node.get_active_material(old_surface_count - 1)
+
+		var last_extra_material: Resource = last_material
+		var current_materials: Array = [].duplicate()
+
+		var prefix: String = material_prefix + str(old_surface_count - 1) + ":"
+		var new_prefix: String = prefix
+
+		var material_idx: int = 0
+		while material_idx < old_surface_count:
+			var mat: Resource = node.get_active_material(material_idx)
+			if mat != null and str(mat.resource_name).begins_with(prefix):
+				break
+			current_materials.push_back(mat)
+			material_idx += 1
+
+		while last_extra_material != null and (str(last_extra_material.resource_name).begins_with(prefix) or str(last_extra_material.resource_name).begins_with(new_prefix)):
+			if str(last_extra_material.resource_name).begins_with(new_prefix):
+				prefix = new_prefix
+				var guid_fileid = str(last_extra_material.resource_name).substr(len(prefix)).split(":")
+				current_materials.push_back(meta.get_godot_resource([null, guid_fileid[1].to_int(), guid_fileid[0], null]))
+				material_idx += 1
+				new_prefix = material_prefix + str(material_idx) + ":"
+			#material_idx_to_extra_material[material_idx] = last_extra_material
+			last_extra_material = last_extra_material.next_pass
+		if material_idx == old_surface_count - 1:
+			assert(last_extra_material != null)
+			current_materials.push_back(last_extra_material)
+			material_idx += 1
+
+		var new_materials_size = props.get("_materials_size", material_idx)
+
+		if props.has("_mesh"):
+			node.mesh = props.get("_mesh")
+			node.material_override = null
+
+		current_materials.resize(new_materials_size)
+		for i in range(new_materials_size):
+			current_materials[i] = props.get("_materials/" + str(i), current_materials[i])
+
+		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
+		if new_surface_count != 0 and node.mesh != null:
+			if new_materials_size < new_surface_count:
+				for i in range(new_materials_size, new_surface_count):
+					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
+			for i in range(new_materials_size):
+				node.set_surface_override_material(i, current_materials[i])
+
+		# surface_get_material
+		#for i in range(new_surface_count)
+		#	for i in range():
+		#		node.material_override
+		#else:
+		#	if new_materials_size < new_surface_count:
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		return convert_properties_component(node, uprops)
@@ -1376,81 +1453,6 @@ class UnityComponent extends UnityObject:
 	func is_toplevel() -> bool:
 		return false
 
-	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
-		const material_prefix: String = ":UNIDOT_PROXY:"
-		print("Apply mesh renderer props: " + str(props) + " / " + str(node.mesh))
-		var truncated_mat_prefix: String = meta.get_database().truncated_material_reference.resource_name
-		var null_mat_prefix: String = meta.get_database().null_material_reference.resource_name
-		var last_material: Object = null
-		var old_surface_count: int = 0
-		if node.mesh == null or node.mesh.get_surface_count() == 0:
-			last_material = node.get_material_override()
-			if last_material != null:
-				old_surface_count = 1
-		else:
-			old_surface_count = node.mesh.get_surface_count()
-			last_material = node.get_active_material(old_surface_count - 1)
-
-		while last_material != null and last_material.resource_name.begins_with(truncated_mat_prefix):
-			old_surface_count -= 1
-			if old_surface_count == 0:
-				last_material = null
-				break
-			last_material = node.get_active_material(old_surface_count - 1)
-
-		var last_extra_material: Resource = last_material
-		var current_materials: Array = [].duplicate()
-
-		var prefix: String = material_prefix + str(old_surface_count - 1) + ":"
-		var new_prefix: String = prefix
-
-		var material_idx: int = 0
-		while material_idx < old_surface_count:
-			var mat: Resource = node.get_active_material(material_idx)
-			if mat != null and str(mat.resource_name).begins_with(prefix):
-				break
-			current_materials.push_back(mat)
-			material_idx += 1
-
-		while last_extra_material != null and (str(last_extra_material.resource_name).begins_with(prefix) or str(last_extra_material.resource_name).begins_with(new_prefix)):
-			if str(last_extra_material.resource_name).begins_with(new_prefix):
-				prefix = new_prefix
-				var guid_fileid = str(last_extra_material.resource_name).substr(len(prefix)).split(":")
-				current_materials.push_back(meta.get_godot_resource([null, guid_fileid[1].to_int(), guid_fileid[0], null]))
-				material_idx += 1
-				new_prefix = material_prefix + str(material_idx) + ":"
-			#material_idx_to_extra_material[material_idx] = last_extra_material
-			last_extra_material = last_extra_material.next_pass
-		if material_idx == old_surface_count - 1:
-			assert(last_extra_material != null)
-			current_materials.push_back(last_extra_material)
-			material_idx += 1
-
-		var new_materials_size = props.get("_materials_size", material_idx)
-
-		if props.has("_mesh"):
-			node.mesh = props.get("_mesh")
-			node.material_override = null
-
-		current_materials.resize(new_materials_size)
-		for i in range(new_materials_size):
-			current_materials[i] = props.get("_materials/" + str(i), current_materials[i])
-
-		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
-		if new_surface_count != 0 and node.mesh != null:
-			if new_materials_size < new_surface_count:
-				for i in range(new_materials_size, new_surface_count):
-					node.set_surface_override_material(i, meta.get_database().truncated_material_reference)
-			for i in range(new_materials_size):
-				node.set_surface_override_material(i, current_materials[i])
-
-		# surface_get_material
-		#for i in range(new_surface_count)
-		#	for i in range():
-		#		node.material_override 
-		#else:
-		#	if new_materials_size < new_surface_count:
-
 
 class UnityBehaviour extends UnityComponent:
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
@@ -1759,9 +1761,6 @@ class UnityMeshFilter extends UnityComponent:
 	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
 		return null
 
-	func apply_node_props(node: Node, props: Dictionary):
-		self.apply_mesh_renderer_props(meta, node, props)
-
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
@@ -1799,9 +1798,6 @@ class UnityMeshRenderer extends UnityRenderer:
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
-
-	func apply_node_props(node: Node, props: Dictionary):
-		self.apply_mesh_renderer_props(meta, node, props)
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
@@ -2390,7 +2386,10 @@ class UnityAssetImporter extends UnityObject:
 
 	func get_external_objects() -> Dictionary:
 		var eo: Dictionary = {}.duplicate()
-		for srcAssetIdent in keys.get("externalObjects", []):
+		var extos: Variant = keys.get("externalObjects")
+		if typeof(extos) != TYPE_ARRAY:
+			return eo
+		for srcAssetIdent in extos:
 			var type_str: String = srcAssetIdent.get("first", {}).get("type","")
 			var type_key: String = type_str.split(":")[-1]
 			var key: String = srcAssetIdent.get("first", {}).get("name","")

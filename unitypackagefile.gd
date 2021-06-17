@@ -50,17 +50,34 @@ func external_tar_with_filename(source_file: String):
 		"-zxvf", source_file.replace("res://", "")]
 	#if str(OS.get_name()) == "Windows" or str(OS.get_name()) == "UWP":
 	print("Running tar with " + str(tar_args))
-	OS.execute("tar", tar_args, stdout, true)
-	if stdout[0].find("resolve failed") != -1:
-		print("Rerunning with --force-local")
-		tar_args.append("--force-local")
-		stdout = []
+	var out_lines: Array = [].duplicate()
+	if source_file.is_empty():
+		var dirlist: Directory = Directory.new()
+		dirlist.open("res://" + full_tmpdir)
+		dirlist.list_dir_begin()
+		while true:
+			var fn: String = dirlist.get_next()
+			if fn.is_empty():
+				break
+			print(fn)
+			if not fn.begins_with(".") and dirlist.file_exists(fn + "/pathname"):
+				for fnpiece in ["/pathname", "/asset", "/asset.meta", "/preview.png"]:
+					print(fn + "/" + fnpiece)
+					out_lines.append(fn)
+					if dirlist.file_exists("./" + fn + fnpiece):
+						out_lines.append(fn + fnpiece)
+	else:
 		OS.execute("tar", tar_args, stdout, true)
-	# print("executed " + str(tar_args) + ": " + str(stdout))
-	var out_lines = stdout[0].split("\n")
+		if stdout[0].find("resolve failed") != -1:
+			print("Rerunning with --force-local")
+			tar_args.append("--force-local")
+			stdout = []
+			OS.execute("tar", tar_args, stdout, true)
+		# print("executed " + str(tar_args) + ": " + str(stdout))
+		out_lines = stdout[0].split("\n")
 	var guids_to_remove = [].duplicate()
 	for line in out_lines:
-		var fnparts: Array = line.strip_edges().split("/")
+		var fnparts: Array = line.trim_prefix("x").strip_edges().split("/")
 		# x ./1234abcd0000ffff/
 		# x ./1234abcd0000ffff/preview.png
 		# x ./1234abcd0000ffff/asset
@@ -113,6 +130,9 @@ func external_tar_with_filename(source_file: String):
 	return self
 
 func init_with_filename(source_file: String):
+	if source_file.is_empty():
+		return external_tar_with_filename("")
+
 	var file = File.new()
 	if file.open(source_file, File.READ) != OK:
 		return null

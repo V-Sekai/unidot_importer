@@ -20,6 +20,10 @@ func queue_test():
 	var q = queue_lib.new()
 	q.run_test()
 
+func show_reimport():
+	package_import_dialog = package_import_dialog_class.new()
+	package_import_dialog.show_reimport()
+
 func show_importer():
 	package_import_dialog = package_import_dialog_class.new()
 	package_import_dialog.show_importer()
@@ -29,11 +33,13 @@ func recursive_print_scene():
 
 func _enter_tree():
 	add_tool_menu_item("Import Unity Package...",self.show_importer)
+	add_tool_menu_item("Reimport large unity package...",self.show_reimport)
 	add_tool_menu_item("Queue Test...",self.queue_test)
 	add_tool_menu_item("Print scene nodes with owner...",self.recursive_print_scene)
 
 func _exit_tree():
 	remove_tool_menu_item("Print scene nodes with owner...")
 	remove_tool_menu_item("Import Unity Package...")
+	remove_tool_menu_item("Reimport large unity package...")
 	remove_tool_menu_item("Queue Test...")
 

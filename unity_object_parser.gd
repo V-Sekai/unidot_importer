@@ -33,6 +33,7 @@ var has_brace_line: bool = false
 var has_double_quote_line: bool = false
 var has_single_quote_line: bool = false
 var prev_key: String = ""
+var prev_complex_key: String = ""
 var current_obj_tree: Array = []
 var current_indent_tree: Array = []
 var meta_guid: String = ""
@@ -47,22 +48,21 @@ func _init():
 	search_obj_key_regex = RegEx.new()
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
-func parse_value(line: String, keyname: String) -> Variant:
+func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 
 	# WHAT THE FUCK IS THIS AND WHY DOES IT FIX line.begins_with("{") always returning false???
 	# EXPLOIT HEISENBUG NATURE TO FIX OUR PROBLEM
 	#      - _Outline_Color: {r: 1, g: 1, b: 1, a: 1}
 	str(str(line.substr(0, 1)).begins_with(str(line.substr(0, 1))))
-
-	if keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash":
-		return line # User must decode this as desired.
-	if not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_integer():
+	# User must decode this as desired.
+	var force_string = (keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash" or parent_key == "fileIDToRecycleName" or parent_key == "internalIDToNameTable")
+	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_integer():
 		return line.to_int()
-	if not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
+	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
 		return line.to_float()
-	if line == "[]":
+	if not force_string and line == "[]":
 		return [].duplicate()
-	if line.begins_with("{}"):
+	if not force_string and line.begins_with("{}"):
 		# either {}
 		# or:
 		# - a: b
@@ -71,7 +71,7 @@ func parse_value(line: String, keyname: String) -> Variant:
 		# This is technically wrong, so we might want to fix some day.
 		# fileIdToRecycleMap is the only known usage of this anyway
 		return [].duplicate()
-	if line.begins_with("{"):
+	if not force_string and line.begins_with("{"):
 		if not line.ends_with("}"):
 			push_error("Invalid object value " + line.substr(0, 64))
 			return null
@@ -326,6 +326,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				indentation_level = current_indent_tree[-1]
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
+				prev_key = ""
 			if typeof(current_obj_tree.back()) == TYPE_ARRAY and not line_plain.begins_with("- "):
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
@@ -339,8 +340,10 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		if obj_key_match != null:
 			if obj_key_match.get_end() == len(line_plain):
 				prev_key = this_key
+				if this_key != "first" and this_key != "second":
+					prev_complex_key = this_key
 			else:
-				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()), this_key)
+				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()),this_key, prev_complex_key)
 				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 					match this_key:
 						"m_SourcePrefab", "m_ParentPrefab":
@@ -348,7 +351,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val
 		elif line_plain.begins_with("- "):
-			var parsed_val = parse_value(line_plain.substr(2), "")
+			var parsed_val = parse_value(line_plain.substr(2), "", prev_complex_key)
 			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 				meta.dependency_guids[parsed_val[2]] = 1
 			current_obj_tree.back().push_back(parsed_val)

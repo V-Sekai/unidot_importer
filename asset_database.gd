@@ -16,6 +16,7 @@ var object_adapter = object_adapter_class.new()
 @export var truncated_shader_reference: Shader = null
 @export var truncated_material_reference: Material = null
 @export var null_material_reference: Material = null
+@export var default_material_reference: Material = null
 
 # SEMI-STATIC
 func get_singleton() -> Object:
@@ -90,6 +91,8 @@ func preload_builtin_assets():
 	null_material_reference.resource_name = "PINK"
 	null_material_reference.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
+	default_material_reference = StandardMaterial3D.new()
+	default_material_reference.resource_name = "Default-Material"
 
 	var unity_builtin = asset_meta_class.new()
 	unity_builtin.init_with_file(null, "Library/unity default resources")
@@ -143,11 +146,12 @@ func preload_builtin_assets():
 	guid_to_path[unity_extra.guid] = unity_extra.path
 	path_to_meta[unity_extra.path] = unity_extra
 
+
 	unity_extra.override_resource(10905, "UISprite", stub)
-	unity_extra.override_resource(10302, "Default-Diffuse", StandardMaterial3D.new()) # Legacy Shaders/Diffuse
-	unity_extra.override_resource(10303, "Default-Material", StandardMaterial3D.new()) # Standard
+	unity_extra.override_resource(10302, "Default-Diffuse", default_material_reference) # Legacy Shaders/Diffuse
+	unity_extra.override_resource(10303, "Default-Material", default_material_reference) # Standard
 	unity_extra.override_resource(10304, "Default-Skybox", ProceduralSkyMaterial.new()) # Skybox/Procedural
-	unity_extra.override_resource(10306, "Default-Line", StandardMaterial3D.new()) # Particles/Alpha Blended
+	unity_extra.override_resource(10306, "Default-Line", default_material_reference) # Particles/Alpha Blended
 	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new()) # Particles/Standard Unlit
 	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new()) # Sprites/Default
 	unity_extra.override_resource(10758, "Sprites-Mask", StandardMaterial3D.new()) # Sprites/Mask

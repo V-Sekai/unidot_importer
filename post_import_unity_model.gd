@@ -15,8 +15,10 @@ const unity_object_adapter_class: GDScript = preload("./unity_object_adapter.gd"
 #              "padding":[239,59,202,202,202,202,94,94,94,94],"unwrapper":[0,0,0,0,0,0,0,0,0,0]}'
 
 var object_adapter = unity_object_adapter_class.new()
+var default_material: Material = null
 
 class ParseState:
+	var object_adapter: Object
 	var scene: Node
 	var toplevel_node: Node
 	var metaobj: Resource
@@ -33,6 +35,8 @@ class ParseState:
 	var nodes_by_name: Dictionary = {}.duplicate()
 	var skeleton_bones_by_name: Dictionary = {}.duplicate()
 	var objtype_to_name_to_id: Dictionary = {}.duplicate()
+	var objtype_to_next_id: Dictionary = {}.duplicate()
+	var used_ids: Dictionary = {}.duplicate()
 	
 	var fileid_to_nodepath: Dictionary = {}.duplicate()
 	var fileid_to_skeleton_bone: Dictionary = {}.duplicate()
@@ -44,6 +48,10 @@ class ParseState:
 	var use_scene_root: bool = true
 	var mesh_is_toplevel: bool = false
 	var extractLegacyMaterials: bool = false
+	var importMaterials: bool = true
+	var materialSearch: int = 1
+	var default_material: Material = null
+	var asset_database: Resource = null
 
 	# Do we actually need this? Ordering?
 	#var materials = [].duplicate()
@@ -51,13 +59,42 @@ class ParseState:
 	#var animations = [].duplicate()
 	#var nodes = [].duplicate()
 
+	func has_obj_id(type: String, name: String) -> bool:
+		return objtype_to_name_to_id.get(type, {}).has(name)
+
+	func get_obj_id(type: String, name: String) -> int:
+		if objtype_to_name_to_id.get(type, {}).has(name):
+			return objtype_to_name_to_id.get(type, {}).get(name, 0)
+		else:
+			var next_obj_id: int = objtype_to_next_id.get(type, object_adapter.to_utype(type) * 100000)
+			while used_ids.has(next_obj_id):
+				next_obj_id += 2
+			objtype_to_next_id[type] = next_obj_id + 2
+			used_ids[next_obj_id] = true
+			if type != "Material":
+				push_error("Generating id " + str(next_obj_id) + " for " + str(name) + " type " + str(type))
+			return next_obj_id
+
 	func get_resource_path(sanitized_name: String, extension: String) -> String:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
 		return source_file_path.get_basename() + "." + sanitize_filename(sanitized_name) + extension
 
-	func get_materials_path(material_name: String) -> String:
+	func get_parent_materials_paths(material_name: String) -> Array:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
-		return source_file_path.get_base_dir() + "/Materials/" + str(material_name) + ".mat.tres"
+		var retlist: Array = []
+		var basedir: String = source_file_path.get_base_dir()
+		while basedir != "res://" and basedir != "/" and basedir != "" and basedir != ".":
+			retlist.append(get_materials_path_base(material_name, basedir))
+			basedir = basedir.get_base_dir()
+		retlist.append(get_materials_path_base(material_name, "res://"))
+		return retlist
+
+	func get_materials_path_base(material_name: String, base_dir: String) -> String:
+		# return source_file_path.get_basename() + "." + str(fileId) + extension
+		return base_dir + "/Materials/" + str(material_name) + ".mat.tres"
+
+	func get_materials_path(material_name: String) -> String:
+		return get_materials_path_base(material_name, source_file_path.get_base_dir())
 
 	func sanitize_filename(sanitized_name: String) -> String:
 		return sanitize_unique_name(sanitized_name).replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
@@ -129,7 +166,7 @@ class ParseState:
 					node_name = "default"
 					node.name = "default" # Does this make sense?? For compatibility?
 			var fileId: int
-			var root_gameobject_fileId: int = objtype_to_name_to_id.get("GameObject", {}).get("", 0)
+			var root_gameobject_fileId: int = get_obj_id("GameObject", "")
 			var goFileId: int = root_gameobject_fileId
 			################# FIXME THIS WILL BE CHANGED SOON IN GODOT
 			node_name = sanitize_bone_name(node_name)
@@ -138,7 +175,7 @@ class ParseState:
 				if scene.get_path_to(parent_node) == NodePath("."):
 					parent_node = parent_node.get_child(0)
 				node_name = sanitize_bone_name(str(parent_node.name))
-				fileId = objtype_to_name_to_id.get("Animator", {}).get(node_name, 0)
+				fileId = get_obj_id("Animator", node_name)
 				if fileId == 0:
 					push_error("Missing fileId for Animator " + str(node_name))
 				else:
@@ -151,14 +188,14 @@ class ParseState:
 					var bone_name: String = sanitize_bone_name(og_bone_name)
 					if bone_name not in nodes_by_name and bone_name not in skeleton_bones_by_name:
 						# print("Found bone " + str(bone_name) + " : " + str(scene.get_path_to(node)))
-						fileId = objtype_to_name_to_id.get("Transform", {}).get(bone_name, 0)
+						fileId = get_obj_id("Transform", bone_name)
 						skeleton_bones_by_name[node_name] = node
 						if fileId == 0:
 							push_error("Missing fileId for bone Transform " + str(bone_name))
 						else:
 							fileid_to_nodepath[fileId] = path
 							fileid_to_skeleton_bone[fileId] = og_bone_name
-						goFileId = objtype_to_name_to_id.get("GameObject", {}).get(bone_name, 0)
+						goFileId = get_obj_id("GameObject", bone_name)
 						fileid_to_gameobject_fileid[fileId] = goFileId
 						fileId = goFileId
 						if fileId == 0:
@@ -177,7 +214,7 @@ class ParseState:
 					skeleton_bones_by_name.erase(node_name)
 				# print("Found node " + str(node_name) + " : " + str(scene.get_path_to(node)))
 				nodes_by_name[node_name] = node
-				fileId = objtype_to_name_to_id.get("Transform", {}).get(node_name, 0)
+				fileId = get_obj_id("Transform", node_name)
 				if node == toplevel_node:
 					pass # Transform nodes always point to the toplevel node.
 				elif fileId == 0:
@@ -187,7 +224,7 @@ class ParseState:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
-				goFileId = objtype_to_name_to_id.get("GameObject", {}).get(node_name, 0)
+				goFileId = get_obj_id("GameObject", node_name)
 				fileid_to_gameobject_fileid[fileId] = goFileId
 				fileId = goFileId
 				if node == toplevel_node:
@@ -200,14 +237,13 @@ class ParseState:
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
 			if node is MeshInstance3D and node.mesh != null:
-				fileId = objtype_to_name_to_id.get("SkinnedMeshRenderer", {}).get(node_name, 0)
-				var fileId_mr: int = objtype_to_name_to_id.get("MeshRenderer", {}).get(node_name, 0)
-				var fileId_mf: int = objtype_to_name_to_id.get("MeshFilter", {}).get(node_name, 0)
-				if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
-					push_error("Missing fileId for MeshRenderer " + str(node_name))
-				if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
-					push_error("Missing fileId for MeshRenderer " + str(node_name))
-				elif fileId == 0:
+				#if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
+				#	push_error("Missing fileId for MeshRenderer " + str(node_name))
+				#if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
+				#	push_error("Missing fileId for MeshRenderer " + str(node_name))
+				if not has_obj_id("SkinnedMeshRenderer", node_name):
+					var fileId_mr: int = get_obj_id("MeshRenderer", node_name)
+					var fileId_mf: int = get_obj_id("MeshFilter", node_name)
 					fileId = fileId_mr
 					fileid_to_nodepath[fileId_mr] = path
 					fileid_to_nodepath[fileId_mf] = path
@@ -216,6 +252,7 @@ class ParseState:
 					if node.skeleton != NodePath():
 						push_error("A Skeleton exists for MeshRenderer " + str(node_name))
 				else:
+					fileId = get_obj_id("SkinnedMeshRenderer", node_name)
 					fileid_to_nodepath[fileId] = path
 					fileid_to_gameobject_fileid[fileId] = goFileId
 					if node.skeleton == NodePath():
@@ -250,16 +287,39 @@ class ParseState:
 								mesh.surface_set_material(i, mat)
 							continue
 						materials_by_name[mat_name] = mat
-						fileId = objtype_to_name_to_id.get("Material", {}).get(sanitize_unique_name(mat_name), 0)
-						if not extractLegacyMaterials and fileId == 0:
+						fileId = get_obj_id("Material", sanitize_unique_name(mat_name))
+						if not importMaterials:
+							mat = default_material
+						elif not extractLegacyMaterials and fileId == 0:
 							push_error("Missing fileId for Material " + str(mat_name))
 						else:
-							if extractLegacyMaterials:
-								print("Extract legacy material " + get_materials_path(mat_name))
-								mat = load(get_materials_path(mat_name))
-							elif external_objects_by_id.has(fileId):
+							if external_objects_by_id.has(fileId):
 								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 								print("External material object " + str(fileId) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
+							elif extractLegacyMaterials:
+								print("Extract legacy material " + get_materials_path(mat_name))
+								var d = Directory.new()
+								d.open("res://")
+								mat = null
+								if materialSearch == 0:
+									# only current dir
+									mat = load(get_materials_path(mat_name))
+								elif materialSearch >= 1:
+									# same dir and parents
+									var mat_paths: Array = get_parent_materials_paths(mat_name)
+									for mp in mat_paths:
+										if d.file_exists(mp):
+											mat = load(get_materials_path(mat_name))
+											if mat != null:
+												break
+									if mat == null and materialSearch >= 2:
+										# and material in the whole project with this name!!
+										for pathname in asset_database.path_to_meta:
+											if pathname.get_file() == mat_name + ".material" or pathname.get_file() == mat_name + ".mat.tres" or pathname.get_file() == mat_name + ".mat.res":
+												mat = load(get_materials_path(mat_name))
+												break
+								if mat == null:
+									mat = default_material
 							else:
 								var respath: String = get_resource_path(mat_name, ".material")
 								print("Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
@@ -280,7 +340,7 @@ class ParseState:
 								metaobj.insert_resource(fileId, mat)
 						# print("MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name if mesh != null else "NULL")+ " Material " + str(i) + " name " + str(mat.resource_name if mat != null else "NULL"))
 					# print("Looking up " + str(mesh_name) + " in " + str(objtype_to_name_to_id.get("Mesh", {})))
-					fileId = objtype_to_name_to_id.get("Mesh", {}).get(sanitize_unique_name(mesh_name), 0)
+					fileId = get_obj_id("Mesh", sanitize_unique_name(mesh_name))
 					if fileId == 0:
 						push_error("Missing fileId for Mesh " + str(mesh_name))
 					else:
@@ -292,7 +352,7 @@ class ParseState:
 						else:
 							if mesh != null:
 								adjust_mesh_scale(mesh)
-								var respath: String = get_resource_path(mesh_name, "a.mesh")
+								var respath: String = get_resource_path(mesh_name, ".mesh")
 								ResourceSaver.save(respath, mesh)
 								mesh = load(respath)
 							if skin != null:
@@ -321,7 +381,7 @@ class ParseState:
 							node.add_animation(anim_name, anim)
 						continue
 					animations_by_name[anim_name] = anim
-					fileId = objtype_to_name_to_id.get("AnimationClip", {}).get(sanitize_anim_name(anim_name), 0)
+					fileId = get_obj_id("AnimationClip", sanitize_anim_name(anim_name))
 					if fileId == 0:
 						push_error("Missing fileId for Animation " + str(anim_name))
 					else:
@@ -343,7 +403,6 @@ class ParseState:
 			for child in node.get_children():
 				iterate(child)
 
-	
 	func adjust_skin_scale(skin: Skin):
 		if scale_correction_factor == 1.0:
 			return
@@ -476,12 +535,12 @@ class ParseState:
 		# Splitting up animation?
 
 func post_import(p_scene: Node) -> Object:
-	return p_scene
 	var source_file_path: String = get_source_file()
 	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
 	var asset_database = asset_database_class.new().get_singleton()
+	default_material = asset_database.default_material_reference
 	var is_obj: bool = source_file_path.ends_with(".obj")
 	var is_dae: bool = source_file_path.ends_with(".dae")
 
@@ -501,50 +560,86 @@ func post_import(p_scene: Node) -> Object:
 	# For now, we assume all data is available in the asset database resource.
 	# var metafile = source_file_path + ".meta"
 	var ps: ParseState = ParseState.new()
+	ps.object_adapter = object_adapter
 	ps.scene = p_scene
 	ps.source_file_path = source_file_path
 	ps.metaobj = metaobj
+	ps.asset_database = asset_database
 	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
-	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
+	ps.extractLegacyMaterials = metaobj.importer.keys.get("materi.shaderals", {}).get("materialLocation", 0) == 0
+	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 0
+	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
+	ps.default_material = default_material
 	ps.is_obj = is_obj
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 	var mesh_count: int = ps.count_meshes(p_scene)
 
-	var recycles: Dictionary = {}
+	var internalIdMapping: Array = []
+	if metaobj.importer != null and typeof(metaobj.importer.get("internalIDToNameTable")) != TYPE_NIL:
+		internalIdMapping = metaobj.importer.get("internalIDToNameTable")
 	if metaobj.importer != null and typeof(metaobj.importer.get("fileIDToRecycleName")) != TYPE_NIL:
-		recycles = metaobj.importer.fileIDToRecycleName
-	for fileIdStr in recycles:
-		var og_obj_name: String = recycles[fileIdStr]
-		var obj_name: String = og_obj_name
-		if obj_name.begins_with("//"):
-			# Not sure why, but Unity uses //RootNode
-			# Maybe it indicates that the node will be hidden???
-			obj_name = ""
-			ps.use_scene_root = true
-			#if is_obj or is_dae:
-			#else:
-			#	obj_name = obj_name.substr(2)
-		var fileId: int = int(str(fileIdStr).to_int())
-		var type: String = str(object_adapter.to_classname(fileId / 100000))
-		if (type == "Transform" or type == "GameObject" or type == "Animator"):
-			obj_name = ps.sanitize_bone_name(obj_name)
-		elif type == "AnimationClip":
-			obj_name = ps.sanitize_anim_name(obj_name)
-		elif (type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer"):
-			obj_name = ps.sanitize_bone_name(obj_name)
-			if obj_name.is_empty() and mesh_count == 1:
-				print("Found empty obj " + str(og_obj_name) + " tpye " + type)
-				ps.mesh_is_toplevel = true
-		else:
-			obj_name = ps.sanitize_unique_name(obj_name)
-		if not ps.objtype_to_name_to_id.has(type):
-			ps.objtype_to_name_to_id[type] = {}.duplicate()
-		#print("Adding recycle id " + str(fileId) + " and type " + str(type) + " and utype " + str(fileId / 100000) + ": " + str(obj_name))
-		ps.objtype_to_name_to_id[type][obj_name] = fileId
-		if external_objects.get(type, {}).has(og_obj_name):
-			ps.external_objects_by_id[fileId] = external_objects.get(type).get(og_obj_name)
+		var recycles: Dictionary = metaobj.importer.fileIDToRecycleName
+		for fileIdStr in recycles:
+			var obj_name: String = recycles[fileIdStr]
+			var fileId: int = int(str(fileIdStr).to_int())
+			var utype: int = fileId / 100000
+			internalIdMapping.append({"first": {utype: fileId}, "second": obj_name})
+#  fileIDToRecycleName:
+#    100000: //RootNode
+#    100002: Box023
+#  internalIDToNameTable:
+#  - first:
+#      1: 100000
+#    second: //RootNode
+#  - first:
+#      1: 100002
+#    second: Armature
+	var used_names_by_type: Dictionary = {}.duplicate()
+	for id_mapping in internalIdMapping:
+		var og_obj_name: String = id_mapping.get("second")
+		for utypestr in id_mapping.get("first"):
+			print("first for " + str(id_mapping) + " is " + str(utypestr))
+			var fileId: int = int(id_mapping.get("first").get(utypestr))
+			var utype: int = int(utypestr)
+			var obj_name: String = og_obj_name
+			if obj_name.begins_with("//"):
+				# Not sure why, but Unity uses //RootNode
+				# Maybe it indicates that the node will be hidden???
+				obj_name = ""
+				ps.use_scene_root = true
+				#if is_obj or is_dae:
+				#else:
+				#	obj_name = obj_name.substr(2)
+			var type: String = str(object_adapter.to_classname(fileId / 100000))
+			if (type == "Transform" or type == "GameObject" or type == "Animator"):
+				obj_name = ps.sanitize_bone_name(obj_name)
+			elif type == "AnimationClip":
+				obj_name = ps.sanitize_anim_name(obj_name)
+			elif (type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer"):
+				obj_name = ps.sanitize_bone_name(obj_name)
+				if obj_name.is_empty() and mesh_count == 1:
+					print("Found empty obj " + str(og_obj_name) + " tpye " + type)
+					ps.mesh_is_toplevel = true
+			else:
+				obj_name = ps.sanitize_unique_name(obj_name)
+			if not ps.objtype_to_name_to_id.has(type):
+				ps.objtype_to_name_to_id[type] = {}.duplicate()
+				used_names_by_type[type] = {}.duplicate()
+			var orig_obj_name: String = obj_name
+			var next_num: int = used_names_by_type.get(type).get(orig_obj_name, 1)
+			while used_names_by_type[type].has(obj_name):
+				obj_name = "%s%d" % [orig_obj_name, next_num] # No space is deliberate, from sanitization rules.
+				next_num += 1
+			used_names_by_type[type][orig_obj_name] = next_num
+			used_names_by_type[type][obj_name] = 1
+			#print("Adding recycle id " + str(fileId) + " and type " + str(type) + " and utype " + str(fileId / 100000) + ": " + str(obj_name))
+			ps.objtype_to_name_to_id[type][obj_name] = fileId
+			ps.used_ids[fileId] = true
+			ps.objtype_to_next_id[type] = utype * 100000
+			if external_objects.get(type, {}).has(og_obj_name):
+				ps.external_objects_by_id[fileId] = external_objects.get(type).get(og_obj_name)
 
 	#print("Ext objs by id: "+ str(ps.external_objects_by_id))
 	#print("objtype name by id: "+ str(ps.objtype_to_name_to_id))

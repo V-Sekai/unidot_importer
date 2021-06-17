@@ -60,7 +60,8 @@ func _init():
 	EditorPlugin.new().get_editor_interface().get_resource_filesystem().connect("sources_changed", self._editor_filesystem_scan_check)
 
 func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
-	ti.set_checked(0, is_checked)
+	if ti.is_selectable(0):
+		ti.set_checked(0, is_checked)
 	#var old_prefix: String = (checkbox_on_unicode if !is_checked else checkbox_off_unicode)
 	#var new_prefix: String  = (checkbox_on_unicode if is_checked else checkbox_off_unicode)
 	#ti.set_text(0, new_prefix + ti.get_text(0).substr(len(old_prefix)))
@@ -101,8 +102,12 @@ func _selected_package(p_path: String) -> void:
 			ti = main_dialog_tree.create_item(tree_items[i - 1])
 			tree_items.push_back(ti)
 			ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-			ti.set_checked(0, true)
-			ti.set_selectable(0, true)
+			if (path.to_lower().ends_with("png") or path.to_lower().ends_with("jpg")):
+				ti.set_checked(0, false)
+				ti.set_selectable(0, false)
+			else:
+				ti.set_checked(0, true)
+				ti.set_selectable(0, true)
 			if i == len(path_names) - 1:
 				ti.set_tooltip(0, path)
 			ti.set_icon_max_width(0, 24)
@@ -117,6 +122,11 @@ func _selected_package(p_path: String) -> void:
 		file_dialog.queue_free()
 		file_dialog = null
 
+func show_reimport() -> void:
+	file_dialog = null
+	_show_importer_common()
+	self._selected_package("")
+
 func show_importer() -> void:
 	file_dialog = FileDialog.new()
 	file_dialog.set_title("Import Unity Package...")
@@ -126,7 +136,9 @@ func show_importer() -> void:
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	file_dialog.connect("file_selected", self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog)
-	
+	_show_importer_common()
+
+func _show_importer_common() -> void:
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
@@ -146,7 +158,8 @@ func show_importer() -> void:
 
 	_keep_open_on_import = false
 	import_finished = false
-	file_dialog.popup_centered_ratio()
+	if file_dialog != null:
+		file_dialog.popup_centered_ratio()
 	timer = Timer.new()
 	timer.wait_time = 0.1
 	timer.autostart = true
