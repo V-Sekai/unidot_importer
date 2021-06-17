@@ -1,5 +1,5 @@
 @tool
-extends Reference
+extends RefCounted
 
 const queue_lib: GDScript = preload("./queue_lib.gd")
 const tarfile: GDScript = preload("./tarfile.gd")

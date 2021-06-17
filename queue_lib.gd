@@ -1,13 +1,13 @@
 
 
-class Deque extends Reference:
+class Deque extends RefCounted:
 	var _arr: Array = []
 	var _start: int = 0
 	var _end: int = 0
-	var _mutex: Reference = null
+	var _mutex: RefCounted = null
 
-	class DummyMutex extends Reference:
-		var orig_mutex: Reference = null
+	class DummyMutex extends RefCounted:
+		var orig_mutex: RefCounted = null
 		func lock():
 			pass
 		func unlock():

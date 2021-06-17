@@ -1,5 +1,5 @@
 @tool
-extends Reference
+extends RefCounted
 
 const FORMAT_FLOAT32: int = 0
 const FORMAT_FLOAT16: int = 1

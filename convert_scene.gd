@@ -88,9 +88,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	var node_state: Object = scene_node_state_class.new(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
 
-	var ps: Reference = node_state.prefab_state
+	var ps: RefCounted = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
-		var parent: Reference = null # UnityTransform
+		var parent: RefCounted = null # UnityTransform
 		if asset.is_stripped:
 			pass # Ignore stripped components.
 		elif asset.is_non_stripped_prefab_reference:
@@ -216,7 +216,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	for asset in arr:
 		if asset.is_stripped:
 			push_error("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
-		var skel: Reference = null
+		var skel: RefCounted = null
 		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
 		if asset.transform != null:
 			skel = node_state.uniq_key_to_skelley.get(asset.transform.uniq_key, null)
@@ -262,7 +262,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		var pp_layer_bits: int = 0
 		for camera_obj in node_state.find_objects_of_type("Camera"):
 			#if not (camera.get_parent() is Viewport) and camera.visible:
-			var go: Reference = node_state.get_gameobject(camera_obj)
+			var go: RefCounted = node_state.get_gameobject(camera_obj)
 			if camera_obj.enabled and go.enabled:
 				# This is a main camera
 				var camera: Camera3D = node_state.get_godot_node(camera_obj)
@@ -278,7 +278,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				break
 		for mono in node_state.find_objects_of_type("MonoBehaviour"):
 			if str(mono.script[2]) == "8b9a305e18de0c04dbd257a21cd47087": # PostProcessingVolume
-				var go: Reference = node_state.get_gameobject(mono)
+				var go: RefCounted = node_state.get_gameobject(mono)
 				if not mono.enabled or not go.enabled:
 					continue
 				if ((1 << go.keys.get("m_Layer")) & pp_layer_bits) != 0:

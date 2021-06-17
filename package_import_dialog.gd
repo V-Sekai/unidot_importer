@@ -1,5 +1,5 @@
 @tool
-extends Reference
+extends RefCounted
 
 const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
@@ -7,6 +7,8 @@ const import_worker_class: GDScript = preload("./import_worker.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
+
+const DISABLE_TEXTURES = false
 
 const STATE_DIALOG_SHOWING = 0
 const STATE_PREPROCESSING = 1
@@ -102,7 +104,7 @@ func _selected_package(p_path: String) -> void:
 			ti = main_dialog_tree.create_item(tree_items[i - 1])
 			tree_items.push_back(ti)
 			ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-			if (path.to_lower().ends_with("png") or path.to_lower().ends_with("jpg")):
+			if DISABLE_TEXTURES and (path.to_lower().ends_with("png") or path.to_lower().ends_with("jpg")):
 				ti.set_checked(0, false)
 				ti.set_selectable(0, false)
 			else:
@@ -203,7 +205,7 @@ func on_import_fully_completed():
 			main_dialog.queue_free()
 			main_dialog = null
 
-func on_file_completed_godot_import(tw: Reference, loaded: bool):
+func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 	var ti: TreeItem = tw.extra
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
@@ -416,7 +418,7 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 			else:
 				ret += 1
 				_currently_preprocessing_assets += 1
-				var tw: Reference = self.import_worker.push_asset(asset, tmpdir, ti)
+				var tw: RefCounted = self.import_worker.push_asset(asset, tmpdir, ti)
 				# ti.set_cell_mode(0, TreeItem.CELL_MODE_ICON)
 				if ti.get_button_count(0) <= 0:
 					ti.add_button(0, spinner_icon, -1, true, "Loading...")

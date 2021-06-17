@@ -1,5 +1,5 @@
 @tool
-extends Reference
+extends RefCounted
 
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 
@@ -15,7 +15,7 @@ var skelley_parents: Dictionary = {}.duplicate()
 var uniq_key_to_skelley: Dictionary = {}.duplicate()
 
 # State shared across recursive instances of scene_node_state.
-class PrefabState extends Reference:
+class PrefabState extends RefCounted:
 	# Prefab_instance_id -> array[UnityTransform objects]
 	var child_transforms_by_stripped_id: Dictionary = {}.duplicate()
 	var transforms_by_parented_prefab: Dictionary = {}.duplicate()
@@ -36,7 +36,7 @@ class PrefabState extends Reference:
 var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
 
-func get_godot_node(uo: Reference) -> Node:
+func get_godot_node(uo: RefCounted) -> Node:
 	var np = meta.fileid_to_nodepath.get(uo.fileID, NodePath())
 	if np == NodePath():
 		np = meta.prefab_fileid_to_nodepath.get(uo.fileID, NodePath())
@@ -44,8 +44,8 @@ func get_godot_node(uo: Reference) -> Node:
 			return null
 	return owner.get_node(np)
 
-func get_object(fileid: int) -> Reference:
-	var parsed_asset: Reference = meta.parsed.assets.get(fileid)
+func get_object(fileid: int) -> RefCounted:
+	var parsed_asset: RefCounted = meta.parsed.assets.get(fileid)
 	if parsed_asset != null and not parsed_asset.is_stripped:
 		return parsed_asset
 	var utype = meta.fileid_to_utype.get(fileid, -1)
@@ -53,7 +53,7 @@ func get_object(fileid: int) -> Reference:
 		utype = meta.prefab_fileid_to_utype.get(fileid, -1)
 		if utype == -1:
 			return null # Not anywhere in the meta.
-	var ret: Reference = object_adapter_class.instantiate_unity_object_from_utype(meta, fileid, utype)
+	var ret: RefCounted = object_adapter_class.instantiate_unity_object_from_utype(meta, fileid, utype)
 	var np = meta.fileid_to_nodepath.get(fileid, NodePath())
 	if np == NodePath():
 		np = meta.prefab_fileid_to_nodepath.get(fileid, NodePath())
@@ -67,19 +67,19 @@ func get_object(fileid: int) -> Reference:
 		ret.keys = keys
 	return ret
 
-func get_gameobject(uo: Reference) -> Reference:
+func get_gameobject(uo: RefCounted) -> RefCounted:
 	var gofd: int = meta.get_gameobject_fileid(uo.fileID)
 	if gofd == 0:
 		return null
 	return get_object(gofd)
 
-func get_component(uo: Reference, type: String) -> Reference:
+func get_component(uo: RefCounted, type: String) -> RefCounted:
 	var compid: int = meta.get_component_fileid(uo.fileID, type)
 	if compid == 0:
 		return null
 	return get_object(compid)
 
-func get_components(uo: Reference, type: String="") -> Array:
+func get_components(uo: RefCounted, type: String="") -> Array:
 	var fileids: PackedInt64Array = meta.get_components_fileids(uo.fileID, type)
 	var ret: Array = [].duplicate()
 	for f in fileids:
@@ -93,7 +93,7 @@ func find_objects_of_type(type: String) -> Array:
 		ret.push_back(get_object(f))
 	return ret
 
-class Skelley extends Reference:
+class Skelley extends RefCounted:
 	var id: int = 0
 	var bones: Array = [].duplicate()
 	
@@ -108,10 +108,10 @@ class Skelley extends Reference:
 	var intermediates: Dictionary = {}.duplicate()
 	var bone0_parent_list: Array = [].duplicate()
 	var bone0_parents: Dictionary = {}.duplicate()
-	var found_prefab_instance: Reference = null # UnityPrefabInstance
+	var found_prefab_instance: RefCounted = null # UnityPrefabInstance
 
-	func initialize(bone0: Reference): # UnityTransform
-		var current_parent: Reference = bone0 # UnityTransform or UnityPrefabInstance
+	func initialize(bone0: RefCounted): # UnityTransform
+		var current_parent: RefCounted = bone0 # UnityTransform or UnityPrefabInstance
 		var tmp: Array = [].duplicate()
 		intermediates[current_parent.uniq_key] = current_parent
 		intermediate_bones.push_back(current_parent)
@@ -124,7 +124,7 @@ class Skelley extends Reference:
 			bone0_parent_list.push_back(tmp[-1 - i])
 		# print("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 
-	func add_bone(bone: Reference) -> Array: # UnityTransform
+	func add_bone(bone: RefCounted) -> Array: # UnityTransform
 		if bones_set.has(bone.uniq_key):
 			push_error("Already added bone " + str(bone.uniq_key))
 			return []
@@ -132,7 +132,7 @@ class Skelley extends Reference:
 		bones_set[bone.uniq_key] = true
 		# print("Adding a bone: " + str(bones))
 		var added_bones: Array = [].duplicate()
-		var current_parent: Reference = bone #### UnityTransform or UnityPrefabInstance
+		var current_parent: RefCounted = bone #### UnityTransform or UnityPrefabInstance
 		intermediates[current_parent.uniq_key] = current_parent
 		intermediate_bones.push_back(current_parent)
 		added_bones.push_back(current_parent)
@@ -179,26 +179,26 @@ class Skelley extends Reference:
 		return added_bones
 
 	# if null, this is not mixed with a prefab's nodes
-	var parent_prefab: Reference: # UnityPrefabInstance
+	var parent_prefab: RefCounted: # UnityPrefabInstance
 		get:
 			if bone0_parent_list.is_empty():
 				return null
-			var pref: Reference = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
+			var pref: RefCounted = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
 			if pref.type == "PrefabInstance":
 				return pref
 			return null
 
 	# if null, this is a root node.
-	var parent_transform: Reference: # UnityTransform
+	var parent_transform: RefCounted: # UnityTransform
 		get:
 			if bone0_parent_list.is_empty():
 				return null
-			var pref: Reference = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
+			var pref: RefCounted = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
 			if pref.type == "Transform":
 				return pref
 			return null
 
-	func add_nodes_recursively(skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary, bone_transform: Reference):
+	func add_nodes_recursively(skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary, bone_transform: RefCounted):
 		if bone_transform.is_stripped:
 			#printerr("Not able to add skeleton nodes from a stripped transform!")
 			for child in child_transforms_by_stripped_id.get(bone_transform.fileID, []):
@@ -214,7 +214,7 @@ class Skelley extends Reference:
 			return
 		for child_ref in bone_transform.children_refs:
 			# print("Try child " + str(child_ref))
-			var child: Reference = bone_transform.meta.lookup(child_ref) # UnityTransform
+			var child: RefCounted = bone_transform.meta.lookup(child_ref) # UnityTransform
 			# not skel_parents.has(child.uniq_key):
 			if not intermediates.has(child.uniq_key):
 				print("Adding child bone " + str(child) + " into intermediates during recursive search from " + str(bone_transform))
@@ -227,7 +227,7 @@ class Skelley extends Reference:
 					add_nodes_recursively(skel_parents, child_transforms_by_stripped_id, child)
 
 	func construct_final_bone_list(skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary):
-		var par_transform: Reference = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
+		var par_transform: RefCounted = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
 		if par_transform == null:
 			printerr("Final bone list transform is null!")
 			return
@@ -308,7 +308,7 @@ func _init(database: Resource, meta: Resource, root_node: Node3D):
 	init_node_state(database, meta, root_node)
 
 
-func duplicate() -> Reference:
+func duplicate() -> RefCounted:
 	var state = get_script().new(database, meta, owner)
 	state.env = env
 	state.body = body
@@ -317,7 +317,7 @@ func duplicate() -> Reference:
 	state.prefab_state = prefab_state
 	return state
 
-func add_child(child: Node, new_parent: Node3D, unityobj: Reference):
+func add_child(child: Node, new_parent: Node3D, unityobj: RefCounted):
 	# meta. # FIXME???
 	if owner != null:
 		if (new_parent == null):
@@ -340,7 +340,7 @@ func add_fileID_to_skeleton_bone(bone_name: String, fileID: int):
 func remove_fileID_to_skeleton_bone(fileID: int):
 	meta.fileid_to_skeleton_bone[fileID] = ""
 
-func add_fileID(child: Node, unityobj: Reference):
+func add_fileID(child: Node, unityobj: RefCounted):
 	if owner != null:
 		print("Add fileID " + str(unityobj.fileID) + " type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
 		meta.fileid_to_nodepath[unityobj.fileID] = owner.get_path_to(child)
@@ -348,29 +348,29 @@ func add_fileID(child: Node, unityobj: Reference):
 	#else:
 	#	meta.fileid_to_nodepath[fileID] = root_nodepath
 
-func init_node_state(database: Resource, meta: Resource, root_node: Node3D) -> Reference:
+func init_node_state(database: Resource, meta: Resource, root_node: Node3D) -> RefCounted:
 	self.database = database
 	self.meta = meta
 	self.owner = root_node
 	self.prefab_state = PrefabState.new()
 	return self
 
-func state_with_body(new_body: CollisionObject3D) -> Reference:
+func state_with_body(new_body: CollisionObject3D) -> RefCounted:
 	var state = duplicate()
 	state.body = new_body
 	return state
 
-func state_with_meta(new_meta: Resource) -> Reference:
+func state_with_meta(new_meta: Resource) -> RefCounted:
 	var state = duplicate()
 	state.meta = new_meta
 	return state
 
-func state_with_owner(new_owner: Node3D) -> Reference:
+func state_with_owner(new_owner: Node3D) -> RefCounted:
 	var state = duplicate()
 	state.owner = new_owner
 	return state
 
-#func state_with_nodepath(additional_nodepath) -> Reference:
+#func state_with_nodepath(additional_nodepath) -> RefCounted:
 #	var state = duplicate()
 #	state.root_nodepath = NodePath(str(root_nodepath) + str(asdditional_nodepath) + "/")
 #	return state
@@ -398,7 +398,7 @@ func initialize_skelleys(assets: Array) -> Array:
 				# Also common for meshes which have blend shapes but no skeleton.
 				# Skinned mesh renderers without bones act as normal meshes.
 				continue
-			var bone0_obj: Reference = asset.meta.lookup(bones[0]) # UnityTransform
+			var bone0_obj: RefCounted = asset.meta.lookup(bones[0]) # UnityTransform
 			# TODO: what about meshes with bones but without skin? Can this even happen?
 			var this_id: int = num_skels
 			var this_skelley: Skelley = null
@@ -413,7 +413,7 @@ func initialize_skelleys(assets: Array) -> Array:
 				num_skels += 1
 
 			for bone in bones:
-				var bone_obj: Reference = asset.meta.lookup(bone) # UnityTransform
+				var bone_obj: RefCounted = asset.meta.lookup(bone) # UnityTransform
 				var added_bones = this_skelley.add_bone(bone_obj)
 				# print("Told skelley " + str(this_id) + " to add bone " + bone_obj.uniq_key + ": " + str(added_bones))
 				for added_bone in added_bones:
@@ -441,7 +441,7 @@ func initialize_skelleys(assets: Array) -> Array:
 	# If skelley_parents contains your node, add Skelley.skeleton as a child to it for each item in the list.
 	for skel_id in skelleys:
 		var skelley: Skelley = skelleys[skel_id]
-		var par_transform: Reference = skelley.parent_transform # UnityTransform or UnityPrefabInstance
+		var par_transform: RefCounted = skelley.parent_transform # UnityTransform or UnityPrefabInstance
 		var i = 0
 		for bone in skelley.bones:
 			i = i + 1

@@ -23,14 +23,14 @@ class ExtractedTarFile:
 
 const tarfile: GDScript = preload("./tarfile.gd")
 
-class UnityPackageAsset extends Reference:
-	var asset_tar_header: Reference
-	var metadata_tar_header: Reference
+class UnityPackageAsset extends RefCounted:
+	var asset_tar_header: RefCounted
+	var metadata_tar_header: RefCounted
 	var pathname: String
 	var icon: Texture
 	var guid: String
 	var parsed_meta: Resource # Type: asset_database.gd:AssetMeta / Assigned by unity_asset_adapter.preprocess_asset()
-	var parsed_asset: Reference
+	var parsed_asset: RefCounted
 	var parsed_resource: Resource # For specific assets which do work in the thread.
 
 

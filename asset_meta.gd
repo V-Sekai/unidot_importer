@@ -5,10 +5,10 @@ const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const bin_parser_class: GDScript = preload("./deresuteme/decode.gd")
 
-class DatabaseHolder extends Reference:
+class DatabaseHolder extends RefCounted:
 	var database: Resource = null
 
-var object_adapter: Reference = object_adapter_class.new()
+var object_adapter: RefCounted = object_adapter_class.new()
 var database_holder
 @export var path: String = ""
 @export var guid: String = ""
@@ -45,14 +45,14 @@ var fileid_to_component_fileids: Dictionary = {} # int -> int
 @export var dependency_guids: Dictionary = {}
 @export var prefab_dependency_guids: Dictionary = {}
 
-class ParsedAsset extends Reference:
+class ParsedAsset extends RefCounted:
 	var local_id_alias: Dictionary = {} # type*100000 + file_index*2 -> real fileId
 	var assets: Dictionary = {} # int fileID -> unity_object_adapter.UnityObject
 
 var parsed: ParsedAsset = null
 
-class TopsortTmp extends Reference:
-	var database: Reference = null
+class TopsortTmp extends RefCounted:
+	var database: RefCounted = null
 	var visited: Dictionary = {}.duplicate()
 	var output: Array = [].duplicate()
 
@@ -182,14 +182,14 @@ func initialize(database: Resource):
 		self.importer = object_adapter.instantiate_unity_object(self, 0, 0, self.importer_type)
 	self.importer.keys = importer_keys
 
-static func lookup_meta_by_guid_noinit(database: Resource, target_guid: String) -> Reference: # returns asset_meta type
+static func lookup_meta_by_guid_noinit(database: Resource, target_guid: String) -> RefCounted: # returns asset_meta type
 	var found_path: String = database.guid_to_path.get(target_guid, "")
 	var found_meta: Resource = null
 	if found_path != "":
 		found_meta = database.path_to_meta.get(found_path, null)
 	return found_meta
 
-func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta type
+func lookup_meta_by_guid(target_guid: String) -> RefCounted: # returns asset_meta type
 	var found_meta: Resource = lookup_meta_by_guid_noinit(get_database(), target_guid)
 	if found_meta == null:
 		return null
@@ -197,7 +197,7 @@ func lookup_meta_by_guid(target_guid: String) -> Reference: # returns asset_meta
 		found_meta.initialize(self.get_database())
 	return found_meta
 
-func lookup_meta(unityref: Array) -> Reference: # returns asset_meta type
+func lookup_meta(unityref: Array) -> RefCounted: # returns asset_meta type
 	if unityref.is_empty() or len(unityref) != 4:
 		push_error("UnityRef in wrong format: " + str(unityref))
 		return null
@@ -221,7 +221,7 @@ func lookup(unityref: Array) -> Resource:
 	if found_meta.parsed == null:
 		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
 		return null
-	var ret: Reference = found_meta.parsed.assets.get(local_id)
+	var ret: RefCounted = found_meta.parsed.assets.get(local_id)
 	if ret == null:
 		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")")
 		return null

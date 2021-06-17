@@ -1,4 +1,4 @@
-extends Reference
+extends RefCounted
 
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 

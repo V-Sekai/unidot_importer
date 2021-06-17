@@ -5,7 +5,7 @@ var tarfile = preload("./tarfile.gd")
 
 const package_import_dialog_class: GDScript = preload("./package_import_dialog.gd")
 
-var package_import_dialog: Reference = null
+var package_import_dialog: RefCounted = null
 
 func recursive_print(node:Node, indent:String=""):
 	var fnstr = "" if str(node.filename) == "" else (" (" + str(node.filename) + ")")

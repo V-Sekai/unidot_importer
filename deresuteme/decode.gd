@@ -1,4 +1,4 @@
-extends Reference
+extends RefCounted
 # -!- coding: utf-8 -!-
 #
 # Copyright 2016 Hector Martin <marcan@marcan.st>
@@ -148,7 +148,7 @@ class Stream extends StreamPeerBuffer:
 		return self.d.subarray(initial_pos, self.get_size() - 1).get_string_from_ascii()
 
 
-class Def extends Reference:
+class Def extends RefCounted:
 	var children: Array = [].duplicate()
 	var name: String = ""
 	var full_name: String = ""
@@ -156,7 +156,7 @@ class Def extends Reference:
 	var size: int = 0
 	var flags: int = 0
 	var array: bool = false
-	var parent: Reference = null
+	var parent: RefCounted = null
 	func _init(name: String, type_name: String, size: int, flags: int, array: bool):
 		self.children = [].duplicate()
 		self.name = name
@@ -166,9 +166,9 @@ class Def extends Reference:
 		self.flags = flags
 		self.array = array
 
-	func set_parent(new_par: Reference):
+	func set_parent(new_par: RefCounted):
 		parent = new_par
-		var par: Reference = new_par
+		var par: RefCounted = new_par
 		while par != null:
 			self.full_name = str(par.name) + "." + self.full_name
 			par = par.parent
@@ -250,7 +250,7 @@ class Def extends Reference:
 					return Quaternion(v.get("x"), v.get("y"), v.get("z"), v.get("w"))
 				"Matrix3x4f":
 					# print("reading matrix @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
-					return Transform(
+					return Transform3D(
 						Vector3(v.get("e00"),v.get("e10"),v.get("e20")),
 						Vector3(v.get("e01"),v.get("e11"),v.get("e21")),
 						Vector3(v.get("e02"),v.get("e12"),v.get("e22")),
@@ -333,9 +333,9 @@ var referenced_guids: Array = [].duplicate()
 var referenced_reftypes: Array = [].duplicate()
 var objs: Array = [].duplicate()
 
-var meta: Reference = null
+var meta: RefCounted = null
 
-func _init(meta: Reference, file_contents: PackedByteArray):
+func _init(meta: RefCounted, file_contents: PackedByteArray):
 	self.meta = meta
 	self.s = Stream.new(file_contents)
 	#t = self.s.read_str() # UnityRaw? or no?
@@ -487,7 +487,7 @@ func decode_data(obj_headers: Array) -> Array:
 		var is_stripped: bool = type_name == "EditorExtension"
 		if is_stripped:
 			type_name = object_adapter.to_classname(class_id)
-		var obj: Reference = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
+		var obj: RefCounted = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
 		obj.is_stripped = is_stripped
 		obj.keys = read_variant
 		if read_variant.has("m_SourcePrefab"):

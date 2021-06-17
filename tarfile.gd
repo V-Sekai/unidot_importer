@@ -1,4 +1,4 @@
-extends Reference
+extends RefCounted
 
 const BLOCKSIZE: int = 512
 
@@ -73,7 +73,7 @@ func init_with_buffer(new_buffer: PackedByteArray):
 	buffer = new_buffer
 	return self
 
-class TarHeader extends Reference:
+class TarHeader extends RefCounted:
 	var size: int = 0
 	var filename: String = ""
 	var buffer: PackedByteArray = PackedByteArray()

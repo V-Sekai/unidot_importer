@@ -131,8 +131,10 @@ class ImageHandler extends AssetHandler:
 		var importer = pkgasset.parsed_meta.importer
 		var cfile = ConfigFile.new()
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			push_error("Failed to load .import config file for " + pkgasset.pathname)
-			return
+			print("Failed to load .import config file for " + pkgasset.pathname)
+			cfile.set_value("remap", "importer", "texture")
+			cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
+			cfile.set_value("remap", "type", "StreamTexture2D")
 		var chosen_platform = {}
 		for platform in importer.keys.get("platformSettings", []):
 			if platform.get("buildTarget", "") == "DefaultTexturePlatform":
@@ -149,7 +151,7 @@ class ImageHandler extends AssetHandler:
 		cfile.set_value("params", "compress/mode", 2 * use_tc)
 		cfile.set_value("params", "compress/lossy_quality", tc_level / 100.0)
 		cfile.set_value("params", "compress/normal_map", importer.keys.get("bumpmap", {}).get("convertToNormalMap", 0))
-		cfile.set_value("params", "detect_3d/compress_to", 1 * use_tc)
+		cfile.set_value("params", "detect_3d/compress_to", 0)
 		cfile.set_value("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
 		cfile.set_value("params", "process/size_limit", max_texture_size)
 		cfile.set_value("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
@@ -201,7 +203,7 @@ class YamlHandler extends AssetHandler:
 		if pkgasset.parsed_asset == null:
 			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return
-		var main_asset: Reference = null
+		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
 		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
@@ -214,7 +216,7 @@ class YamlHandler extends AssetHandler:
 			rpa.guid = pkgasset.guid
 			rpa.meta = pkgasset.parsed_meta.duplicate()
 			for key in pkgasset.parsed_asset.assets:
-				var parsed_obj: Reference = pkgasset.parsed_asset.assets[key]
+				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
 			var new_pathname: String = pkgasset.pathname + ".tres"
@@ -259,8 +261,11 @@ class BaseModelHandler extends AssetHandler:
 
 	func write_godot_stub(pkgasset: Object) -> bool:
 		var dres = Directory.new()
-		dres.open("res://")
 		var fres = File.new()
+		dres.open("res://")
+		# Note: even after one import has successfully completed, materials and texture files may have moved since the last import.
+		# Godot's EditorFileSystem does not expose a reimport() function, so overwriting with a stub file doubles as a hacky workaround.
+		#if not dres.file_exists(pkgasset.pathname):
 		fres.open("res://" + pkgasset.pathname, File.WRITE)
 		print("Writing stub model to " + pkgasset.pathname)
 		fres.store_buffer(stub_file)
@@ -314,6 +319,7 @@ class BaseModelHandler extends AssetHandler:
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
+		cfile.set_value("params", "meshes/create_shadow_meshes", false) # Until visual artifacts with shadow meshes get fixed
 		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO

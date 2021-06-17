@@ -1,5 +1,5 @@
 @tool
-extends Reference
+extends RefCounted
 
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
 
@@ -76,16 +76,16 @@ func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) 
 
 # Unity types follow:
 ### ================ BASE OBJECT TYPE ================
-class UnityObject extends Reference:
+class UnityObject extends RefCounted:
 	var meta: Resource = null # AssetMeta instance
 	var keys: Dictionary = {}
 	var fileID: int = 0 # Not set in .meta files
 	var type: String = ""
 	var utype: int = 0 # Not set in .meta files
 	var _cache_uniq_key: String = ""
-	var adapter: Reference = null # Reference to containing scope.
+	var adapter: RefCounted = null # RefCounted to containing scope.
 
-	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
 	const BAS_FLIP_X: Basis = Basis.FLIP_X # Basis(-1,0,0,1,0,0,1,0,0)
 
 	# Some components or game objects within a prefab are "stripped" dummy objects.
@@ -139,7 +139,7 @@ class UnityObject extends Reference:
 		return null
 
 	# Belongs in UnityComponent, but we haven't implemented all types yet.
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
 		assign_object_meta(new_node)
@@ -172,7 +172,7 @@ class UnityObject extends Reference:
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props: Dictionary = self.convert_properties(skel, uprops)
-		var matn: Transform = skel.get_bone_rest(skel.find_bone(bone_name))
+		var matn: Transform3D = skel.get_bone_rest(skel.find_bone(bone_name))
 		var quat: Quaternion = matn.basis.get_rotation_quaternion()
 		var scale: Vector3 = matn.basis.get_scale()
 		var position: Vector3 = matn.origin
@@ -198,7 +198,7 @@ class UnityObject extends Reference:
 		#quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
 		#position = Vector3(-1, 1, 1) * position
 
-		matn = Transform(Basis(quat).scaled(scale), position)
+		matn = Transform3D(Basis(quat).scaled(scale), position)
 
 		props[bone_name] = matn
 		return props
@@ -215,7 +215,7 @@ class UnityObject extends Reference:
 		print(str(node.name) + ": " + str(props))
 		# var has_transform_track: bool = false
 		# var transform_position: Vector3 = Vector3()
-		# var transform_rotation: Quat = Quat()
+		# var transform_rotation: Quaternion = Quaternion()
 		# var transform_position: Vector3 = Vector3()
 		if (props.has("_quaternion")):
 			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
@@ -257,7 +257,7 @@ class UnityObject extends Reference:
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
 				node.set(propname, props.get(propname))
 
-	func apply_mesh_renderer_props(meta: Reference, node: MeshInstance3D, props: Dictionary):
+	func apply_mesh_renderer_props(meta: RefCounted, node: MeshInstance3D, props: Dictionary):
 		const material_prefix: String = ":UNIDOT_PROXY:"
 		print("Apply mesh renderer props: " + str(props) + " / " + str(node.mesh))
 		var truncated_mat_prefix: String = meta.get_database().truncated_material_reference.resource_name
@@ -410,7 +410,7 @@ class UnityObject extends Reference:
 ### ================ ASSET TYPES ================
 # FIXME: All of these are native Godot types. I'm not sure if these types are needed or warranted.
 class UnityMesh extends UnityObject:
-	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
 	
 	func get_primitive_format(submesh: Dictionary) -> int:
 		match submesh.get("topology", 0):
@@ -433,8 +433,8 @@ class UnityMesh extends UnityObject:
 			return {}
 		return {-meta.main_object_id: ".mesh.skin.tres"}
 
-	func dict_to_matrix(b: Dictionary) -> Transform:
-		return FLIP_X.affine_inverse() * Transform(
+	func dict_to_matrix(b: Dictionary) -> Transform3D:
+		return FLIP_X.affine_inverse() * Transform3D(
 			Vector3(b.get("e00"), b.get("e10"), b.get("e20")),
 			Vector3(b.get("e01"), b.get("e11"), b.get("e21")),
 			Vector3(b.get("e02"), b.get("e12"), b.get("e22")),
@@ -450,8 +450,8 @@ class UnityMesh extends UnityObject:
 		return sk
 
 	func create_godot_resource() -> ArrayMesh:
-		var vertex_buf: Reference = get_vertex_data()
-		var index_buf: Reference = get_index_data()
+		var vertex_buf: RefCounted = get_vertex_data()
+		var index_buf: RefCounted = get_index_data()
 		var vertex_layout: Dictionary = vertex_layout_info
 		var channel_info_array: Array = vertex_layout.get("m_Channels", [])
 		# https://docs.unity3d.com/2019.4/Documentation/ScriptReference/Rendering.VertexAttribute.html
@@ -625,10 +625,10 @@ class UnityMesh extends UnityObject:
 	func get_godot_extension() -> String:
 		return ".mesh.res"
 
-	func get_vertex_data() -> Reference:
+	func get_vertex_data() -> RefCounted:
 		return aligned_byte_buffer.new(keys.get("m_VertexData", {}).get("_typelessdata", ""))
 
-	func get_index_data() -> Reference:
+	func get_index_data() -> RefCounted:
 		return aligned_byte_buffer.new(keys.get("m_IndexBuffer", ""))
 
 class UnityMaterial extends UnityObject:
@@ -807,7 +807,7 @@ class UnityCustomRenderTexture extends UnityRenderTexture:
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
 
-	func recurse_to_child_transform(state: Reference, child_transform: UnityObject, new_parent: Node3D):
+	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D):
 		if child_transform.type == "PrefabInstance":
 			# PrefabInstance child of stripped Transform part of another PrefabInstance
 			var prefab_instance: UnityPrefabInstance = child_transform
@@ -824,7 +824,7 @@ class UnityGameObject extends UnityObject:
 			var child_game_object: UnityGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
 				push_error("child gameObject is a prefab reference! " + child_game_object.uniq_key)
-			var new_skelley: Reference = state.uniq_key_to_skelley.get(child_transform.uniq_key, null) # Skelley
+			var new_skelley: RefCounted = state.uniq_key_to_skelley.get(child_transform.uniq_key, null) # Skelley
 			if new_skelley == null and new_parent == null:
 				push_error("We did not create a node for this child, but it is not a skeleton bone! " + uniq_key + " child " + child_transform.uniq_key + " gameObject " + child_game_object.uniq_key + " name " + child_game_object.name)
 			elif new_skelley != null:
@@ -833,7 +833,7 @@ class UnityGameObject extends UnityObject:
 			else:
 				child_game_object.create_godot_node(state, new_parent)
 
-	func create_skeleton_bone(xstate: Reference, skelley: Reference): # SceneNodeState, Skelley
+	func create_skeleton_bone(xstate: RefCounted, skelley: RefCounted): # SceneNodeState, Skelley
 		var state: Object = xstate
 		var godot_skeleton: Skeleton3D = skelley.godot_skeleton
 		# Instead of a transform, this sets the skeleton transform position maybe?, etc. etc. etc.
@@ -882,7 +882,7 @@ class UnityGameObject extends UnityObject:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
 			recurse_to_child_transform(state, child_transform, ret)
 
-	func create_godot_node(xstate: Reference, new_parent: Node3D) -> Node3D:
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		var state: Object = xstate
 		var ret: Node3D = null
 		var components: Array = self.components
@@ -970,7 +970,7 @@ class UnityGameObject extends UnityObject:
 			return component
 		return null
 
-	func GetComponent(typ: String) -> Reference:
+	func GetComponent(typ: String) -> RefCounted:
 		for component_ref in components:
 			var component = meta.lookup(component_ref.get("component"))
 			if component.type == typ:
@@ -1039,15 +1039,15 @@ class UnityPrefabInstance extends UnityGameObject:
 	# Then, repeat one more time and makwe sure no overlap
 	# all transforms are marked as parented to the prefab.
 
-	func set_editable_children(state: Reference, instanced_scene: Node) -> Node:
+	func set_editable_children(state: RefCounted, instanced_scene: Node) -> Node:
 		state.owner.set_editable_instance(instanced_scene, true)
 		return instanced_scene
 
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
-	func create_godot_node(xstate: Reference, new_parent: Node3D) -> Node3D:
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
-		var state: Reference = xstate # scene_node_state
-		var ps: Reference = state.prefab_state # scene_node_state.PrefabState
+		var state: RefCounted = xstate # scene_node_state
+		var ps: RefCounted = state.prefab_state # scene_node_state.PrefabState
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
 		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
 			push_error("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
@@ -1427,7 +1427,7 @@ class UnityPrefabLegacyUnused extends UnityPrefabInstance:
 ### ================ COMPONENT TYPES ================
 class UnityComponent extends UnityObject:
 
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
 		state.add_child(new_node, new_parent, self)
@@ -1468,10 +1468,10 @@ class UnityBehaviour extends UnityComponent:
 class UnityTransform extends UnityComponent:
 
 	var skeleton_bone_index: int = -1
-	const FLIP_X: Transform = Transform.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
-	const BAS_FLIP_X: Basis = Basis.FLIP_X # Transform(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
+	const BAS_FLIP_X: Basis = Basis.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
 
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node3D:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node3D:
 		return null
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
@@ -1545,7 +1545,7 @@ class UnityRectTransform extends UnityTransform:
 	pass
 
 class UnityCollider extends UnityBehaviour:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
 		print("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
 		if state.body == null:
@@ -1556,7 +1556,7 @@ class UnityCollider extends UnityBehaviour:
 		state.add_child(new_node, state.body, self)
 		var path_to_body = new_parent.get_path_to(state.body)
 		var cur_node: Node3D = new_parent
-		var xform = Transform()
+		var xform = Transform3D()
 		for i in range(path_to_body.get_name_count()):
 			if path_to_body.get_name(i) == ".":
 				continue
@@ -1576,9 +1576,9 @@ class UnityCollider extends UnityBehaviour:
 		#	xform = cur_node.transform * xform
 		#	cur_node = cur_node.get_parent()
 		#if cur_node == null:
-		#	xform = Transform(self.basis, self.center)
+		#	xform = Transform3D(self.basis, self.center)
 		new_node.shape = self.shape
-		if not xform.is_equal_approx(Transform()):
+		if not xform.is_equal_approx(Transform3D()):
 			var xform_storage: Node3D = Node3D.new()
 			xform_storage.name = "__xform_storage"
 			new_node.add_child(xform_storage)
@@ -1599,13 +1599,13 @@ class UnityCollider extends UnityBehaviour:
 		if typeof(center_prop) == TYPE_VECTOR3:
 			center = Vector3(-1.0, 1.0, 1.0) * center_prop
 			if complex_xform != null:
-				outdict["transform"] = complex_xform.transform * Transform(basis, center)
+				outdict["transform"] = complex_xform.transform * Transform3D(basis, center)
 			else:
 				outdict["position"] = center
 		if uprops.has("m_Direction"):
 			basis = get_basis_from_direction(uprops.get("m_Direction"))
 			if complex_xform != null:
-				outdict["transform"] = complex_xform.transform * Transform(basis, center)
+				outdict["transform"] = complex_xform.transform * Transform3D(basis, center)
 			else:
 				outdict["rotation_degrees"] = basis.get_euler() * 180 / PI
 		return outdict
@@ -1701,7 +1701,7 @@ class UnityMeshCollider extends UnityCollider:
 				if mesh_ref[1] == 0:
 					if is_stripped or gameObject.is_stripped:
 						push_error("Oh no i am stripped MC")
-					var mf: Reference = gameObject.get_meshFilter()
+					var mf: RefCounted = gameObject.get_meshFilter()
 					if mf != null:
 						new_mesh = meta.get_godot_resource(mf.mesh)
 				else:
@@ -1719,17 +1719,17 @@ class UnityMeshCollider extends UnityCollider:
 		if ret[1] == 0:
 			if is_stripped or gameObject.is_stripped:
 				push_error("Oh no i am stripped MCgm")
-			var mf: Reference = gameObject.get_meshFilter()
+			var mf: RefCounted = gameObject.get_meshFilter()
 			if mf != null:
 				return mf.mesh
 		return ret
 
 class UnityRigidbody extends UnityComponent:
 
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
-	func create_physics_body(state: Reference, new_parent: Node3D, name: String) -> Node:
+	func create_physics_body(state: RefCounted, new_parent: Node3D, name: String) -> Node:
 		var new_node: Node3D;
 		if keys.get("m_IsKinematic") != 0:
 			var kinematic: CharacterBody3D = CharacterBody3D.new()
@@ -1748,7 +1748,7 @@ class UnityRigidbody extends UnityComponent:
 		var outdict = self.convert_properties_component(node, uprops)
 		return outdict
 
-	func create_physical_bone(state: Reference, godot_skeleton: Skeleton3D, name: String):
+	func create_physical_bone(state: RefCounted, godot_skeleton: Skeleton3D, name: String):
 		var new_node: PhysicalBone3D = PhysicalBone3D.new()
 		new_node.bone_name = name
 		new_node.name = name
@@ -1758,7 +1758,7 @@ class UnityRigidbody extends UnityComponent:
 
 
 class UnityMeshFilter extends UnityComponent:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
@@ -1777,10 +1777,10 @@ class UnityRenderer extends UnityBehaviour:
 	pass
 
 class UnityMeshRenderer extends UnityRenderer:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return create_godot_node_orig(state, new_parent, type)
 
-	func create_godot_node_orig(state: Reference, new_parent: Node3D, component_name: String) -> Node:
+	func create_godot_node_orig(state: RefCounted, new_parent: Node3D, component_name: String) -> Node:
 		var new_node: MeshInstance3D = MeshInstance3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, self)
@@ -1790,7 +1790,7 @@ class UnityMeshRenderer extends UnityRenderer:
 
 		if is_stripped or gameObject.is_stripped:
 			push_error("Oh no i am stripped MRcgno")
-		var mf: Reference = gameObject.get_meshFilter()
+		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			state.add_fileID(new_node, mf)
 		var idx: int = 0
@@ -1827,14 +1827,14 @@ class UnityMeshRenderer extends UnityRenderer:
 	func get_mesh() -> Array: # UnityRef
 		if is_stripped or gameObject.is_stripped:
 			push_error("Oh no i am stripped MR")
-		var mf: Reference = gameObject.get_meshFilter()
+		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			return mf.get_filter_mesh()
 		return [null,0,"",null]
 
 class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		if len(bones) == 0:
 			var cloth: UnityCloth = gameObject.GetComponent("Cloth")
 			if cloth != null:
@@ -1843,7 +1843,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		else:
 			return null
 
-	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
+	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
 		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self, self.mesh, null, [])
 		var idx: int = 0
 		for m in keys.get("m_Materials", []):
@@ -1851,17 +1851,17 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			idx += 1
 		return new_node
 
-	func create_skinned_mesh(state: Reference) -> Node:
+	func create_skinned_mesh(state: RefCounted) -> Node:
 		var bones: Array = self.bones
 		if len(self.bones) == 0:
 			return null
-		var first_bone_obj: Reference = meta.lookup(bones[0])
+		var first_bone_obj: RefCounted = meta.lookup(bones[0])
 		#if first_bone_obj.is_stripped:
 		#	push_error("Cannot create skinned mesh on stripped skeleton!")
 		#	return null
 		var first_bone_key: String = first_bone_obj.uniq_key
 		print("SkinnedMeshRenderer: Looking up " + first_bone_key + " for " + str(self.gameObject))
-		var skelley: Reference = state.uniq_key_to_skelley.get(first_bone_key, null) # Skelley
+		var skelley: RefCounted = state.uniq_key_to_skelley.get(first_bone_key, null) # Skelley
 		if skelley == null:
 			push_error("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key)
 			return null
@@ -1929,17 +1929,17 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		return keys.get("m_Mesh", [null,0,"",null])
 
 class UnityCloth extends UnityBehaviour:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
-	func get_bone_transform(skel: Skeleton3D, bone_idx: int) -> Transform:
-		var transform: Transform = Transform.IDENTITY
+	func get_bone_transform(skel: Skeleton3D, bone_idx: int) -> Transform3D:
+		var transform: Transform3D = Transform3D.IDENTITY
 		while bone_idx != -1:
 			transform = skel.get_bone_rest(bone_idx) * transform
 			bone_idx = skel.get_bone_parent(bone_idx)
 		return transform
 
-	func get_or_upgrade_bone_attachment(skel: Skeleton3D, state: Reference, bone_transform: UnityTransform) -> BoneAttachment3D:
+	func get_or_upgrade_bone_attachment(skel: Skeleton3D, state: RefCounted, bone_transform: UnityTransform) -> BoneAttachment3D:
 		var fileID: int = bone_transform.fileID
 		var target_nodepath: NodePath = meta.fileid_to_nodepath.get(fileID,
 				meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
@@ -1956,7 +1956,7 @@ class UnityCloth extends UnityBehaviour:
 		else:
 			return ret
 
-	func create_cloth_godot_node(state: Reference, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
+	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
 		var new_node: SoftBody3D = SoftBody3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, smr)
@@ -2084,7 +2084,7 @@ class UnityCloth extends UnityBehaviour:
 
 class UnityLight extends UnityBehaviour:
 
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var light: Light3D
 		# TODO: Change Light to use set()
 		var unityLightType = lightType
@@ -2123,7 +2123,7 @@ class UnityLight extends UnityBehaviour:
 			push_error("Color Temperature not implemented.")
 		light.name = type
 		state.add_child(light, new_parent, self)
-		light.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))
+		light.transform = Transform3D(Basis(Vector3(0.0, PI, 0.0)))
 		light.light_color = color
 		light.set_param(Light3D.PARAM_ENERGY, intensity)
 		light.set_param(Light3D.PARAM_INDIRECT_ENERGY, bounceIntensity)
@@ -2189,7 +2189,7 @@ class UnityLight extends UnityBehaviour:
 		return outdict
 
 class UnityAudioSource extends UnityBehaviour:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var audio: Node = null
 		var panlevel_curve: Dictionary = keys.get("panLevelCustomCurve", {})
 		var curves: Array = panlevel_curve.get("m_Curve", [])
@@ -2251,7 +2251,7 @@ class UnityAudioSource extends UnityBehaviour:
 		return outdict
 
 class UnityCamera extends UnityBehaviour:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var par: Node = new_parent
 		var texref: Array = keys.get("m_TargetTexture", [null, 0, null, null])
 		if texref[1] != 0:
@@ -2284,7 +2284,7 @@ class UnityCamera extends UnityBehaviour:
 			cenv.background_energy = eng
 		assign_object_meta(cam)
 		state.add_child(cam, par, self)
-		cam.transform = Transform(Basis(Vector3(0.0, PI, 0.0)))
+		cam.transform = Transform3D(Basis(Vector3(0.0, PI, 0.0)))
 		return cam
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
@@ -2306,7 +2306,7 @@ class UnityCamera extends UnityBehaviour:
 		return outdict
 
 class UnityLightProbeGroup extends UnityComponent:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		for pos in keys.get("m_SourcePositions", []):
 			var probe: LightmapProbe = LightmapProbe.new()
 			new_parent.add_child(probe)
@@ -2315,7 +2315,7 @@ class UnityLightProbeGroup extends UnityComponent:
 		return null
 
 class UnityReflectionProbe extends UnityBehaviour:
-	func create_godot_node(state: Reference, new_parent: Node3D) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var probe: ReflectionProbe = ReflectionProbe.new()
 		assign_object_meta(probe)
 		state.add_child(probe, new_parent, self)
@@ -2563,7 +2563,7 @@ class UnityDefaultImporter extends UnityAssetImporter:
 				return 102900000 # DefaultAsset
 
 class DiscardUnityComponent extends UnityComponent:
-	func create_godot_node(state: Reference, new_parent: Node) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node) -> Node:
 		return null
 
 var _type_dictionary: Dictionary = {

@@ -118,12 +118,12 @@ class ParseState:
 			result += count_meshes(child)
 		return result
 
-	func fold_transforms_into_mesh(node: Node3D, p_transform: Transform = Transform.IDENTITY) -> Node3D:
-		var transform: Transform = p_transform * node.transform
+	func fold_transforms_into_mesh(node: Node3D, p_transform: Transform3D = Transform3D.IDENTITY) -> Node3D:
+		var transform: Transform3D = p_transform * node.transform
 		if node is VisualInstance3D:
 			node.transform = transform
 			return node
-		node.transform = Transform.IDENTITY
+		node.transform = Transform3D.IDENTITY
 		var result: Node3D = null
 		for child in node.get_children():
 			if child is Node3D:
@@ -138,12 +138,12 @@ class ParseState:
 			if child_node.get_child_count() == 1 and child_node.get_child(0) is Node3D:
 				var grandchild_node: Node3D = child_node.get_child(0)
 				grandchild_node.transform = node.transform * child_node.transform * grandchild_node.transform
-				node.transform = Transform.IDENTITY
-				child_node.transform = Transform.IDENTITY
+				node.transform = Transform3D.IDENTITY
+				child_node.transform = Transform3D.IDENTITY
 				return grandchild_node
 			else:
 				child_node.transform = node.transform * child_node.transform
-				node.transform = Transform.IDENTITY
+				node.transform = Transform3D.IDENTITY
 				return child_node
 		return null
 
@@ -156,8 +156,8 @@ class ParseState:
 					node.position *= scale_correction_factor
 				if node is Skeleton3D:
 					for i in range(node.get_bone_count()):
-						var rest: Transform = node.get_bone_rest(i)
-						node.set_bone_rest(i, Transform(rest.basis, scale_correction_factor * rest.origin))
+						var rest: Transform3D = node.get_bone_rest(i)
+						node.set_bone_rest(i, Transform3D(rest.basis, scale_correction_factor * rest.origin))
 			var path: NodePath = scene.get_path_to(node)
 			# TODO: Nodes which should be part of a skeleton need to be remapped?
 			var node_name: String = str(node.name)
@@ -409,7 +409,7 @@ class ParseState:
 		# MESH and SKIN data divide, to compensate for object position multiplying.
 		for i in range(skin.get_bind_count()):
 			var transform = skin.get_bind_pose(i)
-			skin.set_bind_pose(i, Transform(transform.basis, transform.origin * scale_correction_factor))
+			skin.set_bind_pose(i, Transform3D(transform.basis, transform.origin * scale_correction_factor))
 
 	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false):
 		if scale_correction_factor == 1.0:
@@ -501,7 +501,7 @@ class ParseState:
 						var ilen: int = len(track_values)
 						if path.ends_with(":transform"):
 							while i < ilen:
-								track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+								track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
 								i += 1
 						else:
 							while i < ilen:
@@ -519,7 +519,7 @@ class ParseState:
 						if path.ends_with(":transform"):
 							while i < ilen:
 								if ((i % 5) % 2) != 1:
-									track_values[i] = Transform(track_values[i].basis, track_values[i].origin * scale_correction_factor)
+									track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
 								i += 1
 						else:
 							while i < ilen:
@@ -534,7 +534,7 @@ class ParseState:
 		# Root motion?
 		# Splitting up animation?
 
-func post_import(p_scene: Node) -> Object:
+func _post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
 	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
@@ -653,7 +653,7 @@ func post_import(p_scene: Node) -> Object:
 	new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
 	if new_toplevel != null:
 		ps.toplevel_node.transform = new_toplevel.transform
-		new_toplevel.transform = Transform.IDENTITY
+		new_toplevel.transform = Transform3D.IDENTITY
 		ps.toplevel_node = new_toplevel
 
 	# GameObject references always point to the toplevel node:
