@@ -500,6 +500,8 @@ class FbxHandler extends BaseModelHandler:
 		var gltf_output_path: String = path.get_basename() + ".gltf"
 		var bin_output_path: String = path.get_basename() + ".bin"
 		var output_path: String = gltf_output_path
+		var tmp_gltf_output_path: String = tmpdir + "/FBX_TEMP/" + gltf_output_path.get_file()
+		var tmp_bin_output_path: String = tmpdir + "/FBX_TEMP/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = path.get_basename() + ".glb"
 		var stdout: Array = [].duplicate()
@@ -515,13 +517,14 @@ class FbxHandler extends BaseModelHandler:
 			"--normalize-weights", "1",
 			"--anim-framerate", "bake30",
 			"-i", path,
-			"-o", gltf_output_path], stdout)
+			"-o", tmp_gltf_output_path], stdout)
 		print("FBX2glTF returned " + str(ret) + " -----")
 		print(str(stdout))
 		print("-----------------------------")
 		var d = Directory.new()
 		d.open("res://")
-		d.rename(path.get_base_dir() + "/buffer.bin", bin_output_path)
+		d.rename(tmp_bin_output_path, bin_output_path)
+		d.rename(tmp_gltf_output_path, gltf_output_path)
 		var f: File = File.new()
 		f.open(gltf_output_path, File.READ)
 		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
