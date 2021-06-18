@@ -110,7 +110,7 @@ class ParseState:
 	func sanitize_anim_name(anim_name: String) -> String:
 		return sanitize_unique_name(anim_name).replace("[", "").replace(",", "")
 
-	func count_meshes(node: Node3D) -> int:
+	func count_meshes(node: Node) -> int:
 		var result: int = 0
 		if node is VisualInstance3D:
 			result += 1
@@ -133,8 +133,15 @@ class ParseState:
 		return result
 
 	func fold_root_transforms_into_root(node: Node3D) -> Node3D:
-		if node.get_child_count() == 1 and node.get_child(0) is Node3D:
-			var child_node: Node3D = node.get_child(0)
+		var is_foldable: bool = node.get_child_count() == 1
+		var wanted_child: int = 0
+		if node.get_child_count() == 2 and node.get_child(0) is AnimationPlayer:
+			wanted_child = 1
+			is_foldable = true
+		elif node.get_child_count() == 2 and node.get_child(1) is AnimationPlayer:
+			is_foldable = true
+		if is_foldable and node.get_child(wanted_child) is Node3D:
+			var child_node: Node3D = node.get_child(wanted_child)
 			if child_node.get_child_count() == 1 and child_node.get_child(0) is Node3D:
 				var grandchild_node: Node3D = child_node.get_child(0)
 				grandchild_node.transform = node.transform * child_node.transform * grandchild_node.transform

@@ -1,6 +1,10 @@
 # unidot Importer
 
-A Unity compatibility layer and unitypackage importer for Godot.
+A Unity compatibility layer and unitypackage importer for Godot 4.x.
+
+## Engine patches
+
+Please use the `unidot_fixes` branch of https://github.com/lyuma/godot to run this addon (currently based on godot bb4c464 + `fire/bc7e_rdo`).
 
 ## Features
 
