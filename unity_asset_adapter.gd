@@ -148,7 +148,9 @@ class ImageHandler extends AssetHandler:
 		if max_texture_size < 0:
 			max_texture_size = 0
 		#cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
-		cfile.set_value("params", "compress/mode", 2 * use_tc)
+		# TODO: If low quality (use_tc==2) then we may want to disable bptc on this file
+		cfile.set_value("params", "compress/mode", 2 if use_tc > 0 else 0)
+		cfile.set_value("params", "compress/bptc_ldr", 1 if use_tc == 2 else 0)
 		cfile.set_value("params", "compress/lossy_quality", tc_level / 100.0)
 		cfile.set_value("params", "compress/normal_map", importer.keys.get("bumpmap", {}).get("convertToNormalMap", 0))
 		cfile.set_value("params", "detect_3d/compress_to", 0)
