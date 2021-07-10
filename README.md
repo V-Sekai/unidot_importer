@@ -1,6 +1,6 @@
 # Unidot Importer
 
-Unidot Importer is a Unity compatibility layer and Unity Package importer for Godot 4.x.
+Unidot Importer is a Unity compatibility layer and Unity Package Importer for Godot 4.x.
 
 ## Engine patches
 
