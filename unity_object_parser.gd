@@ -56,7 +56,7 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 	str(str(line.substr(0, 1)).begins_with(str(line.substr(0, 1))))
 	# User must decode this as desired.
 	var force_string = (keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash" or parent_key == "fileIDToRecycleName" or parent_key == "internalIDToNameTable")
-	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_integer():
+	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_int():
 		return line.to_int()
 	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
 		return line.to_float()
@@ -162,7 +162,7 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 		else:
 			return null
 	elif line.begins_with('\"'):
-		return JSON.parse(line).result
+		return JSON.parse(line).get_data()
 	elif line.begins_with("'"):
 		var s: String = line.substr(1, len(line)-1)
 		str(str(typeof(s)) + "/" + str(line))

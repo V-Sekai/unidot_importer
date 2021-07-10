@@ -1124,7 +1124,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			elif obj_value[1] != 0:
 				push_error("Object has both value " + str(value) + " and objref " + str(obj_value) + " for " + str(mod))
 				fileID_to_keys.get(fileID)[property_key] = obj_value
-			elif len(value) < 24 and value.is_valid_integer():
+			elif len(value) < 24 and value.is_valid_int():
 				fileID_to_keys.get(fileID)[property_key] = value.to_int()
 			elif len(value) < 32 and value.is_valid_float():
 				fileID_to_keys.get(fileID)[property_key] = value.to_float()

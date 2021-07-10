@@ -531,8 +531,9 @@ class FbxHandler extends BaseModelHandler:
 		f.open(gltf_output_path, File.READ)
 		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
 		f.close()
-		var json_parse_result: JSONParseResult = JSON.parse(data)
-		var json: Dictionary = json_parse_result.result
+		var jsonres = JSON.new()
+		jsonres.parse(data)
+		var json: Dictionary = jsonres.get_data()
 		var bindata: PackedByteArray
 		if SHOULD_CONVERT_TO_GLB:
 			f = File.new()
@@ -564,7 +565,7 @@ class FbxHandler extends BaseModelHandler:
 				json[key][elem]["name"] = try_name
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
-		var out_json_data: PackedByteArray = JSON.print(json).to_utf8_buffer()
+		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
 		if SHOULD_CONVERT_TO_GLB:
 			var out_json_data_length: int = out_json_data.size()
 			var bindata_length: int = bindata.size()
