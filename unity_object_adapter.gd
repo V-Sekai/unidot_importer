@@ -1076,11 +1076,11 @@ class UnityPrefabInstance extends UnityGameObject:
 			print(to_write)
 			fres.close()
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
-			instanced_scene = temp_packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			state.add_child(instanced_scene, new_parent, self)
 		else:
-			# Traditional instanced scene case: It only requires calling instance() and setting the filename.
-			instanced_scene = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			# Traditional instanced scene case: It only requires calling instantiate() and setting the filename.
+			instanced_scene = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			#instanced_scene.filename = packed_scene.resource_path
 			state.add_child(instanced_scene, new_parent, self)
 
@@ -2392,9 +2392,9 @@ class UnityAssetImporter extends UnityObject:
 		for srcAssetIdent in extos:
 			var type_str: String = srcAssetIdent.get("first", {}).get("type","")
 			var type_key: String = type_str.split(":")[-1]
-			var key: String = srcAssetIdent.get("first", {}).get("name","")
-			var val: Array = srcAssetIdent.get("second", {}) # UnityRef
-			if key != "" and type_str.begins_with("UnityEngine"):
+			var key: Variant = srcAssetIdent.get("first", {}).get("name","") # FIXME: Returns null sometimes????
+			var val: Array = srcAssetIdent.get("second", [null,0,"",null]) # UnityRef
+			if typeof(key) != TYPE_NIL and key != "" and type_str.begins_with("UnityEngine"):
 				if not eo.has(type_key):
 					eo[type_key] = {}.duplicate()
 				eo[type_key][key] = val

@@ -162,7 +162,9 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 		else:
 			return null
 	elif line.begins_with('\"'):
-		return JSON.parse(line).get_data()
+		var j = JSON.new()
+		j.parse(line)
+		return j.get_data()
 	elif line.begins_with("'"):
 		var s: String = line.substr(1, len(line)-1)
 		str(str(typeof(s)) + "/" + str(line))
