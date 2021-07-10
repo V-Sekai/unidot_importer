@@ -35,7 +35,7 @@ Canvas / UI is not implemented.
 
   To install, one must download FBX2glTF from https://github.com/revolufire/FBX2glTF/releases/, then rename to FBX2glTF.exe and move it into this addon directory.
 
-3. Finally, enable the Unidot-Importer plugin in Project `Settings -> Plugins tab -> Unidot`
+3. Finally, enable the Unidot Importer plugin in Project `Settings -> Plugins tab -> Unidot`
 
 4. Access the Importer through `Project -> Tools -> Import Unity Package...`
 
