@@ -1,6 +1,6 @@
 # Unidot Importer
 
-Unidot Importer is a Unity compatibility layer and unity package importer for Godot 4.x.
+Unidot Importer is a Unity compatibility layer and Unity Package importer for Godot 4.x.
 
 ## Engine patches
 
@@ -8,7 +8,7 @@ Please use the `unidot_fixes` branch of https://github.com/lyuma/godot to run th
 
 ## Features
 
-- Translates unity filetypes (such as .unity or .mat) to Godot native scene or resource types.
+- Translates Unity filetypes (such as .unity or .mat) to Godot native scene or resource types.
 - Supports both binary and text YAML encoding
 - Implementation of an asset database for unity assets by GUID
 - Unity Package Importer and translation shim.
@@ -16,15 +16,14 @@ Please use the `unidot_fixes` branch of https://github.com/lyuma/godot to run th
 
 Note that scripts and shaders will need to be ported by hand. However, it will be possible to map from the unity scripts/shaders to Godot equivalents after porting.
 
-Many import settings in Unity are not implemented in Godot, such as recomputing tangents or specific texture compression settings.
+Many import settings in Unity are not implemented in Godot Engine, such as recomputing tangents or specific texture compression settings.
 
 Canvas / UI is not implemented.
 
 ## Unsupported
 
-- Shader porting: a system will be added to create mappings of equivalent Godot shaders, but porting must be done by hand.
+- Shader porting: a system will be added to create mappings of equivalent Godot Engine shaders, but porting must be done by hand.
 - C# Script porting
-- 
 
 ## Installation notes:
 
