@@ -37,7 +37,7 @@ Canvas / UI is not implemented.
 
 3. Finally, enable the Unidot Importer plugin in Project `Settings -> Plugins tab -> Unidot`
 
-4. Access the Importer through `Project -> Tools -> Import Unity Package...`
+4. Access the importer through `Project -> Tools -> Import Unity Package...`
 
 ## A final note:
 
