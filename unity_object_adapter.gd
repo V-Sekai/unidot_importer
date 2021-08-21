@@ -2113,10 +2113,10 @@ class UnityLight extends UnityBehaviour:
 		elif unityLightType == 3:
 			push_error("Rectangle Area Light not supported!")
 			# areaSize?
-			return UnityBehaviour.create_godot_node(state, new_parent)
+			return super.create_godot_node(state, new_parent)
 		elif unityLightType == 4:
 			push_error("Disc Area Light not supported!")
-			return UnityBehaviour.create_godot_node(state, new_parent)
+			return super.create_godot_node(state, new_parent)
 
 		# TODO: Layers
 		if keys.get("useColorTemperature"):

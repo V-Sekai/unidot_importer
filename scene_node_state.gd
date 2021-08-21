@@ -2,6 +2,7 @@
 extends RefCounted
 
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+var object_adapter_class_inst = object_adapter_class.new()
 
 var owner: Node = null
 var body: CollisionObject3D = null
@@ -53,7 +54,7 @@ func get_object(fileid: int) -> RefCounted:
 		utype = meta.prefab_fileid_to_utype.get(fileid, -1)
 		if utype == -1:
 			return null # Not anywhere in the meta.
-	var ret: RefCounted = object_adapter_class.instantiate_unity_object_from_utype(meta, fileid, utype)
+	var ret: RefCounted = object_adapter_class_inst.instantiate_unity_object_from_utype(meta, fileid, utype)
 	var np = meta.fileid_to_nodepath.get(fileid, NodePath())
 	if np == NodePath():
 		np = meta.prefab_fileid_to_nodepath.get(fileid, NodePath())

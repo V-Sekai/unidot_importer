@@ -550,7 +550,7 @@ func decode_attrtab() -> Def:
 	attrs_spb.data_array = attrs
 
 	var def: Def = null
-	if not (attr_cnt < 1024):
+	if not (attr_cnt < 16384):
 		push_error("Invalid attr_count " + str(attr_cnt))
 		attr_cnt = 0
 	var i: int = 0

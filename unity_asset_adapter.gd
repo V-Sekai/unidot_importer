@@ -44,7 +44,7 @@ var STUB_DAE_FILE: PackedByteArray = ("""
 
 func write_sentinel_png(sentinel_filename: String):
 	var f: File = File.new()
-	f.open("res://" + sentinel_filename, _File.WRITE)
+	f.open("res://" + sentinel_filename, File.WRITE)
 	f.store_buffer(STUB_PNG_FILE)
 	f.close()
 
@@ -507,8 +507,13 @@ class FbxHandler extends BaseModelHandler:
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = path.get_basename() + ".glb"
 		var stdout: Array = [].duplicate()
+		var d = Directory.new()
+		d.open("res://")
 		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("FBX2glTF.exe")
 		if addon_path.begins_with("res://"):
+			if not d.file_exists(addon_path):
+				push_warning("Not converting fbx to glb because FBX2glTF.exe is not present.")
+				return ""
 			addon_path = addon_path.substr(6)
 		# --long-indices auto
 		# --compute-normals never|broken|missing|always
@@ -523,8 +528,6 @@ class FbxHandler extends BaseModelHandler:
 		print("FBX2glTF returned " + str(ret) + " -----")
 		print(str(stdout))
 		print("-----------------------------")
-		var d = Directory.new()
-		d.open("res://")
 		d.rename(tmp_bin_output_path, bin_output_path)
 		d.rename(tmp_gltf_output_path, gltf_output_path)
 		var f: File = File.new()
