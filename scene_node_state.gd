@@ -184,7 +184,8 @@ class Skelley extends RefCounted:
 		get:
 			if bone0_parent_list.is_empty():
 				return null
-			var pref: RefCounted = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
+			var arrlen: int = len(bone0_parent_list) - 1
+			var pref: RefCounted = bone0_parent_list[arrlen] # UnityTransform or UnityPrefabInstance
 			if pref.type == "PrefabInstance":
 				return pref
 			return null
@@ -194,7 +195,8 @@ class Skelley extends RefCounted:
 		get:
 			if bone0_parent_list.is_empty():
 				return null
-			var pref: RefCounted = bone0_parent_list[-1] # UnityTransform or UnityPrefabInstance
+			var arrlen: int = len(bone0_parent_list) - 1
+			var pref: RefCounted = bone0_parent_list[arrlen] # UnityTransform or UnityPrefabInstance
 			if pref.type == "Transform":
 				return pref
 			return null
