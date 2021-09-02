@@ -87,6 +87,7 @@ class ParseState:
 			retlist.append(get_materials_path_base(material_name, basedir))
 			basedir = basedir.get_base_dir()
 		retlist.append(get_materials_path_base(material_name, "res://"))
+		print("Looking in directories " + str(retlist))
 		return retlist
 
 	func get_materials_path_base(material_name: String, base_dir: String) -> String:
@@ -295,6 +296,7 @@ class ParseState:
 							continue
 						materials_by_name[mat_name] = mat
 						fileId = get_obj_id("Material", sanitize_unique_name(mat_name))
+						print("Materials " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
 						if not importMaterials:
 							mat = default_material
 						elif not extractLegacyMaterials and fileId == 0:
@@ -341,6 +343,7 @@ class ParseState:
 									print("    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 								if mat.normal_texture != null:
 									print("    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
+							print("Mat for " + str(i) + " is " + str(mat))
 							if mat != null:
 								mesh.surface_set_material(i, mat)
 								saved_materials_by_name[mat_name] = mat
@@ -573,8 +576,8 @@ func _post_import(p_scene: Node) -> Object:
 	ps.metaobj = metaobj
 	ps.asset_database = asset_database
 	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
-	ps.extractLegacyMaterials = metaobj.importer.keys.get("materi.shaderals", {}).get("materialLocation", 0) == 0
-	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 0
+	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
+	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.default_material = default_material
 	ps.is_obj = is_obj
@@ -653,11 +656,11 @@ func _post_import(p_scene: Node) -> Object:
 	ps.toplevel_node = p_scene
 	p_scene.name = source_file_path.get_file().get_basename()
 	var new_toplevel: Node3D = null
-	#if ps.mesh_is_toplevel:
-	#	print("Mesh is toplevel for " + str(source_file_path))
-	#	new_toplevel = ps.fold_transforms_into_mesh(ps.toplevel_node)
+	if ps.mesh_is_toplevel:
+		print("Mesh is toplevel for " + str(source_file_path))
+		new_toplevel = ps.fold_transforms_into_mesh(ps.toplevel_node)
 	#else:
-	new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
+	# new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
 	if new_toplevel != null:
 		ps.toplevel_node.transform = new_toplevel.transform
 		new_toplevel.transform = Transform3D.IDENTITY

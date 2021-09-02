@@ -695,6 +695,7 @@ class UnityMaterial extends UnityObject:
 		return ret
 
 	func create_godot_resource() -> Material:
+		#print("keys: " + str(keys))
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
 		#print(str(floatProperties))
@@ -2158,7 +2159,7 @@ class UnityLight extends UnityBehaviour:
 	
 	var bounceIntensity: float:
 		get:
-			return keys.get("m_BounceIntensity")
+			return keys.get("m_BounceIntensity", 1.0)
 	
 	var spotAngle: float:
 		get:
@@ -2178,7 +2179,7 @@ class UnityLight extends UnityBehaviour:
 
 	var shadowNormalBias: float:
 		get:
-			return keys.get("m_Shadows").get("m_NormalBias")
+			return keys.get("m_Shadows").get("m_NormalBias", 0.01)
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
