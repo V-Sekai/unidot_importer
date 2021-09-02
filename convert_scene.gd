@@ -206,7 +206,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		scene_contents.name = "RootSkeleton"
 		node_state = node_state.state_with_owner(scene_contents)
 	elif len(skelleys_with_no_parent) > 1:
-		assert(not is_prefab)
+		# assert(not is_prefab)
+		if scene_contents == null:
+			push_error("Not able to handle multiple skeletons with no parent in a prefab")
+		else:
+			for noparskel in skelleys_with_no_parent:
+				scene_contents.add_child(noparskel.godot_skeleton)
 	#var fileid_to_prefab_nodepath = {}.duplicate()
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
@@ -234,7 +239,10 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				scene_contents = new_root
 				node_state = node_state.state_with_owner(scene_contents)
 			else:
-				assert(not is_prefab)
+				if is_prefab:
+					push_warning("May be a prefab with multiple roots, or hit unusual case.")
+				pass
+				# assert(not is_prefab)
 
 	node_state.env = env
 
