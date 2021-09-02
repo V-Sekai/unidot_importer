@@ -105,6 +105,7 @@ const baseStrings: Dictionary = {
 	988: "Vector2f",
 	997: "Vector3f",
 	1006: "Vector4f",
+	1042: "Gradient",
 	1093: "m_CorrespondingSourceObject",
 	1121: "m_PrefabInstance",
 	1138: "m_PrefabAsset",
@@ -130,7 +131,7 @@ class Stream extends StreamPeerBuffer:
 		var old_pos: int = self.tell()
 		var new_pos: int = ((old_pos - align_off + n - 1) & ~(n - 1)) + align_off
 		# if old_pos != new_pos:
-		# 	print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
+		# 	# print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
 		self.seek(new_pos)
 	func read_str() -> String:
 		var initial_pos: int = self.get_position()
@@ -173,13 +174,13 @@ class Def extends RefCounted:
 			self.full_name = str(par.name) + "." + self.full_name
 			par = par.parent
 
-	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array, align_off: int=0) -> Variant:
-		if self.size > 1:
-			s.align(min(self.size, 4), align_off)
-		if self.size < 0:
-			s.align(4, align_off)
-		var x: int = s.tell()
+	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array, align_off: int=0, align_data: int=0) -> Variant:
+		#if self.size >= 4:
+		#	s.align(min(self.size, 4), align_off)
 		if self.array:
+			# ALIGNMENT RULES
+			s.align(4, align_off)
+			var x: int = s.tell()
 			if self.children.is_empty():
 				push_error("Children is empty for " + str(self.full) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
@@ -194,6 +195,7 @@ class Def extends RefCounted:
 				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + ret)
 				if self.size >= 1:
 					s.seek(x + self.size)
+				s.align(4, x)
 				return ret
 			elif self.children[1].type_name == "UInt8":
 				# print("u8 " + str(arrlen))
@@ -201,6 +203,7 @@ class Def extends RefCounted:
 				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(ret)))
 				if self.size >= 1:
 					s.seek(x + self.size)
+				s.align(4, x)
 				return ret
 			else:
 				if not (arrlen < 100000):
@@ -215,24 +218,37 @@ class Def extends RefCounted:
 				while i < arrlen:
 					if not pad:
 						pad_off = s.tell()
-					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes, pad_off))
+					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes, pad_off, 0))
 					i += 1
 				# print("reading arr @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(arr)))
 				if self.size >= 1:
 					s.seek(x + self.size)
+				s.align(4, x)
 				return arr
 		elif not self.children.is_empty():
+			# s.align(4, align_off)
+			var x: int = align_off #####s.tell()
 			# print("o " + self.name)
 			var v: Dictionary = {}.duplicate()
+			var last_flags: int = 0
 			for i in self.children:
-				v[i.name] = i.read(s, referenced_guids, referenced_reftypes, x)
-			if self.size >= 1:
-				s.seek(x + self.size)
+				v[i.name] = i.read(s, referenced_guids, referenced_reftypes, x, last_flags)
+				last_flags = i.flags
+				#if i.size < 0:
+				#	s.align(4, x)
+			#if self.size >= 1:
+			#	s.seek(x + self.size)
 			match self.type_name:
 				"string":
 					if v.has("Array"):
 						# print("reading array @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 						return v.get("Array")
+				"map":
+					var res: Dictionary = {}
+					if v.has("Array"):
+						for kv in v.get("Array"):
+							res[kv.get("first")] = kv.get("second")
+					return [res]
 				"ColorRGBA":
 					# print("reading color @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
@@ -263,6 +279,8 @@ class Def extends RefCounted:
 					if v.has("Array"):
 						# print("reading array @" + str(x) + " " + self.name + "/" + self.type_name + " " + str(len(v)))
 						return v.get("Array")
+					if self.type_name == "pair" and self.children[1].type_name == "PPtr<Component>":
+						return {"component": v.get("second")}
 					if self.type_name.begins_with("PPtr"):
 						if v.get("m_PathID", 0) == 0:
 							return [null, v.get("m_PathID", 0), null, 0]
@@ -272,6 +290,15 @@ class Def extends RefCounted:
 							return [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
 			return v
 		else:
+			#if (self.flags & 0x100) != 0 and (self.size == 1 or self.size == 2):
+			#	s.align(4, align_off)
+			#if self.size >= 4:
+			#	s.align(min(self.size, 4), align_off)
+			#elif self.size == 2:
+			#	s.align(min(self.size, 2), align_off)
+			#if self.size < 0:
+			#	s.align(4, align_off)
+			var x: int = s.tell()
 			var ret: Variant = null
 			match self.type_name:
 				"signed char", "SInt8":
@@ -312,6 +339,8 @@ class Def extends RefCounted:
 					s.skip(self.size)
 			if self.size >= 1:
 				s.seek(x + self.size)
+			if (self.flags & 0x4000) == 0x4000:
+				s.align(4, align_off)
 			# print("reading @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(ret))
 			return ret
 
@@ -377,22 +406,31 @@ func _init(meta: RefCounted, file_contents: PackedByteArray):
 	self.class_ids = []
 	# print("table size " + str(table_size) + " data end " + str(data_end) + " file gen " + str(file_gen) + " data offset " + str(data_offset) + " version " + str(version) + " platform " + str(platform))
 	self.defs = self.decode_defs()
-	#print(str(defs))
+	# print(str(defs))
+	# print("After defs... NOW AT: " + str(self.s.tell()))
+	if self.file_gen < 10:
+		s.get_32()
 	var obj_headers: Array = self.decode_data_headers()
-	#print(str(obj_headers))
+	# print("After headers... NOW AT: " + str(self.s.tell()))
+	# print(str(obj_headers))
 	self.decode_guids()
 	self.objs = self.decode_data(obj_headers)
 
 func decode_defs() -> Array:
-	var are_defs: bool = s.get_8() != 0
+	# File ID 9 (4.3.4f1) does not have this uint8.
+	if self.file_gen >= 10:
+		var are_defs: bool = s.get_8() != 0
 	var count: int = s.get_32()
+	if count > 10000:
+		push_error("More than 10000 objects in defs: " + str(count) + ". Aborting!")
+		count = 0
 	var defs: Array = [].duplicate()
 	var i: int = 0
 	while i < count:
 		var def = self.decode_attrtab()
 		defs.push_back(def)
 		i += 1
-		if self.file_gen >= 116:
+		if self.file_gen >= 21: # also 116 ??
 			s.get_u32() # zeros
 	return defs
 
@@ -440,10 +478,11 @@ func decode_data_headers() -> Array:
 		push_error("Invalid count " + str(count))
 		count = 0
 	var i: int = 0
-	# print(self.class_ids)
+	print(self.class_ids)
 	# print("Doing " + str(count) + " data")
 	while i < count:
-		self.s.align(4, self.off)
+		if self.file_gen >= 10:
+			self.s.align(4, self.off)
 		var pathId: int = -1
 		var size: int = 0
 		var off: int = 0
@@ -459,7 +498,7 @@ func decode_data_headers() -> Array:
 			size = s.get_u32()
 			type_id = s.get_u32()
 			class_id = self.class_ids[type_id]
-		else:
+		elif self.file_gen >= 10:
 			#dhdr = self.s.read(25)
 			pathId = s.get_u64()
 			off = s.get_u32()
@@ -468,13 +507,26 @@ func decode_data_headers() -> Array:
 			class_id = s.get_u16()
 			s.get_u16()
 			unk = s.get_u8()
+		else:
+			pathId = s.get_u32()
+			off = s.get_u32()
+			size = s.get_u32()
+			type_id = s.get_u32()
+			class_id = s.get_u16()
+			s.get_u16()
+			var found_idx: int = self.class_ids.find(type_id)
+			# print("Finding class " + str(class_id) + " type " + str(type_id) + ": " + str(found_idx))
+			if found_idx >= 0:
+				type_id = found_idx
 		# print("pathid " + str(pathId) + " " + str(type_id) + " " + str(class_id))
 		obj_headers.push_back([off + self.data_offset + self.off, class_id, pathId, type_id])
 		i += 1
 	return obj_headers
 
 func decode_data(obj_headers: Array) -> Array:
-	# print(str(referenced_guids) + " then " + str(referenced_reftypes))
+	print(str(referenced_guids) + " then " + str(referenced_reftypes))
+	for g in referenced_guids:
+		meta.dependency_guids[g] = 1
 	var save: int = self.s.tell()
 	var objs: Array = [].duplicate()
 	for obj_header in obj_headers:
@@ -491,11 +543,15 @@ func decode_data(obj_headers: Array) -> Array:
 		obj.is_stripped = is_stripped
 		obj.keys = read_variant
 		if read_variant.has("m_SourcePrefab"):
-			print("Found a prefab dependency: " + str(read_variant.get("m_SourcePrefab")))
-			meta.prefab_dependency_guids[read_variant.get("m_SourcePrefab")[2]] = 1
+			# print("Found a prefab dependency: " + str(read_variant.get("m_SourcePrefab")))
+			var source_prefab_guid: Variant = read_variant.get("m_SourcePrefab")[2]
+			if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
+				meta.prefab_dependency_guids[source_prefab_guid] = 1
 		if read_variant.has("m_ParentPrefab"):
-			print("Found an old prefab dependency: " + str(read_variant.get("m_ParentPrefab")))
-			meta.prefab_dependency_guids[read_variant.get("m_ParentPrefab")[2]] = 1
+			# print("Found an old prefab dependency: " + str(read_variant.get("m_ParentPrefab")))
+			var source_prefab_guid: Variant = read_variant.get("m_ParentPrefab")[2]
+			if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
+				meta.prefab_dependency_guids[source_prefab_guid] = 1
 		objs.push_back(obj)
 	self.s.seek(save)
 	return objs
@@ -518,6 +574,7 @@ func decode_attrtab() -> Def:
 	var unk2: int = 0
 	var ident: PackedByteArray = PackedByteArray()
 	var attr_cnt: int = 0
+	var table_len: int = 0
 	var stab_len: int = 0
 	if self.file_gen >= 14:
 		# hdr = self.s.read(31)
@@ -529,49 +586,86 @@ func decode_attrtab() -> Def:
 			s.read(16)
 		attr_cnt = s.get_u32()
 		stab_len = s.get_u32()
-	else:
+	elif self.file_gen >= 10:
 		# hdr = self.s.read(28)
 		code = s.get_u32()
 		ident = s.read(16)
 		attr_cnt = s.get_u32()
 		stab_len = s.get_u32()
+	else:
+		code = s.get_u32()
+		attr_cnt = 1
 	var size_per: int = 24
-	if self.file_gen >= 116:
+	if self.file_gen >= 21: # also 114?
 		size_per = 32
 	var guid: String = ""
-	for i in range(16):
-		var guidchr: int = ident[i]
-		guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
-	# print("attr code " + str(code) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
-	print("attr code " + str(code) + " unk " + str(unk) + " ident " + str(ident) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
-	var attrs: PackedByteArray = self.s.read(attr_cnt*size_per)
-	var stab: PackedByteArray = self.s.read(stab_len)
-	var attrs_spb: StreamPeerBuffer = StreamPeerBuffer.new()
-	attrs_spb.data_array = attrs
+	var attrs: PackedByteArray = PackedByteArray()
+	var stab: PackedByteArray = PackedByteArray()
+	var attrs_spb: Stream = self.s
+	if self.file_gen >= 10:
+		for i in range(16):
+			var guidchr: int = ident[i]
+			guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
+		table_len = attr_cnt*size_per
+		attrs = self.s.read(table_len)
+		stab = self.s.read(stab_len)
+		# print("attr code " + str(code) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
+		# print("attr code " + str(code) + " unk " + str(unk) + " ident " + str(ident) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
+		#var attrs_spb: StreamPeerBuffer = StreamPeerBuffer.new()
+		#attrs_spb.data_array = attrs
+		attrs_spb = Stream.new(attrs)
 
 	var def: Def = null
 	if not (attr_cnt < 16384):
 		push_error("Invalid attr_count " + str(attr_cnt))
 		attr_cnt = 0
 	var i: int = 0
+	var size: int = 0
+	var idx: int = 0
+	var flags: int = 0
+	var level: int = 0
+	var name: String = ""
+	var type_name: String = ""
+	var unity4_nesting: Array[int] = [1]
+	var a4: int = 0
+	var a1: int = 0
+	var a2: int = 0
 	while i < attr_cnt:
-		var a1: int = attrs_spb.get_u8()
-		var a2: int = attrs_spb.get_u8()
-		var level: int = attrs_spb.get_u8()
-		var a4: int = attrs_spb.get_u8()
-		var type_off: int = attrs_spb.get_u32()
-		var name_off: int = attrs_spb.get_u32()
-		var size: int = attrs_spb.get_u32()
-		var idx: int = attrs_spb.get_u32()
-		var flags: int = attrs_spb.get_u32()
-		var unk_64b: int = 0
-		if self.file_gen >= 116:
-			unk_64b = attrs_spb.get_u64()
-			if unk_64b != 0:
-				print("Found unknown unk64: " + str(unk_64b) + " code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
-		var name: String = lookup_string(stab, name_off)
-		var type_name: String = lookup_string(stab, type_off)
-		# print("code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " name " + str(name) + " type_name " + str(type_name) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
+		if self.file_gen >= 10:
+			a1 = attrs_spb.get_u8()
+			a2 = attrs_spb.get_u8()
+			level = attrs_spb.get_u8()
+			a4 = attrs_spb.get_u8()
+			var type_off: int = attrs_spb.get_u32()
+			var name_off: int = attrs_spb.get_u32()
+			size = attrs_spb.get_u32()
+			idx = attrs_spb.get_u32()
+			flags = attrs_spb.get_u32()
+			var unk_64b: int = 0
+			if self.file_gen >= 21:
+				unk_64b = attrs_spb.get_u64()
+				if unk_64b != 0:
+					# print("Found unknown unk64: " + str(unk_64b) + " code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
+					pass
+			name = lookup_string(stab, name_off)
+			type_name = lookup_string(stab, type_off)
+			# print("code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " name " + str(name) + " type_name " + str(type_name) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
+		else:
+			while unity4_nesting[-1] == 0:
+				unity4_nesting.pop_back()
+			unity4_nesting[-1] -= 1
+			level = len(unity4_nesting) - 1
+			type_name = attrs_spb.read_str()
+			name = attrs_spb.read_str()
+			size = attrs_spb.get_u32()
+			idx = attrs_spb.get_u32()
+			a4 = attrs_spb.get_u32()
+			var unk3: int = attrs_spb.get_u32()
+			flags = attrs_spb.get_u32()
+			var nested_count: int = attrs_spb.get_u32()
+			if nested_count != 0:
+				unity4_nesting.push_back(nested_count)
+				attr_cnt += nested_count
 		if size == 0xffffffff:
 			size = -1
 		if level > 0 and def == null:
@@ -587,12 +681,12 @@ func decode_attrtab() -> Def:
 					break
 				d = d.children[-1]
 			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
-			var newdef: Def = Def.new(name, type_name, size, flags, a4)
+			var newdef: Def = Def.new(name, type_name, size, flags, a4 != 0)
 			newdef.set_parent(d)
 			d.append(newdef)
 		else:
 			if def == null:
-				def = Def.new(name, type_name, size, flags, a4)
+				def = Def.new(name, type_name, size, flags, a4 != 0)
 			else:
 				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
 		var indstr: String = ""
@@ -615,7 +709,7 @@ func decode_attrtab() -> Def:
 #			sd = tex["m_StreamData"]
 #			name = sd["path"].split("/")[-1]
 #			data = d.fs.files_by_name[name][sd["offset"]:][:sd["size"]]
-#			#print("Streamed")
+#			# print("Streamed")
 #		if not data:
 #			continue
 #		width, height, fmt = tex["m_Width"], tex["m_Height"], tex["m_TextureFormat"]
