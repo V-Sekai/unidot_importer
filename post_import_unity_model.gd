@@ -24,6 +24,7 @@ class ParseState:
 	var metaobj: Resource
 	var source_file_path: String
 	var external_objects_by_id: Dictionary = {}.duplicate() # fileId -> UnityRef Array
+	var material_to_texture_name: Dictionary = {}.duplicate() # for Extract Legacy Materials / By Base Texture Name
 	
 	var saved_materials_by_name: Dictionary = {}.duplicate()
 	var saved_meshes_by_name: Dictionary = {}.duplicate()
@@ -50,6 +51,7 @@ class ParseState:
 	var extractLegacyMaterials: bool = false
 	var importMaterials: bool = true
 	var materialSearch: int = 1
+	var legacy_material_name_setting: int = 1
 	var default_material: Material = null
 	var asset_database: Resource = null
 
@@ -306,26 +308,32 @@ class ParseState:
 								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 								print("External material object " + str(fileId) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
 							elif extractLegacyMaterials:
-								print("Extract legacy material " + get_materials_path(mat_name))
+								var legacy_material_name: String = mat_name
+								if legacy_material_name_setting == 0:
+									legacy_material_name = material_to_texture_name.get(mat_name, mat_name)
+								if legacy_material_name_setting == 2:
+									legacy_material_name = source_file_path.get_basename() + "-" + mat_name
+
+								print("Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
 								var d = Directory.new()
 								d.open("res://")
 								mat = null
 								if materialSearch == 0:
 									# only current dir
-									mat = load(get_materials_path(mat_name))
+									mat = load(get_materials_path(legacy_material_name))
 								elif materialSearch >= 1:
 									# same dir and parents
-									var mat_paths: Array = get_parent_materials_paths(mat_name)
+									var mat_paths: Array = get_parent_materials_paths(legacy_material_name)
 									for mp in mat_paths:
 										if d.file_exists(mp):
-											mat = load(get_materials_path(mat_name))
+											mat = load(get_materials_path(legacy_material_name))
 											if mat != null:
 												break
 									if mat == null and materialSearch >= 2:
 										# and material in the whole project with this name!!
 										for pathname in asset_database.path_to_meta:
-											if pathname.get_file() == mat_name + ".material" or pathname.get_file() == mat_name + ".mat.tres" or pathname.get_file() == mat_name + ".mat.res":
-												mat = load(get_materials_path(mat_name))
+											if pathname.get_file() == legacy_material_name + ".material" or pathname.get_file() == mat_name + ".mat.tres" or pathname.get_file() == mat_name + ".mat.res":
+												mat = load(get_materials_path(legacy_material_name))
 												break
 								if mat == null:
 									mat = default_material
@@ -575,10 +583,12 @@ func _post_import(p_scene: Node) -> Object:
 	ps.source_file_path = source_file_path
 	ps.metaobj = metaobj
 	ps.asset_database = asset_database
+	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
 	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
+	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
 	ps.default_material = default_material
 	ps.is_obj = is_obj
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))

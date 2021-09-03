@@ -120,7 +120,7 @@ func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: i
 		for cidx in range_cluster:
 			var found: int = _buffer[offset + i * stride + cidx]
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = (found - sign_mul * (found & 0x8000)) / divisor
-			ret.push_back((found - sign_mul * (found & 0x8000)) / divisor)
+			ret.push_back((found - sign_mul * (found & 0x80)) / divisor)
 		i += 1
 	return ret
 

@@ -126,6 +126,9 @@ class Skelley extends RefCounted:
 		# print("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 
 	func add_bone(bone: RefCounted) -> Array: # UnityTransform
+		if bone == null:
+			push_warning("Got null bone in add_bone")
+			return []
 		if bones_set.has(bone.uniq_key):
 			push_error("Already added bone " + str(bone.uniq_key))
 			return []

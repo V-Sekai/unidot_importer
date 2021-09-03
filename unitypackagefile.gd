@@ -32,6 +32,7 @@ class UnityPackageAsset extends RefCounted:
 	var parsed_meta: Resource # Type: asset_database.gd:AssetMeta / Assigned by unity_asset_adapter.preprocess_asset()
 	var parsed_asset: RefCounted
 	var parsed_resource: Resource # For specific assets which do work in the thread.
+	var packagefile: Resource # outer class
 
 
 var paths: Array = [].duplicate()
@@ -99,6 +100,7 @@ func external_tar_with_filename(source_file: String):
 			print("Discovered Asset " + guid)
 			guid_to_pkgasset[guid] = UnityPackageAsset.new()
 		var pkgasset: UnityPackageAsset = guid_to_pkgasset[guid]
+		pkgasset.packagefile = self
 		pkgasset.guid = guid
 		var this_filename: String = full_tmpdir + "/" + str(guid) + "/" + str(type_part)
 		var header = ExtractedTarFile.new(this_filename)
@@ -162,6 +164,7 @@ func init_with_filename(source_file: String):
 			# print("Discovered Asset " + fnparts[0])
 			guid_to_pkgasset[fnparts[0]] = UnityPackageAsset.new()
 		var pkgasset: UnityPackageAsset = guid_to_pkgasset[fnparts[0]]
+		pkgasset.packagefile = self
 		pkgasset.guid = fnparts[0]
 		if len(fnparts) == 1 or fnparts[1] == '':
 			continue

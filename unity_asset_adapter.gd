@@ -396,87 +396,184 @@ class FbxHandler extends BaseModelHandler:
 	func convert_to_float(s: String) -> Variant:
 		return s.to_float()
 
-	func _preprocess_fbx_scale(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
-		var filename: String = pkgasset.pathname
+	func _is_fbx_binary(fbx_file_binary: PackedByteArray) -> bool:
+		return (find_in_buffer(fbx_file_binary, "Kaydara FBX Binary".to_ascii_buffer(), 0, 64) != -1)
+
+	func _extract_fbx_textures_binary(pkgasset: Object, fbx_file_binary: PackedByteArray) -> PackedStringArray:
+		var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+		spb.data_array = fbx_file_binary
+		spb.big_endian = false
+		var strlist: PackedStringArray = PackedStringArray()
+
+		var texname1_needle_buf: PackedByteArray = "...\u0010RelativeFilenameS".to_ascii_buffer()
+		texname1_needle_buf[0] = 0
+		texname1_needle_buf[1] = 0
+		texname1_needle_buf[2] = 0
+		var texname2_needle_buf: PackedByteArray = "S\u0007...XRefUrlS....S".to_ascii_buffer()
+		texname2_needle_buf[2] = 0
+		texname2_needle_buf[3] = 0
+		texname2_needle_buf[4] = 0
+		texname2_needle_buf[13] = 0
+		texname2_needle_buf[14] = 0
+		texname2_needle_buf[15] = 0
+		texname2_needle_buf[16] = 0
+
+		var texname1_pos: int = find_in_buffer(fbx_file_binary, texname1_needle_buf)
+		var texname2_pos: int = find_in_buffer(fbx_file_binary, texname2_needle_buf)
+		while texname1_pos != -1 or texname2_pos != -1:
+			var nextpos: int = -1
+			var ftype: int = 0
+			if texname1_pos != -1 and (texname2_pos == -1 or texname1_pos < texname2_pos):
+				nextpos = texname1_pos + len(texname1_needle_buf)
+				texname1_pos = find_in_buffer(fbx_file_binary, texname1_needle_buf, texname1_pos + 1)
+				ftype = 1
+			elif texname2_pos != -1:
+				nextpos = texname2_pos + len(texname2_needle_buf)
+				texname2_pos = find_in_buffer(fbx_file_binary, texname2_needle_buf, texname2_pos + 1)
+				ftype = 2
+			spb.seek(nextpos)
+			var strlen: int = spb.get_32()
+			spb.seek(nextpos + 4)
+			if strlen > 0 and strlen < 1024:
+				var fn_utf8: PackedByteArray = spb.get_data(strlen)[1] # NOTE: Do we need to detect charset? FBX should be unicode
+				strlist.append(fn_utf8.get_string_from_ascii())
+		return strlist
+
+	func _extract_fbx_textures_ascii(pkgasset: Object, buffer_as_ascii: String) -> PackedStringArray:
+		var strlist: PackedStringArray = PackedStringArray()
+		var texname1_needle = "\"XRefUrl\","
+		var texname2_needle = "RelativeFilename:"
+
+		var texname1_pos: int = buffer_as_ascii.find(texname1_needle)
+		var texname2_pos: int = buffer_as_ascii.find(texname2_needle)
+		while texname1_pos != -1 or texname2_pos != -1:
+			var nextpos: int = -1
+			var newlinepos: int = -1
+			if texname1_pos != -1 and (texname2_pos == -1 or texname1_pos < texname2_pos):
+				nextpos = texname1_pos + len(texname1_needle)
+				newlinepos = buffer_as_ascii.find("\n", nextpos)
+				texname1_pos = buffer_as_ascii.find(texname1_needle, texname1_pos + 1)
+				nextpos = buffer_as_ascii.find("\"", nextpos + 1)
+				nextpos = buffer_as_ascii.find("\"", nextpos + 1)
+				nextpos = buffer_as_ascii.find("\"", nextpos + 1)
+			elif texname2_pos != -1:
+				nextpos = texname2_pos + len(texname2_needle)
+				newlinepos = buffer_as_ascii.find("\n", nextpos)
+				texname2_pos = buffer_as_ascii.find(texname2_needle, texname2_pos + 1)
+				nextpos = buffer_as_ascii.find("\"", nextpos + 1)
+			var lastquote: int = buffer_as_ascii.find("\"", nextpos + 1)
+			if lastquote > newlinepos:
+				push_warning("Failed to parse texture from " + buffer_as_ascii.substr(nextpos, newlinepos - nextpos))
+			else:
+				strlist.append(buffer_as_ascii.substr(nextpos + 1, lastquote - nextpos - 1))
+		return strlist
+
+	func _preprocess_fbx_scale_binary(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
 			print("TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early.")
 			#return fbx_file_binary
-		var output_buf: PackedByteArray = fbx_file_binary
-		var is_binary: bool = (find_in_buffer(fbx_file_binary, "Kaydara FBX Binary".to_ascii_buffer(), 0, 64) != -1)
-		if is_binary:
-			var needle_buf: PackedByteArray = "\u0001PS\u000F...UnitScaleFactorS".to_ascii_buffer()
-			needle_buf[4] = 0
-			needle_buf[5] = 0
-			needle_buf[6] = 0
-			var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
-			if scale_factor_pos == -1:
-				push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
-				return output_buf
+		var filename: String = pkgasset.pathname
+		var needle_buf: PackedByteArray = "\u0001PS\u000F...UnitScaleFactorS".to_ascii_buffer()
+		needle_buf[4] = 0
+		needle_buf[5] = 0
+		needle_buf[6] = 0
+		var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
+		if scale_factor_pos == -1:
+			push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			return fbx_file_binary
 
-			var spb: StreamPeerBuffer = StreamPeerBuffer.new()
-			spb.data_array = fbx_file_binary
-			spb.seek(scale_factor_pos + len(needle_buf))
-			var datatype: String = spb.get_string(spb.get_32())
-			if spb.get_8() != ("S").to_ascii_buffer()[0]: # ord() is broken?!
-				push_error(filename + ": not a string, or datatype invalid " + datatype)
-				return output_buf
-			var subdatatype: String = spb.get_string(spb.get_32())
-			if spb.get_8() != ("S").to_ascii_buffer()[0]:
-				push_error(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
-				return output_buf
-			var extratype: String = spb.get_string(spb.get_32())
-			var number_type = spb.get_8()
-			var scale = 1.0
-			var is_double: bool = false
-			if number_type == ("F").to_ascii_buffer()[0]:
-				scale = spb.get_float()
-			elif number_type == ("D").to_ascii_buffer()[0]:
-				scale = spb.get_double()
-				is_double = true
-			else:
-				push_error(filename + ": not a float or double " + str(number_type))
-				return output_buf
-			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-			print(filename + ": Binary FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
-					" (Scale Factor = " + str(globalScale) +
-					"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
-			if is_double:
-				spb.seek(spb.get_position() - 8)
-				print("double - Seeked to " + str(spb.get_position()))
-				spb.put_double(new_scale)
-			else:
-				spb.seek(spb.get_position() - 4)
-				print("float - Seeked to " + str(spb.get_position()))
-				spb.put_float(new_scale)
-			return spb.data_array
+		# TODO: If any Model has Visibility == 0.0, then the mesh gets lost in FBX2glTF
+		# Find all instances of VisibilityS\0\0\0S\1\0\0\0AD followed by 0.0 Double or 0.0 Float and replace with 1.0
+		# in ASCII, it is   P: "Visibility", "Visibility", "", "A",0 -> 1
+
+		var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+		spb.data_array = fbx_file_binary
+		spb.big_endian = false
+		spb.seek(scale_factor_pos + len(needle_buf))
+		var datatype: String = spb.get_string(spb.get_32())
+		if spb.get_8() != ("S").to_ascii_buffer()[0]: # ord() is broken?!
+			push_error(filename + ": not a string, or datatype invalid " + datatype)
+			return fbx_file_binary
+		var subdatatype: String = spb.get_string(spb.get_32())
+		if spb.get_8() != ("S").to_ascii_buffer()[0]:
+			push_error(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
+			return fbx_file_binary
+		var extratype: String = spb.get_string(spb.get_32())
+		var number_type = spb.get_8()
+		var scale = 1.0
+		var is_double: bool = false
+		if number_type == ("F").to_ascii_buffer()[0]:
+			scale = spb.get_float()
+		elif number_type == ("D").to_ascii_buffer()[0]:
+			scale = spb.get_double()
+			is_double = true
 		else:
-			str(str(typeof(fbx_file_binary)) + "/" + str(fbx_file_binary))
-			var buffer_as_ascii: String = fbx_file_binary.get_string_from_ascii()
-			var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
-			if scale_factor_pos == -1:
-				push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
-				return output_buf
-			var newline_pos: int = buffer_as_ascii.find("\n", scale_factor_pos)
-			var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
-			if newline_pos == -1 or comma_pos == -1:
-				push_error(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
-				return output_buf
+			push_error(filename + ": not a float or double " + str(number_type))
+			return fbx_file_binary
+		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
+		print(filename + ": Binary FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
+				" (Scale Factor = " + str(globalScale) +
+				"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
+		if is_double:
+			spb.seek(spb.get_position() - 8)
+			print("double - Seeked to " + str(spb.get_position()))
+			spb.put_double(new_scale)
+		else:
+			spb.seek(spb.get_position() - 4)
+			print("float - Seeked to " + str(spb.get_position()))
+			spb.put_float(new_scale)
+		return spb.data_array
 
-			var scale_string: Variant = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
-			print("Scale as string is " + str(scale_string))
-			var scale: float = convert_to_float(str(scale_string + str(NodePath())))
-			print("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
-			print(str(scale_string + str(NodePath())).to_float())
-			print("Scale is " + str(scale))
-			print("Also Scale is " + str(scale + 0.0))
-			var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-			print(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
-					" (Scale Factor = " + str(globalScale) +
-					"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
-			output_buf = fbx_file_binary.subarray(0, comma_pos) # subarray endpoint is inclusive!!
-			output_buf += str(new_scale).to_ascii_buffer()
-			output_buf += fbx_file_binary.subarray(newline_pos, len(fbx_file_binary) - 1)
+	func _preprocess_fbx_scale_ascii(pkgasset: Object, fbx_file_binary: PackedByteArray, buffer_as_ascii: String, useFileScale: bool, globalScale: float) -> PackedByteArray:
+		if useFileScale and is_equal_approx(globalScale, 1.0):
+			print("TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early.")
+			#return fbx_file_binary
+		var filename: String = pkgasset.pathname
+		var output_buf: PackedByteArray = fbx_file_binary
+		str(str(typeof(fbx_file_binary)) + "/" + str(fbx_file_binary))
+		var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
+		if scale_factor_pos == -1:
+			push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			return output_buf
+		var newline_pos: int = buffer_as_ascii.find("\n", scale_factor_pos)
+		var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
+		if newline_pos == -1 or comma_pos == -1:
+			push_error(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			return output_buf
+
+		var scale_string: Variant = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
+		print("Scale as string is " + str(scale_string))
+		var scale: float = convert_to_float(str(scale_string + str(NodePath())))
+		print("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
+		print(str(scale_string + str(NodePath())).to_float())
+		print("Scale is " + str(scale))
+		print("Also Scale is " + str(scale + 0.0))
+		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
+		print(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
+				" (Scale Factor = " + str(globalScale) +
+				"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
+		output_buf = fbx_file_binary.subarray(0, comma_pos) # subarray endpoint is inclusive!!
+		output_buf += str(new_scale).to_ascii_buffer()
+		output_buf += fbx_file_binary.subarray(newline_pos, len(fbx_file_binary) - 1)
 		return output_buf
+
+	func _get_parent_textures_paths(source_file_path: String) -> Dictionary:
+		# return source_file_path.get_basename() + "." + str(fileId) + extension
+		var retlist: Dictionary = {}
+		var basedir: String = source_file_path.get_base_dir()
+		var texfn: String = source_file_path.get_file()
+		var relpath: String = ""
+		while basedir != "res://" and basedir != "/" and basedir != "" and basedir != ".":
+			retlist[basedir + "/" + texfn] = relpath + texfn
+			retlist[basedir + "/textures/" + texfn] = relpath + "textures/" + texfn
+			retlist[basedir + "/Textures/" + texfn] = relpath + "Textures/" + texfn
+			basedir = basedir.get_base_dir()
+			relpath += "../"
+		retlist[texfn] = relpath + texfn
+		retlist["textures/" + texfn] = relpath + "textures/" + texfn
+		retlist["Textures/" + texfn] = relpath + "Textures/" + texfn
+		#print("Looking in directories " + str(retlist))
+		return retlist
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
 		var path: String = tmpdir + "/" + pkgasset.pathname
@@ -486,17 +583,49 @@ class FbxHandler extends BaseModelHandler:
 		var importer = pkgasset.parsed_meta.importer
 
 		var fbx_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
-		fbx_file = _preprocess_fbx_scale(pkgasset, fbx_file, importer.useFileScale, importer.globalScale)
+		var is_binary: bool = _is_fbx_binary(fbx_file)
+		var texture_name_list: PackedStringArray = PackedStringArray()
+		if is_binary:
+			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
+			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.useFileScale, importer.globalScale)
+		else:
+			var buffer_as_ascii: String = fbx_file.get_string_from_utf8() # may contain unicode
+			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
+			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.useFileScale, importer.globalScale)
 		outfile.store_buffer(fbx_file)
 		# outfile.flush()
 		outfile.close()
-		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path, fbx_file)
+		var unique_texture_map: Dictionary = {}
+		var texture_dirname = path.get_base_dir()
+		var output_dirname = pkgasset.pathname.get_base_dir()
+		print("Referenced texture list: " + str(texture_name_list))
+		for fn in texture_name_list:
+			var fn_filename: String = fn.get_file()
+			var replaced_extension = "png"
+			if fn_filename.get_extension().to_lower() == "jpg":
+				replaced_extension = "jpg"
+			unique_texture_map[fn_filename.get_basename() + "." + replaced_extension] = fn_filename
+		print("Referenced textures: " + str(unique_texture_map.keys()))
+		var d = Directory.new()
+		d.open("res://")
+		for fn in unique_texture_map.keys():
+			if not d.file_exists(texture_dirname + "/" + fn):
+				print("Creating dummy texture: " + str(texture_dirname + "/" + fn))
+				var tmpf = File.new()
+				tmpf.open(texture_dirname + "/" + fn, File.WRITE)
+				tmpf.close()
+			var candidate_texture_dict = _get_parent_textures_paths(output_dirname + "/" + unique_texture_map[fn])
+			for candidate_fn in candidate_texture_dict:
+				#print("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
+				if pkgasset.packagefile.path_to_pkgasset.has(candidate_fn) or d.file_exists(candidate_fn):
+					unique_texture_map[fn] = candidate_texture_dict[candidate_fn]
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, path, fbx_file, unique_texture_map)
 		if len(output_path) == 0:
 			output_path = path
 		print("Updating file at " + output_path)
 		return output_path
 
-	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
 		var gltf_output_path: String = path.get_basename() + ".gltf"
@@ -546,6 +675,32 @@ class FbxHandler extends BaseModelHandler:
 			json["buffers"][0].erase("uri")
 		else:
 			json["buffers"][0]["uri"] = bin_output_path.get_file()
+		if json.has("images"):
+			for img in json["images"]:
+				var img_name: String = img.get("name")
+				var img_uri: String = img.get("uri", "data:")
+				if unique_texture_map.has(img_uri):
+					img_uri = unique_texture_map.get(img_uri)
+					img_name = img_uri
+				else:
+					if img_uri.begins_with("data:"):
+						img_uri = img_name
+					if unique_texture_map.has(img_name):
+						img_uri = unique_texture_map.get(img_name)
+						img_name = img_uri
+				img["uri"] = img_uri
+				img["name"] = img_name.get_file().get_basename()
+		if json.has("materials"):
+			var material_to_texture_name = {}.duplicate()
+			for mat in json["materials"]:
+				#if "pbrMetallicRoughness" in mat and "baseColorTexture" in mat["pbrMetallicRoughness"]:
+				for key in mat:
+					if typeof(mat[key]) == TYPE_DICTIONARY and mat[key].has("baseColorTexture"):
+						var basecolor_index: int = mat[key]["baseColorTexture"].get("index", 0)
+						var image_index: int = json.get("textures", [])[basecolor_index].get("source", 0)
+						var image_name: String = json.get("images", [])[image_index].get("name", "")
+						material_to_texture_name[mat.name] = image_name
+			pkgasset.parsed_meta.internal_data["material_to_texture_name"] = material_to_texture_name
 		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers"]:
 			if not json.has(key):
 				continue
