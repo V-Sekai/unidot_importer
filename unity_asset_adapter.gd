@@ -576,7 +576,7 @@ class FbxHandler extends BaseModelHandler:
 		return retlist
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
-		var path: String = tmpdir + "/" + pkgasset.pathname
+		var path: String = tmpdir + "/FBX_TEMP/" + "input.fbx"
 		var outfile: File = File.new()
 		var err = outfile.open(path, File.WRITE)
 		print("Open " + path + " => " + str(err))
@@ -628,13 +628,14 @@ class FbxHandler extends BaseModelHandler:
 	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
-		var gltf_output_path: String = path.get_basename() + ".gltf"
-		var bin_output_path: String = path.get_basename() + ".bin"
+		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
+		var gltf_output_path: String = full_output_path.get_basename() + ".gltf"
+		var bin_output_path: String = full_output_path.get_basename() + ".bin"
 		var output_path: String = gltf_output_path
 		var tmp_gltf_output_path: String = tmpdir + "/FBX_TEMP/" + gltf_output_path.get_file()
 		var tmp_bin_output_path: String = tmpdir + "/FBX_TEMP/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
-			output_path = path.get_basename() + ".glb"
+			output_path = full_output_path.get_basename() + ".glb"
 		var stdout: Array = [].duplicate()
 		var d = Directory.new()
 		d.open("res://")

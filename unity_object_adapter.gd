@@ -85,9 +85,6 @@ class UnityObject extends RefCounted:
 	var _cache_uniq_key: String = ""
 	var adapter: RefCounted = null # RefCounted to containing scope.
 
-	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
-	const BAS_FLIP_X: Basis = Basis.FLIP_X # Basis(-1,0,0,1,0,0,1,0,0)
-
 	# Some components or game objects within a prefab are "stripped" dummy objects.
 	# Setting the stripped flag is not required...
 	# and properties of prefabbed objects seem to have no effect anyway.
@@ -168,11 +165,15 @@ class UnityObject extends RefCounted:
 	func configure_skeleton_bone_props(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props = self.convert_skeleton_properties(skel, bone_name, uprops)
 		if props.has(bone_name):
-			skel.set_bone_rest(skel.find_bone(bone_name), props.get(bone_name))
+			var mat: Transform3D = props.get(bone_name)
+			skel.set_bone_rest(skel.find_bone(bone_name), mat)
+			skel.set_bone_pose_position(skel.find_bone(bone_name), mat.origin)
+			skel.set_bone_pose_rotation(skel.find_bone(bone_name), mat.basis.get_rotation_quaternion())
+			skel.set_bone_pose_scale(skel.find_bone(bone_name), mat.basis.get_scale())
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props: Dictionary = self.convert_properties(skel, uprops)
-		var matn: Transform3D = skel.get_bone_rest(skel.find_bone(bone_name))
+		var matn: Transform3D = skel.get_bone_pose(skel.find_bone(bone_name))
 		var quat: Quaternion = matn.basis.get_rotation_quaternion()
 		var scale: Vector3 = matn.basis.get_scale()
 		var position: Vector3 = matn.origin
@@ -195,7 +196,7 @@ class UnityObject extends RefCounted:
 			return props
 
 		# FIXME: Don't we need to flip these???
-		#quat = (BAS_FLIP_X.inverse() * Basis(quat) * BAS_FLIP_X).get_rotation_quat()
+		#quat = (Basis.FLIP_X.inverse() * Basis(quat) * Basis.FLIP_X).get_rotation_quat()
 		#position = Vector3(-1, 1, 1) * position
 
 		matn = Transform3D(Basis(quat).scaled(scale), position)
@@ -410,7 +411,6 @@ class UnityObject extends RefCounted:
 ### ================ ASSET TYPES ================
 # FIXME: All of these are native Godot types. I'm not sure if these types are needed or warranted.
 class UnityMesh extends UnityObject:
-	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
 	
 	func get_primitive_format(submesh: Dictionary) -> int:
 		match submesh.get("topology", 0):
@@ -434,12 +434,12 @@ class UnityMesh extends UnityObject:
 		return {-meta.main_object_id: ".mesh.skin.tres"}
 
 	func dict_to_matrix(b: Dictionary) -> Transform3D:
-		return FLIP_X.affine_inverse() * Transform3D(
+		return Transform3D.FLIP_X.affine_inverse() * Transform3D(
 			Vector3(b.get("e00"), b.get("e10"), b.get("e20")),
 			Vector3(b.get("e01"), b.get("e11"), b.get("e21")),
 			Vector3(b.get("e02"), b.get("e12"), b.get("e22")),
 			Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
-		) * FLIP_X
+		) * Transform3D.FLIP_X
 
 	func create_extra_resource(fileID: int) -> Skin:
 		var sk: Skin = Skin.new()
@@ -1082,11 +1082,11 @@ class UnityPrefabInstance extends UnityGameObject:
 		else:
 			# Traditional instanced scene case: It only requires calling instantiate() and setting the filename.
 			instanced_scene = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
-			#instanced_scene.filename = packed_scene.resource_path
+			#instanced_scene.scene_file_path = packed_scene.resource_path
 			state.add_child(instanced_scene, new_parent, self)
 
 			if set_editable_children(state, instanced_scene) != instanced_scene:
-				instanced_scene.filename = ""
+				instanced_scene.scene_file_path = ""
 				set_owner_rec(instanced_scene, state.owner)
 		## using _bundled.editable_instance happens after the data is discarded...
 		## This whole system doesn't work. We need an engine mod instead that allows set_editable_instance.
@@ -1259,7 +1259,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
 			nodepath_bone_to_stripped_gameobject[str(target_nodepath) + "/" + str(target_skel_bone)] = gameobject_asset
-			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.filename))
+			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.scene_file_path))
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
 			if (attachment == null):
@@ -1309,7 +1309,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
 			var gameobject_asset: UnityGameObject = nodepath_bone_to_stripped_gameobject.get(str(target_nodepath) + "/" + str(target_skel_bone), null)
-			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.filename))
+			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.scene_file_path))
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
 			var already_has_attachment: bool = false
@@ -1469,8 +1469,6 @@ class UnityBehaviour extends UnityComponent:
 class UnityTransform extends UnityComponent:
 
 	var skeleton_bone_index: int = -1
-	const FLIP_X: Transform3D = Transform3D.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
-	const BAS_FLIP_X: Basis = Basis.FLIP_X # Transform3D(-1,0,0,0,1,0,0,0,1,0,0,0)
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node3D:
 		return null
@@ -1489,7 +1487,7 @@ class UnityTransform extends UnityComponent:
 			outdict["position"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
-			outdict["_quaternion"] = (BAS_FLIP_X.inverse() * Basis(rot_vec) * BAS_FLIP_X).get_rotation_quaternion()
+			outdict["_quaternion"] = (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
 		var tmp: float
 		if uprops.has("m_LocalScale.x"):
 			tmp = 1.0 * uprops.get("m_LocalScale.x")
@@ -1736,7 +1734,7 @@ class UnityRigidbody extends UnityComponent:
 			var kinematic: CharacterBody3D = CharacterBody3D.new()
 			new_node = kinematic
 		else:
-			var rigid: RigidBody3D = RigidBody3D.new()
+			var rigid: RigidDynamicBody3D = RigidDynamicBody3D.new()
 			new_node = rigid
 
 		new_node.name = name # Not type: This replaces the usual transform node.
@@ -1936,7 +1934,7 @@ class UnityCloth extends UnityBehaviour:
 	func get_bone_transform(skel: Skeleton3D, bone_idx: int) -> Transform3D:
 		var transform: Transform3D = Transform3D.IDENTITY
 		while bone_idx != -1:
-			transform = skel.get_bone_rest(bone_idx) * transform
+			transform = skel.get_bone_pose(bone_idx) * transform
 			bone_idx = skel.get_bone_parent(bone_idx)
 		return transform
 
@@ -1957,8 +1955,8 @@ class UnityCloth extends UnityBehaviour:
 		else:
 			return ret
 
-	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
-		var new_node: SoftBody3D = SoftBody3D.new()
+	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftDynamicBody3D:
+		var new_node: SoftDynamicBody3D = SoftDynamicBody3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, smr)
 		state.add_fileID(new_node, self)

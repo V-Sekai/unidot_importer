@@ -239,7 +239,7 @@ func run_test():
 	var bq: BlockingQueue = BlockingQueue.new()
 	var t: Thread = Thread.new()
 	bq.push(1)
-	t.start(self, "_thread_function", bq)
+	t.start(self._thread_function, bq)
 	OS.delay_msec(100)
 	bq.push(2)
 	bq.push(3)

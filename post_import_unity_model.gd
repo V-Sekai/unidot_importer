@@ -168,6 +168,7 @@ class ParseState:
 					for i in range(node.get_bone_count()):
 						var rest: Transform3D = node.get_bone_rest(i)
 						node.set_bone_rest(i, Transform3D(rest.basis, scale_correction_factor * rest.origin))
+						node.set_bone_pose_position(i, scale_correction_factor * rest.origin)
 			var path: NodePath = scene.get_path_to(node)
 			# TODO: Nodes which should be part of a skeleton need to be remapped?
 			var node_name: String = str(node.name)
@@ -456,15 +457,16 @@ class ParseState:
 				while i < ilen:
 					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
 					i += 1
-				bsarr[bsidx].resize(len(arr))
+				bsarr[bsidx].resize(3)
+				#print("format flags: " + str(fmt_compress_flags & 7) + "|" + str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0])))
 				#print("Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
-				for i in range(len(arr)):
-					if i >= ArrayMesh.ARRAY_INDEX or typeof(arr[i]) == TYPE_NIL:
-						bsarr[bsidx][i] = null
-					elif typeof(bsarr[bsidx][i]) == TYPE_NIL or len(bsarr[bsidx][i]) == 0:
-						bsarr[bsidx][i] = arr[i].duplicate()
-						bsarr[bsidx][i].resize(0)
-						bsarr[bsidx][i].resize(len(arr[i]))
+				#for i in range(len(arr)):
+				#	if i >= ArrayMesh.ARRAY_INDEX or typeof(arr[i]) == TYPE_NIL:
+				#		bsarr[bsidx][i] = null
+				#	elif typeof(bsarr[bsidx][i]) == TYPE_NIL or len(bsarr[bsidx][i]) == 0:
+				#		bsarr[bsidx][i] = arr[i].duplicate()
+				#		bsarr[bsidx][i].resize(0)
+				#		bsarr[bsidx][i].resize(len(arr[i]))
 
 			surf_data_by_mesh.push_back({
 				"prim": prim,

@@ -153,7 +153,9 @@ func init_with_filename(source_file: String):
 		var header = tar.read_header()
 		if header == null:
 			break
-		if (header.filename == "" or header.filename == "/"):
+		if header.filename.begins_with("./"):
+			header.filename = header.filename.substr(2)
+		if (header.filename == "" or header.filename == "/" or header.filename == "."):
 			# Ignore root folder.
 			continue
 		var fnparts = header.filename.split("/")

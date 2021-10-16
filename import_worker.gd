@@ -36,7 +36,7 @@ func start_thread():
 	print("Starting thread")
 	var thread: Thread = Thread.new()
 	# Third argument is optional userdata, it can be any variable.
-	thread.start(self, "_thread_function", "Wafflecopter")
+	thread.start(self._thread_function, "Wafflecopter")
 	threads.push_back(thread)
 	return thread
 
