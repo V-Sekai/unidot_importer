@@ -1653,11 +1653,11 @@ class UnityCapsuleCollider extends UnityCollider:
 
 	func get_basis_from_direction(direction: int):
 		if direction == 0: # Along the X-Axis
-			return Basis(Vector3(0.0, 0.0, PI/2.0))
+			return Basis.from_euler(Vector3(0.0, 0.0, PI/2.0))
 		if direction == 1: # Along the Y-Axis (Godot default)
-			return Basis(Vector3(0.0, 0.0, 0.0))
+			return Basis.from_euler(Vector3(0.0, 0.0, 0.0))
 		if direction == 2: # Along the Z-Axis
-			return Basis(Vector3(PI/2.0, 0.0, 0.0))
+			return Basis.from_euler(Vector3(PI/2.0, 0.0, 0.0))
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
@@ -2122,7 +2122,7 @@ class UnityLight extends UnityBehaviour:
 			push_error("Color Temperature not implemented.")
 		light.name = type
 		state.add_child(light, new_parent, self)
-		light.transform = Transform3D(Basis(Vector3(0.0, PI, 0.0)))
+		light.transform = Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)))
 		light.light_color = color
 		light.set_param(Light3D.PARAM_ENERGY, intensity)
 		light.set_param(Light3D.PARAM_INDIRECT_ENERGY, bounceIntensity)
@@ -2283,7 +2283,7 @@ class UnityCamera extends UnityBehaviour:
 			cenv.background_energy = eng
 		assign_object_meta(cam)
 		state.add_child(cam, par, self)
-		cam.transform = Transform3D(Basis(Vector3(0.0, PI, 0.0)))
+		cam.transform = Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)))
 		return cam
 
 	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:

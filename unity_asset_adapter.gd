@@ -764,10 +764,10 @@ var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_P
 
 var file_handlers: Dictionary = {
 	"fbx": FbxHandler.new().create_with_constant(STUB_GLB_FILE if SHOULD_CONVERT_TO_GLB else STUB_GLTF_FILE),
-	#"obj": obj_handler,
-	#"dae": dae_handler,
-	"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
-	"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
+	"obj": obj_handler,
+	"dae": dae_handler,
+	#"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
+	#"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
 	"glb": FbxHandler.new().create_with_constant(STUB_GLB_FILE),
 	"gltf": FbxHandler.new().create_with_constant(STUB_GLTF_FILE),
 	"jpg": image_handler,
