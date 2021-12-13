@@ -552,9 +552,9 @@ class FbxHandler extends BaseModelHandler:
 		print(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) +
 				" (Scale Factor = " + str(globalScale) +
 				"; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
-		output_buf = fbx_file_binary.subarray(0, comma_pos) # subarray endpoint is inclusive!!
+		output_buf = fbx_file_binary.slice(0, comma_pos + 1)
 		output_buf += str(new_scale).to_ascii_buffer()
-		output_buf += fbx_file_binary.subarray(newline_pos, len(fbx_file_binary) - 1)
+		output_buf += fbx_file_binary.slice(newline_pos, len(fbx_file_binary))
 		return output_buf
 
 	func _get_parent_textures_paths(source_file_path: String) -> Dictionary:

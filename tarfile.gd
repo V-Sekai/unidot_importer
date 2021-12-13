@@ -81,8 +81,7 @@ class TarHeader extends RefCounted:
 	var gd4hack_StringFile: Object = null
 
 	func get_data() -> PackedByteArray:
-		# ALERT! Subarray is **inclusive** start and end index
-		return buffer.subarray(offset, offset + size - 1)
+		return buffer.slice(offset, offset + size)
 
 	func get_string() -> String:
 		return get_data().get_string_from_utf8()
@@ -93,13 +92,6 @@ class TarHeader extends RefCounted:
 		sf.set_path(filename)
 		return sf
 
-#func get_buffer(size: int) -> PackedByteArray:
-#	if offset + size > len(buffer):
-#		return PackedByteArray()
-#	var ret: PackedByteArray = PackedByteArray()
-#	ret.append_array(buffer.subarray(offset, offset + size - 1))
-#	offset += size
-#	return ret
 
 static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
 	var idx:int = offset
@@ -126,8 +118,7 @@ func read_header() -> TarHeader:
 	var idx: int = 0
 	while idx < 100 and self.buffer[self.offset + idx] != 0:
 		idx += 1
-	# ALERT! Subarray is **inclusive** start and end index
-	header_obj.filename = self.buffer.subarray(self.offset + 0, self.offset + idx - 1).get_string_from_utf8()
+	header_obj.filename = self.buffer.slice(self.offset + 0, self.offset + idx).get_string_from_utf8()
 	header_obj.size = nti(self.buffer, self.offset + 124, 12)
 	self.offset += BLOCKSIZE
 	header_obj.buffer = self.buffer

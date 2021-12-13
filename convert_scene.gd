@@ -61,6 +61,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		scene_contents = Node3D.new()
 		scene_contents.name = "RootNode3D"
 		var world_env = WorldEnvironment.new()
+		world_env.name = "WorldEnvironment"
 		env = Environment.new()
 		world_env.environment = env
 		# TODO: We need to convert all PostProcessingProfile assets into godot Environment objects
@@ -71,15 +72,19 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		scene_contents.add_child(world_env)
 		world_env.owner = scene_contents
 		bakedlm = LightmapGI.new()
+		bakedlm.name = "LightmapGI"
 		scene_contents.add_child(bakedlm)
 		bakedlm.owner = scene_contents
 		navregion = NavigationRegion3D.new()
+		navregion.name = "NavigationRegion3D"
 		scene_contents.add_child(navregion)
 		navregion.owner = scene_contents
 		occlusion = OccluderInstance3D.new()
+		occlusion.name = "OccluderInstance3D"
 		scene_contents.add_child(occlusion)
 		occlusion.owner = scene_contents
 		dirlight = DirectionalLight3D.new()
+		dirlight.name = "DirectionalLight3D"
 		scene_contents.add_child(dirlight)
 		dirlight.owner = scene_contents
 		dirlight.visible = false

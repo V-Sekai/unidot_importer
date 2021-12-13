@@ -280,7 +280,7 @@ static func format_byte_width(format: int) -> int:
 func formatted_float_uint8_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedByteArray:
 	var float_array: PackedFloat32Array = formatted_float_subarray(format, offset, length, stride, cluster)
 	var encoded_array: PackedByteArray = var2bytes([PackedByteArray(), float_array])
-	return encoded_array.subarray(len(FLOAT_PREFIX), len(encoded_array) - 1) # Warning: subarray is INCLUSIVE,INCLUSIVE
+	return encoded_array.slice(len(FLOAT_PREFIX), len(encoded_array))
 
 func formatted_float_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedFloat32Array:
 	match format:

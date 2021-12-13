@@ -8,7 +8,6 @@ class ExtractedTarFile:
 		fn = filename
 
 	func get_data() -> PackedByteArray:
-		# ALERT! Subarray is **inclusive** start and end index
 		var f = File.new()
 		f.open(fn, File.READ)
 		return f.get_buffer(f.get_length())

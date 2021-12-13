@@ -144,9 +144,9 @@ class Stream extends StreamPeerBuffer:
 			if d[i] == 0:
 				# automatically Nul-terminates.
 				self.seek(i + 1)
-				return self.d.subarray(initial_pos, i).get_string_from_ascii()
+				return self.d.slice(initial_pos, i + 1).get_string_from_ascii()
 			i += 1
-		return self.d.subarray(initial_pos, self.get_size() - 1).get_string_from_ascii()
+		return self.d.slice(initial_pos, self.get_size()).get_string_from_ascii()
 
 
 class Def extends RefCounted:
@@ -566,7 +566,7 @@ func lookup_string(stab: PackedByteArray, name_off: int) -> String:
 		push_error("Indexing past end of stab array " + str(name_off) + " " + str(stab_limit))
 		return str(name_off) # Cannot index at end of array.
 	else:
-		return str(stab.subarray(min(stab_limit, name_off), min(stab_limit, name_off + 100)).get_string_from_ascii())
+		return str(stab.slice(min(stab_limit, name_off), min(stab_limit, name_off + 100) + 1).get_string_from_ascii())
 
 func decode_attrtab() -> Def:
 	var code: int = 0

@@ -511,8 +511,8 @@ class UnityMesh extends UnityObject:
 					surface_index_buf[i] -= deltaVertex
 					i += 1
 			if not pre2018_weights_buf.is_empty():
-				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
-				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.subarray(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4 - 1) # INCLUSIVE!!!
+				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.slice(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4)
+				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.slice(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4)
 			var compress_flags: int = 0
 			for array_idx in range(len(unity_to_godot_mesh_channels)):
 				var godot_array_type = unity_to_godot_mesh_channels[array_idx]
