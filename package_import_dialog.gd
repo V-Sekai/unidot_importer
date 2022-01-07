@@ -137,7 +137,7 @@ func show_importer() -> void:
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	file_dialog.connect("file_selected", self._selected_package)
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog, true)
 	_show_importer_common()
 
 func _show_importer_common() -> void:
@@ -154,7 +154,7 @@ func _show_importer_common() -> void:
 	main_dialog_tree.set_column_titles_visible(false)
 	main_dialog_tree.connect("cell_selected", self._cell_selected)
 	n.add_sibling(main_dialog_tree)
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(main_dialog)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(main_dialog, true)
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
@@ -166,7 +166,7 @@ func _show_importer_common() -> void:
 	timer.wait_time = 0.1
 	timer.autostart = true
 	timer.process_mode = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(timer)
+	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(timer, true)
 	timer.connect("timeout", self._editor_filesystem_scan_tick)
 
 	var base_control = EditorPlugin.new().get_editor_interface().get_base_control()

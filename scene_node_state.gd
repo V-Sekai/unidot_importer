@@ -329,7 +329,7 @@ func add_child(child: Node, new_parent: Node3D, unityobj: RefCounted):
 		if (new_parent == null):
 			push_error("Trying to add child " + str(child) + " named " + str(child.name) + " to null parent")
 		assert(new_parent != null)
-		new_parent.add_child(child)
+		new_parent.add_child(child, true)
 		child.owner = owner
 	if new_parent == null:
 		assert(owner == null)

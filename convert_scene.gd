@@ -69,23 +69,23 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		# Then, in prefab logic, concat the paths into the outer scene.
 		# finally, the actual scene will loop through all environments and add them by wieght
 		# then, we can assign the final world environment from all this.
-		scene_contents.add_child(world_env)
+		scene_contents.add_child(world_env, true)
 		world_env.owner = scene_contents
 		bakedlm = LightmapGI.new()
 		bakedlm.name = "LightmapGI"
-		scene_contents.add_child(bakedlm)
+		scene_contents.add_child(bakedlm, true)
 		bakedlm.owner = scene_contents
 		navregion = NavigationRegion3D.new()
 		navregion.name = "NavigationRegion3D"
-		scene_contents.add_child(navregion)
+		scene_contents.add_child(navregion, true)
 		navregion.owner = scene_contents
 		occlusion = OccluderInstance3D.new()
 		occlusion.name = "OccluderInstance3D"
-		scene_contents.add_child(occlusion)
+		scene_contents.add_child(occlusion, true)
 		occlusion.owner = scene_contents
 		dirlight = DirectionalLight3D.new()
 		dirlight.name = "DirectionalLight3D"
-		scene_contents.add_child(dirlight)
+		scene_contents.add_child(dirlight, true)
 		dirlight.owner = scene_contents
 		dirlight.visible = false
 
@@ -216,7 +216,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			push_error("Not able to handle multiple skeletons with no parent in a prefab")
 		else:
 			for noparskel in skelleys_with_no_parent:
-				scene_contents.add_child(noparskel.godot_skeleton)
+				scene_contents.add_child(noparskel.godot_skeleton, true)
 	#var fileid_to_prefab_nodepath = {}.duplicate()
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
@@ -233,7 +233,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		if skel != null:
 			if len(skelleys_with_no_parent) > 1:
 				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
-				scene_contents.add_child(skel.godot_skeleton)
+				scene_contents.add_child(skel.godot_skeleton, true)
 				skel.owner = scene_contents
 			asset.create_skeleton_bone(node_state, skel)
 		else:

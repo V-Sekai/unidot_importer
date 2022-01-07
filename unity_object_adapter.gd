@@ -864,7 +864,7 @@ class UnityGameObject extends UnityObject:
 		if ret != null:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 			for new_skelley in list_of_skelleys:
-				ret.add_child(godot_skeleton)
+				ret.add_child(godot_skeleton, true)
 				godot_skeleton.owner = state.owner
 
 		var skip_first: bool = true
@@ -936,7 +936,7 @@ class UnityGameObject extends UnityObject:
 			if not new_skelley.godot_skeleton:
 				push_error("Skelley " + str(new_skelley) + " is missing a godot_skeleton")
 			else:
-				ret.add_child(new_skelley.godot_skeleton)
+				ret.add_child(new_skelley.godot_skeleton, true)
 				new_skelley.godot_skeleton.owner = state.owner
 
 		for child_ref in transform.children_refs:
@@ -1339,7 +1339,7 @@ class UnityPrefabInstance extends UnityGameObject:
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
 			for new_skelley in list_of_skelleys:
-				attachment.add_child(new_skelley.godot_skeleton)
+				attachment.add_child(new_skelley.godot_skeleton, true)
 				new_skelley.godot_skeleton.owner = state.owner
 
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
@@ -1549,7 +1549,7 @@ class UnityCollider extends UnityBehaviour:
 		print("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
 		if state.body == null:
 			state.body = StaticBody3D.new()
-			new_parent.add_child(state.body)
+			new_parent.add_child(state.body, true)
 			state.body.owner = state.owner
 		new_node.name = self.type
 		state.add_child(new_node, state.body, self)
@@ -1580,7 +1580,7 @@ class UnityCollider extends UnityBehaviour:
 		if not xform.is_equal_approx(Transform3D()):
 			var xform_storage: Node3D = Node3D.new()
 			xform_storage.name = "__xform_storage"
-			new_node.add_child(xform_storage)
+			new_node.add_child(xform_storage, true)
 			xform_storage.owner = state.owner
 			xform_storage.transform = xform
 		return new_node
@@ -2256,7 +2256,7 @@ class UnityCamera extends UnityBehaviour:
 		if texref[1] != 0:
 			var rendertex: UnityObject = meta.lookup(texref)
 			var viewport: SubViewport = SubViewport.new()
-			new_parent.add_child(viewport)
+			new_parent.add_child(viewport, true)
 			viewport.owner = state.owner
 			viewport.size = Vector2(
 				rendertex.keys.get("m_Width"),
@@ -2308,7 +2308,7 @@ class UnityLightProbeGroup extends UnityComponent:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		for pos in keys.get("m_SourcePositions", []):
 			var probe: LightmapProbe = LightmapProbe.new()
-			new_parent.add_child(probe)
+			new_parent.add_child(probe, true)
 			probe.owner = state.owner
 			probe.position = pos
 		return null
