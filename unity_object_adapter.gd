@@ -256,7 +256,11 @@ class UnityObject extends RefCounted:
 				pass # We cannot do Name here because it will break existing NodePath of outer prefab to children.
 			else:
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
-				node.set(propname, props.get(propname))
+				var dig: Variant = node
+				var dig_propnames: Array = propname.split(":") # example: dig_propnames = ["shape", "size"]
+				for prop in dig_propnames.slice(0, len(dig_propnames) - 1):
+					dig = dig.get(prop) # example: dig = CollisionShape3D
+				dig.set(dig_propnames[-1], props.get(propname))
 
 	func apply_mesh_renderer_props(meta: RefCounted, node: MeshInstance3D, props: Dictionary):
 		const material_prefix: String = ":UNIDOT_PROXY:"
@@ -682,7 +686,7 @@ class UnityMaterial extends UnityObject:
 		var ret: float = floatProperties.get(name, dfl)
 		return ret
 
-	func get_vector(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
+	func get_vector_from_color(colorProperties: Dictionary, name: String, dfl: Color) -> Plane:
 		var col: Color = colorProperties.get(name, dfl)
 		return Plane(Vector3(col.r, col.g, col.b), col.a)
 
@@ -728,7 +732,7 @@ class UnityMaterial extends UnityObject:
 			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
 		if kws.get("_EMISSION", false):
 			ret.emission_enabled = true
-			var emis_vec: Plane = get_vector(colorProperties, "_EmissionColor", Color.BLACK)
+			var emis_vec: Plane = get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
 			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
 			ret.emission = Color.BLACK
 			if emis_mag > 0:
@@ -1009,7 +1013,7 @@ class UnityGameObject extends UnityObject:
 			return null
 		return transform.parent_ref[1] == 0
 
-	func get_gameObject() -> UnityGameObject:
+	func get_gameObject() -> Variant: # UnityGameObject:
 		return self
 
 
@@ -1248,7 +1252,13 @@ class UnityPrefabInstance extends UnityGameObject:
 		var gameobject_fileid_to_attachment: Dictionary = {}.duplicate()
 		var gameobject_fileid_to_body: Dictionary = {}.duplicate()
 		var orig_state_body: CollisionObject3D = state.body
-		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(fileID, {}).values():
+		print("---- now applying stripped objects for " + str(self.fileID) + "-----")
+		print(ps.transforms_by_parented_prefab.keys())
+		print(ps.gameobjects_by_parented_prefab.keys())
+		print(ps.transforms_by_parented_prefab.get(self.fileID, {}))
+		print("^trans. next gameobj")
+		print(ps.gameobjects_by_parented_prefab.get(self.fileID, {}))
+		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(self.fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityGameObject = gameobject_asset
 			var source_obj_ref = par.prefab_source_object
@@ -1298,7 +1308,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			state.body = orig_state_body
 
 		# And now for the analogous code to process stripped Transforms.
-		for transform_asset in ps.transforms_by_parented_prefab.get(fileID, {}).values():
+		for transform_asset in ps.transforms_by_parented_prefab.get(self.fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityTransform = transform_asset
 			var source_obj_ref = par.prefab_source_object
@@ -1343,6 +1353,8 @@ class UnityPrefabInstance extends UnityGameObject:
 				new_skelley.godot_skeleton.owner = state.owner
 
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
+				if child_transform.gameObject != null:
+					print("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
 				recurse_to_child_transform(state, child_transform, attachment)
 
@@ -1370,14 +1382,14 @@ class UnityPrefabInstance extends UnityGameObject:
 		#	pass
 		return instanced_scene
 
-	func get_transform() -> UnityPrefabInstance: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
+	func get_transform() -> Variant: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
 		return self
 
 	var rootOrder: int:
 		get:
 			return 0 # no idea..
 
-	func get_gameObject() -> UnityPrefabInstance:
+	func get_gameObject() -> Variant:
 		return self
 
 	var parent_ref: Array: # UnityRef
@@ -1393,7 +1405,7 @@ class UnityPrefabInstance extends UnityGameObject:
 		get:
 			return meta.lookup(parent_ref)
 
-	func is_toplevel() -> bool:
+	func is_toplevel() -> Variant:
 		return not is_legacy_parent_prefab and parent_ref[1] == 0
 
 	var modifications: Array:
@@ -1470,7 +1482,7 @@ class UnityTransform extends UnityComponent:
 
 	var skeleton_bone_index: int = -1
 
-	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node3D:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
@@ -1549,6 +1561,7 @@ class UnityCollider extends UnityBehaviour:
 		print("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
 		if state.body == null:
 			state.body = StaticBody3D.new()
+			state.body.name = "StaticBody3D"
 			new_parent.add_child(state.body, true)
 			state.body.owner = state.owner
 		new_node.name = self.type
@@ -1632,6 +1645,7 @@ class UnityBoxCollider extends UnityCollider:
 		var size = get_vector(uprops, "m_Size")
 		if typeof(size) != TYPE_NIL:
 			outdict["shape:size"] = size
+		print(outdict)
 		return outdict
 
 class UnitySphereCollider extends UnityCollider:
@@ -1639,7 +1653,7 @@ class UnitySphereCollider extends UnityCollider:
 		var bs: SphereShape3D = SphereShape3D.new()
 		return bs
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
 		if uprops.has("m_Radius"):
 			outdict["shape:radius"] = uprops.get("m_Radius")
@@ -1659,9 +1673,10 @@ class UnityCapsuleCollider extends UnityCollider:
 		if direction == 2: # Along the Z-Axis
 			return Basis.from_euler(Vector3(PI/2.0, 0.0, 0.0))
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
 		var radius = node.shape.radius
+		print("Convert capsules " + str(node.shape.radius) + " " + str(node.name) + " and " + str(outdict))
 		if typeof(uprops.get("m_Radius")) != TYPE_NIL:
 			radius = uprops.get("m_Radius")
 			outdict["shape:radius"] = radius
@@ -1685,7 +1700,7 @@ class UnityMeshCollider extends UnityCollider:
 		else:
 			return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
 		var new_convex = node.shape is ConvexPolygonShape3D
 		if uprops.has("m_Convex"):
@@ -1743,7 +1758,7 @@ class UnityRigidbody extends UnityComponent:
 
 	# TODO: Add properties for rigidbody (e.g. mass, etc.).
 	# NOTE: We do not allow changing m_IsKinematic because that's a Godot type change!
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		return outdict
 
@@ -1760,7 +1775,7 @@ class UnityMeshFilter extends UnityComponent:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
@@ -1798,7 +1813,7 @@ class UnityMeshRenderer extends UnityRenderer:
 			idx += 1
 		return new_node
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Materials"):
 			outdict["_materials_size"] = len(uprops.get("m_Materials"))
@@ -1904,7 +1919,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		get:
 			return keys.get("m_Bones", [])
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
@@ -2179,7 +2194,7 @@ class UnityLight extends UnityBehaviour:
 		get:
 			return keys.get("m_Shadows").get("m_NormalBias", 0.01)
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_CullingMask"):
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
@@ -2199,6 +2214,7 @@ class UnityAudioSource extends UnityBehaviour:
 			audio = AudioStreamPlayer.new()
 		else:
 			audio = AudioStreamPlayer3D.new()
+		audio.name = "AudioSource"
 		assign_object_meta(audio)
 		state.add_child(audio, new_parent, self)
 		return audio
@@ -2256,6 +2272,7 @@ class UnityCamera extends UnityBehaviour:
 		if texref[1] != 0:
 			var rendertex: UnityObject = meta.lookup(texref)
 			var viewport: SubViewport = SubViewport.new()
+			viewport.name = "SubViewport"
 			new_parent.add_child(viewport, true)
 			viewport.owner = state.owner
 			viewport.size = Vector2(
@@ -2269,6 +2286,7 @@ class UnityCamera extends UnityBehaviour:
 			# Godot is always HDR? if keys.get("m_AllowHDR", 0) == 1
 			par = viewport
 		var cam: Camera3D = Camera3D.new()
+		cam.name = "Camera"
 		if keys.get("m_ClearFlags") == 2:
 			var cenv: Environment = Environment.new() if state.env == null else state.env.duplicate()
 			cam.environment = cenv
@@ -2286,7 +2304,7 @@ class UnityCamera extends UnityBehaviour:
 		cam.transform = Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)))
 		return cam
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_CullingMask"):
 			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
@@ -2306,9 +2324,12 @@ class UnityCamera extends UnityBehaviour:
 
 class UnityLightProbeGroup extends UnityComponent:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var i = 0
 		for pos in keys.get("m_SourcePositions", []):
+			i += 1
 			var probe: LightmapProbe = LightmapProbe.new()
-			new_parent.add_child(probe, true)
+			probe.name = "Probe" + str(i)
+			new_parent.add_child(probe)
 			probe.owner = state.owner
 			probe.position = pos
 		return null
@@ -2316,11 +2337,12 @@ class UnityLightProbeGroup extends UnityComponent:
 class UnityReflectionProbe extends UnityBehaviour:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var probe: ReflectionProbe = ReflectionProbe.new()
+		probe.name = "ReflectionProbe"
 		assign_object_meta(probe)
 		state.add_child(probe, new_parent, self)
 		return probe
 
-	func convert_properties(node: Node3D, uprops: Dictionary) -> Dictionary:
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_BoxProjection"):
 			outdict["interior"] = true if uprops.get("m_BoxProjection") else false

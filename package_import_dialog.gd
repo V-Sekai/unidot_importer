@@ -55,11 +55,11 @@ var asset_scenes: Array = [].duplicate()
 var pkg: Object = null # Type unitypackagefile, set in _selected_package
 
 func _init():
-	import_worker.connect("asset_failed", self._asset_failed, [], CONNECT_DEFERRED)
-	import_worker.connect("asset_processing_finished", self._asset_processing_finished, [], CONNECT_DEFERRED)
-	import_worker.connect("asset_processing_started", self._asset_processing_started, [], CONNECT_DEFERRED)
+	import_worker.asset_failed.connect(self._asset_failed, CONNECT_DEFERRED)
+	import_worker.asset_processing_finished.connect(self._asset_processing_finished, CONNECT_DEFERRED)
+	import_worker.asset_processing_started.connect(self._asset_processing_started, CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
-	EditorPlugin.new().get_editor_interface().get_resource_filesystem().connect("sources_changed", self._editor_filesystem_scan_check)
+	EditorPlugin.new().get_editor_interface().get_resource_filesystem().sources_changed.connect(self._editor_filesystem_scan_check)
 
 func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	if ti.is_selectable(0):
@@ -136,7 +136,7 @@ func show_importer() -> void:
 	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
-	file_dialog.connect("file_selected", self._selected_package)
+	file_dialog.file_selected.connect(self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog, true)
 	_show_importer_common()
 
@@ -144,15 +144,15 @@ func _show_importer_common() -> void:
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
-	main_dialog.connect("confirmed", self._asset_tree_window_confirmed)
+	main_dialog.confirmed.connect(self._asset_tree_window_confirmed)
 	# "cancelled" ????
 	main_dialog.add_cancel_button("Hide")
 	main_dialog.add_button("Import and show result", false, "show_result")
-	main_dialog.connect("custom_action", self._asset_tree_window_confirmed_custom)
+	main_dialog.custom_action.connect(self._asset_tree_window_confirmed_custom)
 	var n: Label = main_dialog.get_label()
 	main_dialog_tree = Tree.new()
 	main_dialog_tree.set_column_titles_visible(false)
-	main_dialog_tree.connect("cell_selected", self._cell_selected)
+	main_dialog_tree.cell_selected.connect(self._cell_selected)
 	n.add_sibling(main_dialog_tree)
 	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(main_dialog, true)
 
@@ -167,7 +167,7 @@ func _show_importer_common() -> void:
 	timer.autostart = true
 	timer.process_mode = Timer.TIMER_PROCESS_IDLE
 	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(timer, true)
-	timer.connect("timeout", self._editor_filesystem_scan_tick)
+	timer.timeout.connect(self._editor_filesystem_scan_tick)
 
 	var base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	fail_icon = base_control.get_theme_icon("ImportFail", "EditorIcons")

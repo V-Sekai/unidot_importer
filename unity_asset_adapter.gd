@@ -64,9 +64,6 @@ class AssetHandler:
 		editor_interface = ei
 		return self
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
-		return ""
-
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
 		var path: String = tmpdir + "/" + pkgasset.pathname
 		var data_buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
@@ -93,6 +90,10 @@ class AssetHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		return ASSET_TYPE_UNKNOWN
 
+class DefaultHandler extends AssetHandler:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
+		return ""
+
 class ImageHandler extends AssetHandler:
 	var STUB_PNG_FILE: PackedByteArray = PackedByteArray([])
 	func create_with_constant(stub_file: PackedByteArray):
@@ -100,7 +101,7 @@ class ImageHandler extends AssetHandler:
 		ret.STUB_PNG_FILE = stub_file
 		return ret
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base = OS.get_user_data_dir()
 		var is_png: bool = data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47
 		var output_path: String = ""
@@ -162,7 +163,7 @@ class ImageHandler extends AssetHandler:
 
 class AudioHandler extends AssetHandler:
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -190,7 +191,7 @@ class YamlHandler extends AssetHandler:
 		print("Done with " + path + "/" + pkgasset.guid)
 		return path
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -625,7 +626,7 @@ class FbxHandler extends BaseModelHandler:
 		print("Updating file at " + output_path)
 		return output_path
 
-	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
 		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
@@ -749,7 +750,7 @@ class FbxHandler extends BaseModelHandler:
 		return output_path
 
 class DisabledHandler extends AssetHandler:
-	func preprocess_asset(pkgasset, tmpdir: String, path: String, data_buf: PackedByteArray) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		return "asset_not_supported"
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String) -> String:
@@ -800,7 +801,7 @@ var file_handlers: Dictionary = {
 	"controller": YamlHandler.new(), # Animator Controller
 	"anim": YamlHandler.new(), # Animation... # TODO: This should be by type (.asset), not extension
 	# ALSO: animations can be contained inside other assets, such as controllers. we need to recognize this and extract them.
-	"default": AssetHandler.new()
+	"default": DefaultHandler.new()
 }
 
 func create_temp_dir() -> String:

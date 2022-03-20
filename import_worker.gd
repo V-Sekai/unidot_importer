@@ -77,9 +77,9 @@ func _run_single_item_delayed(tw: ThreadWork):
 	self.call_deferred("_run_single_item", tw)
 
 func _run_single_item(tw: ThreadWork):
-	emit_signal("asset_processing_started", tw)
+	asset_processing_started.emit(tw)
 	tw.output_path = asset_adapter.preprocess_asset(tw.asset, tw.tmpdir)
-	emit_signal("asset_processing_finished", tw)
+	asset_processing_finished.emit(tw)
 
 # Run here and exit.
 # The argument is the userdata passed from start().
