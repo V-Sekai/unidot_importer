@@ -24,6 +24,7 @@ class ParseState:
 	var metaobj: Resource
 	var source_file_path: String
 	var external_objects_by_id: Dictionary = {}.duplicate() # fileId -> UnityRef Array
+	var external_objects_by_type_name: Dictionary = {}.duplicate() # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate() # for Extract Legacy Materials / By Base Texture Name
 	
 	var saved_materials_by_name: Dictionary = {}.duplicate()
@@ -305,15 +306,20 @@ class ParseState:
 						elif not extractLegacyMaterials and fileId == 0:
 							push_error("Missing fileId for Material " + str(mat_name))
 						else:
+							var new_mat: Material = null
 							if external_objects_by_id.has(fileId):
-								mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
-								print("External material object " + str(fileId) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
+								new_mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
+							elif external_objects_by_type_name.get("Material", {}).has(sanitize_unique_name(mat_name)):
+								new_mat = metaobj.get_godot_resource(external_objects_by_type_name.get("Material").get(sanitize_unique_name(mat_name)))
+							if new_mat != null:
+								mat = new_mat
+								print("External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
 							elif extractLegacyMaterials:
 								var legacy_material_name: String = mat_name
 								if legacy_material_name_setting == 0:
 									legacy_material_name = material_to_texture_name.get(mat_name, mat_name)
 								if legacy_material_name_setting == 2:
-									legacy_material_name = source_file_path.get_basename() + "-" + mat_name
+									legacy_material_name = source_file_path.get_file().get_basename() + "-" + mat_name
 
 								print("Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
 								var d = Directory.new()
@@ -321,22 +327,26 @@ class ParseState:
 								mat = null
 								if materialSearch == 0:
 									# only current dir
-									mat = load(get_materials_path(legacy_material_name))
+									legacy_material_name = get_materials_path(legacy_material_name)
+									mat = load(legacy_material_name)
 								elif materialSearch >= 1:
 									# same dir and parents
 									var mat_paths: Array = get_parent_materials_paths(legacy_material_name)
 									for mp in mat_paths:
 										if d.file_exists(mp):
-											mat = load(get_materials_path(legacy_material_name))
+											legacy_material_name = mp
+											mat = load(mp)
 											if mat != null:
 												break
 									if mat == null and materialSearch >= 2:
 										# and material in the whole project with this name!!
 										for pathname in asset_database.path_to_meta:
 											if pathname.get_file() == legacy_material_name + ".material" or pathname.get_file() == mat_name + ".mat.tres" or pathname.get_file() == mat_name + ".mat.res":
-												mat = load(get_materials_path(legacy_material_name))
+												legacy_material_name = pathname
+												mat = load(pathname)
 												break
 								if mat == null:
+									print("Material " + str(legacy_material_name) + " was not found. using default")
 									mat = default_material
 							else:
 								var respath: String = get_resource_path(mat_name, ".material")
@@ -596,6 +606,7 @@ func _post_import(p_scene: Node) -> Object:
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
+	ps.external_objects_by_type_name = external_objects
 	var mesh_count: int = ps.count_meshes(p_scene)
 
 	var internalIdMapping: Array = []
@@ -622,7 +633,6 @@ func _post_import(p_scene: Node) -> Object:
 	for id_mapping in internalIdMapping:
 		var og_obj_name: String = id_mapping.get("second")
 		for utypestr in id_mapping.get("first"):
-			print("first for " + str(id_mapping) + " is " + str(utypestr))
 			var fileId: int = int(id_mapping.get("first").get(utypestr))
 			var utype: int = int(utypestr)
 			var obj_name: String = og_obj_name
