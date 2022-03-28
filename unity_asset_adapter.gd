@@ -103,19 +103,40 @@ class ImageHandler extends AssetHandler:
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base = OS.get_user_data_dir()
-		var is_png: bool = data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47
-		var output_path: String = ""
-		if not is_png and path.to_lower().ends_with(".png"):
-			print("I am a JPG pretending to be a PNG " + str(path))
-			output_path = path.get_basename() + ".jpg"
-		elif is_png and not path.to_lower().ends_with(".png"):
-			print("I am a PNG pretending to be a JPG " + str(path))
-			output_path = path.get_basename() + ".png"
-		var outfile: File = File.new()
-		var err = outfile.open(output_path, File.WRITE)
-		outfile.store_buffer(data_buf)
-		outfile.close()
-		return output_path
+		var is_tiff: bool = ((data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00) or 
+				(data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A))
+		var is_png: bool = (data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47) or is_tiff
+		var full_output_path: String = path
+		if not is_png and path.get_extension().to_lower() == "png":
+			print("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
+			full_output_path = full_output_path.get_basename() + ".jpg"
+		elif is_png and path.get_extension().to_lower() != "png":
+			print("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
+			full_output_path = full_output_path.get_basename() + ".png"
+		print("PREPROCESS_IMAGE " + str(is_tiff) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
+		if is_tiff:
+			var outfile: File = File.new()
+			var err = outfile.open(full_output_path + ".tif", File.WRITE)
+			outfile.store_buffer(data_buf)
+			outfile.close()
+			var stdout: Array = [].duplicate()
+			var d = Directory.new()
+			d.open("res://")
+			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("convert.exe")
+			if addon_path.begins_with("res://"):
+				if not d.file_exists(addon_path):
+					push_warning("Not converting tiff to png because convert.exe is not present.")
+					return ""
+				addon_path = addon_path.substr(6)
+			var ret = OS.execute(addon_path, [
+				full_output_path + ".tif", full_output_path], stdout)
+			d.remove(full_output_path + ".tif")
+		else:
+			var outfile: File = File.new()
+			var err = outfile.open(full_output_path, File.WRITE)
+			outfile.store_buffer(data_buf)
+			outfile.close()
+		return full_output_path
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_TEXTURE
@@ -779,6 +800,8 @@ var file_handlers: Dictionary = {
 	"exr": image_handler,
 	"hdr": image_handler,
 	"dds": image_handler,
+	"tif": image_handler,
+	"tiff": image_handler,
 	"webp": image_handler,
 	"svg": image_handler,
 	"svgz": image_handler,
