@@ -936,19 +936,16 @@ class UnityGameObject extends UnityObject:
 
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
-			state.prefab_state.cur_gameobject_name_map = {}
-			state.prefab_state.cur_prefab_gameobject_name_map = {}
 			var child_transform: UnityTransform = meta.lookup(child_ref)
 			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
-			if not state.prefab_state.cur_gameobject_name_map.is_empty():
-				name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
-			if not state.prefab_state.cur_prefab_gameobject_name_map.is_empty():
-				prefab_name_map[child_transform.gameObject.name] = state.prefab_state.cur_prefab_gameobject_name_map
 			if prefab_id != 0:
 				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
+			else:
+				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
+				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
-		state.prefab_state.cur_gameobject_name_map = name_map
-		state.prefab_state.cur_prefab_gameobject_name_map = prefab_name_map
+		state.prefab_state.gameobject_name_map[self.fileID] = name_map
+		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
 
 	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		var state: Object = xstate
@@ -1015,19 +1012,16 @@ class UnityGameObject extends UnityObject:
 
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
-			state.prefab_state.cur_gameobject_name_map = {}
-			state.prefab_state.cur_prefab_gameobject_name_map = {}
 			var child_transform: UnityTransform = meta.lookup(child_ref)
 			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
-			if not state.prefab_state.cur_gameobject_name_map.is_empty():
-				name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
-			if not state.prefab_state.cur_prefab_gameobject_name_map.is_empty():
-				prefab_name_map[child_transform.gameObject.name] = state.prefab_state.cur_prefab_gameobject_name_map
 			if prefab_id != 0:
 				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
+			else:
+				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
+				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
-		state.prefab_state.cur_gameobject_name_map = name_map
-		state.prefab_state.cur_prefab_gameobject_name_map = prefab_name_map
+		state.prefab_state.gameobject_name_map[self.fileID] = name_map
+		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
 		return ret
 
 	var components: Variant: # Array:
@@ -1466,11 +1460,9 @@ class UnityPrefabInstance extends UnityGameObject:
 				if child_transform.gameObject != null:
 					print("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
-				state.prefab_state.cur_gameobject_name_map = {}
 				var prefab_id: int = recurse_to_child_transform(state, child_transform, attachment)
 				if child_transform.gameObject != null:
-					if not state.prefab_state.cur_gameobject_name_map.is_empty():
-						name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
+					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				if prefab_id != 0:
 					if gameobject_asset != null:
 						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_id)
@@ -1498,9 +1490,8 @@ class UnityPrefabInstance extends UnityGameObject:
 		#for mod in self.modifications:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
-		state.prefab_state.cur_gameobject_name_map = {}
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
-		state.prefab_state.cur_prefab_gameobject_name_map = meta.remap_prefab_gameobject_names({source_prefab: target_prefab_meta}, self.fileID, pgntfac)
+		state.prefab_state.prefab_gameobject_name_map[self.fileID ^ self.meta.prefab_main_gameobject_id] = meta.remap_prefab_gameobject_names({source_prefab: target_prefab_meta}, self.fileID, pgntfac)
 		return instanced_scene
 
 	func get_transform() -> Variant: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
@@ -2386,8 +2377,10 @@ class UnityCamera extends UnityBehaviour:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var par: Node = new_parent
 		var texref: Array = keys.get("m_TargetTexture", [null, 0, null, null])
+		var rendertex: UnityObject = null
 		if texref[1] != 0:
-			var rendertex: UnityObject = meta.lookup(texref)
+			rendertex = meta.lookup(texref) # FIXME: This might not find separate assets.
+		if rendertex != null:
 			var viewport: SubViewport = SubViewport.new()
 			viewport.name = "SubViewport"
 			new_parent.add_child(viewport, true)
@@ -2578,10 +2571,10 @@ class UnityModelImporter extends UnityAssetImporter:
 
 	var meshes_light_baking: int:
 		get:
-			# Godot uses: Disabled,Dynamic,Static,StaticLightmaps
-			# 2 = Static (defauylt setting)
-			# 3 = StaticLightmaps
-			return keys.get("meshes").get("generateSecondaryUV", 0) + 2
+			# Godot uses: Disabled,Static,StaticLightmaps,Dynamic
+			# 1 = Static (defauylt setting)
+			# 2 = StaticLightmaps
+			return keys.get("meshes").get("generateSecondaryUV", 0) + 1
 
 	# The following parameters have special meaning when importing FBX files and do not map one-to-one with godot importer.
 	var useFileScale: bool:
@@ -2595,6 +2588,11 @@ class UnityModelImporter extends UnityAssetImporter:
 	var globalScale: float:
 		get:
 			return keys.get("meshes").get("globalScale", 1)
+
+	var ensure_tangents: bool:
+		get:
+			var importTangents: int = keys.get("tangentSpace", {}).get("tangentImportMode", 3)
+			return importTangents != 4 and importTangents != 0
 
 	var animation_import: bool:
 		# legacyGenerateAnimations = 4 ??

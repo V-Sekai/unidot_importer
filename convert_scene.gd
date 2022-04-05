@@ -230,8 +230,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
-	var name_map = {}
-	var prefab_name_map = {}
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
@@ -246,17 +244,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
 				scene_contents.add_child(skel.godot_skeleton, true)
 				skel.owner = scene_contents
-			node_state.prefab_state.cur_gameobject_name_map = {}
 			asset.create_skeleton_bone(node_state, skel)
-			if is_prefab:
-				name_map = node_state.prefab_state.cur_gameobject_name_map
-				prefab_name_map = node_state.prefab_state.cur_prefab_gameobject_name_map
-			else:
-				name_map[asset.name] = node_state.prefab_state.cur_gameobject_name_map
-				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
 		else:
 			# print(str(asset) + " position " + str(asset.transform.godot_transform))
-			node_state.prefab_state.cur_gameobject_name_map = {}
 			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
 			if scene_contents == null:
 				assert(is_prefab)
@@ -267,18 +257,11 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					push_warning("May be a prefab with multiple roots, or hit unusual case.")
 				pass
 				# assert(not is_prefab)
-			if is_prefab:
-				name_map = node_state.prefab_state.cur_gameobject_name_map
-				prefab_name_map = node_state.prefab_state.cur_prefab_gameobject_name_map
-			elif asset.type == "PrefabInstance":
+			if asset.type == "PrefabInstance":
 				node_state.add_prefab_to_parent_transform(0, asset.fileID)
-				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
-			else:
-				name_map[asset.name] = node_state.prefab_state.cur_gameobject_name_map
-				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
 
 	node_state.env = env
-	node_state.set_main_name_map(name_map, prefab_name_map)
+	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
 
 	# scene_contents = node_state.owner
 	if scene_contents == null:

@@ -343,6 +343,7 @@ class BaseModelHandler extends AssetHandler:
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
+		cfile.set_value("params", "meshes/ensure_tangents", importer.ensure_tangents)
 		cfile.set_value("params", "meshes/create_shadow_meshes", false) # Until visual artifacts with shadow meshes get fixed
 		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value("params", "nodes/root_name", "Root Scene")

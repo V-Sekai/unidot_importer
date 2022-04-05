@@ -131,13 +131,12 @@ func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, ori
 			ret[child] = children_map[child]
 	# This one applies to both prefabs and non-prefabs
 	for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
-		var target_prefab_meta: Dictionary
 		if not prefab_metas.has(target_prefab_id):
 			assert(allow_init_meta)
 			prefab_metas[target_prefab_id] = lookup_meta_by_guid_noinit(self.get_database(), self.prefab_id_to_guid.get(target_prefab_id))
 			if prefab_metas[target_prefab_id].get_database() == null:
 				prefab_metas[target_prefab_id].initialize(self.get_database())
-		target_prefab_meta = prefab_metas[target_prefab_id]
+		var target_prefab_meta: Object = prefab_metas[target_prefab_id]
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
 		var prefab_name = gameobject_renames[target_prefab_id ^ pgntfac[1]]
 		ret[prefab_name] = self.remap_prefab_gameobject_names(prefab_metas, target_prefab_id, pgntfac)

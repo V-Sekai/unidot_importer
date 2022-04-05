@@ -579,14 +579,17 @@ class ParseState:
 			return goname_to_unity_name[sanitized]
 		return node_or_bone_name
 
-	func build_name_map_recursive(skinned_parents: Dictionary, node: Node, p_skel_bone=-1, attachments_by_bone_name={}, from_skinned_parent=false):
-		var name_map = {}
+	var all_name_map: Dictionary = {}
+	func build_name_map_recursive(skinned_parents: Dictionary, node: Node, p_skel_bone=-1, attachments_by_bone_name={}, from_skinned_parent=false) -> int:
 		var children_to_recurse = []
+		var name_map = {}
 		if node is Skeleton3D:
 			var skel_bone: int = p_skel_bone
 			assert(skel_bone != -1)
 			for child_bone in node.get_bone_children(skel_bone):
-				name_map[lookup_unity_name(node.get_bone_name(child_bone))] = self.build_name_map_recursive(skinned_parents, node, child_bone, attachments_by_bone_name)
+				var new_id = self.build_name_map_recursive(skinned_parents, node, child_bone, attachments_by_bone_name)
+				if new_id != 0:
+					name_map[lookup_unity_name(node.get_bone_name(child_bone))] = new_id
 			var bone_name = node.get_bone_name(skel_bone)
 			bone_name = self.sanitize_bone_name(bone_name)
 			var fileId_go: int = get_obj_id("GameObject", bone_name)
@@ -620,10 +623,15 @@ class ParseState:
 									new_attachments_by_bone_name[bn] = [].duplicate()
 								new_attachments_by_bone_name[bn].append(possible_attach)
 						for child_child_bone in child.get_parentless_bones():
-							name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name)
+							var new_id = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name)
+							if new_id != 0:
+								name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = new_id
 					else:
-						name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child)
-			return name_map
+						var new_id = self.build_name_map_recursive(skinned_parents, child)
+						if new_id != 0:
+							name_map[self.lookup_unity_name(child.name)] = new_id
+			self.all_name_map[fileId_go] = name_map
+			return fileId_go
 		else:
 			var node_name = self.sanitize_bone_name(node.name)
 			var fileId_go: int = get_obj_id("GameObject", node_name)
@@ -632,7 +640,7 @@ class ParseState:
 			name_map[4] = fileId_trans
 			if node is MeshInstance3D:
 				if node.skin != null and not skinned_parents.is_empty() and not from_skinned_parent:
-					return # We already recursed into this skinned mesh.
+					return 0 # We already recursed into this skinned mesh.
 				if has_obj_id("SkinnedMeshRenderer", node_name): #child.get_blend_shape_count() > 0:
 					var fileId_smr: int = get_obj_id("SkinnedMeshRenderer", node_name)
 					name_map[137] = fileId_smr
@@ -657,12 +665,19 @@ class ParseState:
 								new_attachments_by_bone_name[bn] = [].duplicate()
 							new_attachments_by_bone_name[bn].append(possible_attach)
 					for child_child_bone in child.get_parentless_bones():
-						name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name, false)
+						var new_id = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name, false)
+						if new_id != 0:
+							name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = new_id
 				else:
-					name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child)
+					var new_id = self.build_name_map_recursive(skinned_parents, child)
+					if new_id != 0:
+						name_map[self.lookup_unity_name(child.name)] = new_id
 			for child in skinned_parents.get(node.name, {}):
-				name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child, -1, {}, true)
-			return name_map
+				var new_id = self.build_name_map_recursive(skinned_parents, child, -1, {}, true)
+				if new_id != 0:
+					name_map[self.lookup_unity_name(child.name)] = new_id
+			self.all_name_map[fileId_go] = name_map
+			return fileId_go
 
 
 func _post_import(p_scene: Node) -> Object:
@@ -848,17 +863,22 @@ func _post_import(p_scene: Node) -> Object:
 				else:
 					print("Missing skinned " + str(skinned_name))
 			skinned_parent_to_node[par] = node_list
-	var name_map = ps.build_name_map_recursive(skinned_parent_to_node, ps.toplevel_node)
+	var root_go_id = ps.build_name_map_recursive(skinned_parent_to_node, ps.toplevel_node)
+	for child in skinned_parents.get("", {}):
+		ps.build_name_map_recursive(skinned_parent_to_node, child, -1, {}, true)
 	if ps.use_scene_root and new_toplevel == null:
-		for child in name_map:
+		for child in ps.all_name_map[root_go_id]:
 			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
-				name_map = name_map[child]
+				root_go_id = ps.all_name_map[root_go_id][child]
+				assert(root_go_id == ps.all_name_map[root_go_id][1])
 				break
 	#print(ps.goname_to_unity_name)
-	name_map[95] = animator_fileid
+	metaobj.prefab_main_gameobject_id = ps.all_name_map[root_go_id][1]
+	metaobj.prefab_main_transform_id = ps.all_name_map[root_go_id][4]
+	ps.all_name_map[root_go_id][95] = animator_fileid
 	#TODO: loop recursively through scene (including skeleton bones!) and add goname_to_unity_name[each thing] into name_map then set name
-	metaobj.gameobject_name_to_fileid_and_children = name_map
-	metaobj.prefab_gameobject_name_to_fileid_and_children = name_map
+	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
+	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map
 
 	asset_database.save()
 
@@ -872,3 +892,108 @@ func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary)
 		if node.skin != null:
 			name_to_node_dict[node.name] = node
 	return name_to_node_dict
+
+static func unsrs(n: int, shift: int) -> int:
+	return ((n >> 1) & 0x7fffffffffffffff) >> (shift - 1)
+
+func generate_object_hash(dupe_map: Dictionary, type: String, obj_path: String) -> int:
+	var t = "Type:" + type + "->" + obj_path
+	dupe_map[t] = dupe_map.get(t, -1) + 1
+	t += str(dupe_map[t])
+	return xxHash64(t.to_utf8_buffer())
+
+static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
+	# https://github.com/Jason3S/xxhash
+	# MIT License
+	#
+	# Copyright (c) 2019 Jason Dent
+	#
+	# Permission is hereby granted, free of charge, to any person obtaining a copy
+	# of this software and associated documentation files (the "Software"), to deal
+	# in the Software without restriction, including without limitation the rights
+	# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+	# copies of the Software, and to permit persons to whom the Software is
+	# furnished to do so, subject to the following conditions:
+	#
+	# The above copyright notice and this permission notice shall be included in all
+	# copies or substantial portions of the Software.
+	#
+	# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+	# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+	# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+	# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+	# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+	# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+	# SOFTWARE.
+	#
+	# Parts based on https://github.com/Cyan4973/xxHash
+	# xxHash Library - Copyright (c) 2012-2021 Yann Collet (BSD 2-clause)
+
+	var b: PackedByteArray = buffer
+	var b32: PackedInt32Array = buffer.to_int32_array()
+	var b64: PackedInt64Array = buffer.to_int64_array()
+
+	const PRIME64_1 = -7046029288634856825
+	const PRIME64_2 = -4417276706812531889
+	const PRIME64_3 = 1609587929392839161
+	const PRIME64_4 = -8796714831421723037
+	const PRIME64_5 = 2870177450012600261
+	var acc: int = (seed + PRIME64_5)
+	var offset: int = 0
+
+	if len(b) >= 16:
+		var accN: PackedInt64Array = PackedInt64Array([
+			seed + PRIME64_1 + PRIME64_2,
+			seed + PRIME64_2,
+			seed + 0,
+			seed - PRIME64_1,
+		])
+		var limit: int = len(b) - 16
+		var lane: int = 0
+		offset = 0
+		while (offset & 0xffffff70) <= limit:
+			accN[lane] += b64[offset / 8] * PRIME64_2
+			accN[lane] = ((accN[lane] << 31) | unsrs(accN[lane], 33)) * PRIME64_1
+			offset += 8
+			lane = (lane + 1) & 3
+		acc = (((accN[0] << 1) | unsrs(accN[0], 63)) +
+				((accN[1] << 7) | unsrs(accN[1], 57)) +
+				((accN[2] << 12) | unsrs(accN[2], 52)) +
+				((accN[3] << 18) | unsrs(accN[3], 46)))
+		for i in range(4):
+			accN[i] = accN[i] * PRIME64_2
+			accN[i] = ((accN[i] << 31) | unsrs(accN[i], 33)) * PRIME64_1
+			acc = acc ^ accN[i]
+			acc = acc * PRIME64_1 + PRIME64_4
+
+	acc = acc + len(buffer)
+	var limit = len(buffer) - 8
+	while offset <= limit:
+		var k1: int = b64[offset/8] * PRIME64_2
+		acc ^= ((k1 << 31) | unsrs(k1, 33)) * PRIME64_1
+		acc = ((acc << 27) | unsrs(acc, 37)) * PRIME64_1 + PRIME64_4
+		offset += 8
+
+	limit = len(buffer) - 4
+	if offset <= limit:
+		acc = acc ^ (b32[offset/4] * PRIME64_1)
+		acc = ((acc << 23) | unsrs(acc, 41)) * PRIME64_2 + PRIME64_3
+		offset += 4
+
+	while offset < len(b):
+		var lane: int = b[offset]
+		acc = acc ^ (lane * PRIME64_5)
+		acc = ((acc << 11) | unsrs(acc, 53)) * PRIME64_1
+		offset += 1
+
+	acc = acc ^ unsrs(acc, 33)
+	acc = acc * PRIME64_2
+	acc = acc ^ unsrs(acc, 29)
+	acc = acc * PRIME64_3
+	acc = acc ^ unsrs(acc, 32)
+	return acc
+
+func test_xxHash64():
+	assert(xxHash64('a'.to_ascii_buffer()) == 3104179880475896308)
+	assert(xxHash64('asdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfgh'.to_ascii_buffer()) == -3292477735350538661)
+	assert(xxHash64(PackedByteArray().duplicate()) == -1205034819632174695)

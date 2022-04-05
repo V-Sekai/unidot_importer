@@ -27,8 +27,8 @@ class PrefabState extends RefCounted:
 	var skelleys_by_parented_prefab: Dictionary = {}.duplicate()
 
 	var non_stripped_prefab_references: Dictionary = {}.duplicate() # some legacy 5.6 thing I think
-	var cur_gameobject_name_map: Dictionary = {} # Just used for holding data while returning
-	var cur_prefab_gameobject_name_map: Dictionary = {} # Just used for holding data while returning
+	var gameobject_name_map: Dictionary = {}.duplicate()
+	var prefab_gameobject_name_map: Dictionary = {}.duplicate()
 
 	# Dictionary from parent_transform uniq_key -> array of UnityPrefabInstance
 	var prefab_parents: Dictionary = {}.duplicate()
@@ -421,7 +421,13 @@ func initialize_skelleys(assets: Array) -> Array:
 			if asset.is_stripped:
 				# FIXME: We may need to later pull out the "m_Bones" from the modified components??
 				continue
-			var bones: Array = asset.bones
+			var orig_bones: Array = asset.bones
+			var bones: Array = []
+			print("Importing model " + asset.meta.guid + " at " + asset.meta.path + ": " + str(orig_bones))
+			for b in orig_bones:
+				if asset.meta.lookup(b) == null:
+					continue
+				bones.append(b)
 			if bones.is_empty():
 				# Common if MeshRenderer is upgraded to SkinnedMeshRenderer, e.g. by the user.
 				# For example, this happens when adding a Cloth component.
@@ -430,6 +436,8 @@ func initialize_skelleys(assets: Array) -> Array:
 				continue
 			var bone0_obj: RefCounted = asset.meta.lookup(bones[0]) # UnityTransform
 			# TODO: what about meshes with bones but without skin? Can this even happen?
+			if bone0_obj == null:
+				print("ERROR: Importing model " + asset.meta.guid + " at " + asset.meta.path + ": " + str(bones[0]) + " is null")
 			var this_id: int = num_skels
 			var this_skelley: Skelley = null
 			if skel_ids.has(bone0_obj.uniq_key):
@@ -528,7 +536,8 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				printerr("Skeleton child of prefab spans multiple Skeleton objects in source prefab.")
 			fileid_to_skeleton_nodepath[bone.fileID] = target_skelley
 			fileid_to_bone_name[bone.fileID] = target_skel_bone
-			bone.skeleton_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
+			if skelley.godot_skeleton != null:
+				bone.skeleton_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
 			# if fileid_to_skeleton_nodepath.has(source_obj_ref[1]):
 			# 	if fileid_to_skeleton_nodepath.get(source_obj_ref[1]) != target_skelley:
 			# 		printerr("Skeleton spans multiple ")
