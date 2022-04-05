@@ -2,6 +2,7 @@
 extends RefCounted
 
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
+const monoscript: GDScript = preload("./monoscript.gd")
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -109,6 +110,8 @@ class UnityObject extends RefCounted:
 			return get_name()
 
 	func get_name() -> String:
+		if fileID == meta.main_object_id:
+			return meta.get_main_object_name()
 		return str(keys.get("m_Name","NO_NAME:"+uniq_key))
 
 	var toplevel: bool:
@@ -410,6 +413,15 @@ class UnityObject extends RefCounted:
 				# Might have source object=0 if the object is a dummy / broken prefab?
 				pass # assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
 			return (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+
+	func get_component_key() -> Variant:
+		if self.utype == 114:
+			return monoscript.convert_unityref_to_npidentifier(self.keys["m_Script"])
+		return self.utype
+
+	var children_refs: Array:
+		get:
+			return keys.get("m_Children")
 
 
 ### ================ ASSET TYPES ================
@@ -787,6 +799,35 @@ class UnityAnimationClip extends UnityObject:
 	func get_godot_extension() -> String:
 		return ".anim.tres"
 
+	#func create_godot_resource() -> Animation:
+		# We will try our best to infer this data, but we get better results
+		# if created relative to a particular node.
+	#	return create_animation_clip_at_node(null, null)
+
+	#func create_animation_clip_at_node(root_node: UnityGameObject, animator: UnityAnimator) -> Animation:
+	#	var anim: Animation = Animation.new()
+		# m_AnimationClipSettings[m_StartTime,m_StopTime,m_LoopTime,
+		# m_KeepOriginPositionY/XZ/Orientation,m_HeightFromFeet,m_CycleOffset],
+		# m_Bounds[m_Center,m_Extent],
+		# m_ClipBindingConstant[genericBindings:Array[attribute:hash,customType:20,isPPtrCurve:0,path:hash,script:MonoScript],pptrCurveMapping[??]]
+		# m_Compressed:[0,1], m_CompressedRotationCurves, m_Legacy, m_SampleRate (60)
+		# m_EditorCurves, m_EulerEditorCurves
+		# m_EulerCurves, m_FloatCurves, m_PositionCruves, m_PPtrCurves, m_RotationCurves, m_ScaleCurves
+	#	for track in keys["m_FloatCurves"]:
+	#		var attr: String = track["attribute"]
+	#		var path: String = track["path"]
+	#		var classID: int = track["classID"]
+	#		if classID == 95:
+	#			# Humanoid or Animator float parameters
+	#			pass
+	#		elif classID == 137 and attr.begins_with("blendShape."):
+	#			var bstrack = anim.add_track(Animation.TYPE_BLEND_SHAPE)
+	#			anim.track_set_path(bstrack
+	#		var curve = track["curve"]
+	#	anim.add_track()
+	#	return null
+
+
 class UnityTexture2D extends UnityTexture:
 	pass
 
@@ -812,17 +853,19 @@ class UnityCustomRenderTexture extends UnityRenderTexture:
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
 
-	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D):
+	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> int:
 		if child_transform.type == "PrefabInstance":
 			# PrefabInstance child of stripped Transform part of another PrefabInstance
 			var prefab_instance: UnityPrefabInstance = child_transform
 			prefab_instance.create_godot_node(state, new_parent)
+			return prefab_instance.fileID
 		elif child_transform.is_prefab_reference:
 			# PrefabInstance child of ordinary Transform
 			if not child_transform.is_stripped:
 				print("Expected a stripped transform for prefab root as child of transform")
 			var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
 			prefab_instance.create_godot_node(state, new_parent)
+			return prefab_instance.fileID
 		else:
 			if child_transform.is_stripped:
 				push_error("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
@@ -837,6 +880,7 @@ class UnityGameObject extends UnityObject:
 				child_game_object.create_skeleton_bone(state, new_skelley)
 			else:
 				child_game_object.create_godot_node(state, new_parent)
+			return 0
 
 	func create_skeleton_bone(xstate: RefCounted, skelley: RefCounted): # SceneNodeState, Skelley
 		var state: Object = xstate
@@ -847,6 +891,10 @@ class UnityGameObject extends UnityObject:
 		var skeleton_bone_name: String = godot_skeleton.get_bone_name(skeleton_bone_index)
 		var ret: Node3D = null
 		var rigidbody = GetComponent("Rigidbody")
+		var name_map = {}
+		name_map[1] = self.fileID
+		name_map[4] = transform.fileID
+		name_map[transform.utype] = transform.fileID # RectTransform may also point to this.
 		if rigidbody != null:
 			ret = rigidbody.create_physical_bone(state, godot_skeleton, skeleton_bone_name)
 			rigidbody.configure_node(ret)
@@ -882,10 +930,25 @@ class UnityGameObject extends UnityObject:
 				var component = meta.lookup(component_ref.get("component"))
 				var tmp = component.create_godot_node(state, ret)
 				component.configure_node(tmp)
+				var component_key = component.get_component_key()
+				if not name_map.has(component_key):
+					name_map[component_key] = component.fileID
 
+		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
+			state.prefab_state.cur_gameobject_name_map = {}
+			state.prefab_state.cur_prefab_gameobject_name_map = {}
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			recurse_to_child_transform(state, child_transform, ret)
+			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
+			if not state.prefab_state.cur_gameobject_name_map.is_empty():
+				name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
+			if not state.prefab_state.cur_prefab_gameobject_name_map.is_empty():
+				prefab_name_map[child_transform.gameObject.name] = state.prefab_state.cur_prefab_gameobject_name_map
+			if prefab_id != 0:
+				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
+
+		state.prefab_state.cur_gameobject_name_map = name_map
+		state.prefab_state.cur_prefab_gameobject_name_map = prefab_name_map
 
 	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		var state: Object = xstate
@@ -894,6 +957,10 @@ class UnityGameObject extends UnityObject:
 		var has_collider: bool = false
 		var extra_fileID: Array = [self]
 		var transform: UnityTransform = self.transform
+		var name_map = {}
+		name_map[1] = self.fileID
+		name_map[4] = transform.fileID
+		name_map[transform.utype] = transform.fileID # RectTransform may also point to this.
 
 		for component_ref in components:
 			var component = meta.lookup(component_ref.get("component"))
@@ -934,6 +1001,9 @@ class UnityGameObject extends UnityObject:
 				var component = meta.lookup(component_ref.get("component"))
 				var tmp = component.create_godot_node(state, ret)
 				component.configure_node(tmp)
+				var component_key = component.get_component_key()
+				if not name_map.has(component_key):
+					name_map[component_key] = component.fileID
 
 		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 		for new_skelley in list_of_skelleys:
@@ -943,10 +1013,21 @@ class UnityGameObject extends UnityObject:
 				ret.add_child(new_skelley.godot_skeleton, true)
 				new_skelley.godot_skeleton.owner = state.owner
 
+		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
+			state.prefab_state.cur_gameobject_name_map = {}
+			state.prefab_state.cur_prefab_gameobject_name_map = {}
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			recurse_to_child_transform(state, child_transform, ret)
+			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
+			if not state.prefab_state.cur_gameobject_name_map.is_empty():
+				name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
+			if not state.prefab_state.cur_prefab_gameobject_name_map.is_empty():
+				prefab_name_map[child_transform.gameObject.name] = state.prefab_state.cur_prefab_gameobject_name_map
+			if prefab_id != 0:
+				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
 
+		state.prefab_state.cur_gameobject_name_map = name_map
+		state.prefab_state.cur_prefab_gameobject_name_map = prefab_name_map
 		return ret
 
 	var components: Variant: # Array:
@@ -1048,6 +1129,24 @@ class UnityPrefabInstance extends UnityGameObject:
 		state.owner.set_editable_instance(instanced_scene, true)
 		return instanced_scene
 
+	func get_name() -> String:
+		# The default name of a prefab instance will always be the filename, regardless of m_Name.
+		# But it can be overridden.
+		var source_prefab_meta = meta.lookup_meta(self.source_prefab)
+		var go_id = 400000
+		if source_prefab_meta != null:
+			go_id = source_prefab_meta.prefab_main_gameobject_id
+		else:
+			print("During prefab name lookup, ailed to lookup meta from " + str(self.uniq_key) + " for source prefab " + str(self.source_prefab))
+		for mod in modifications:
+			var property_key: String = mod.get("propertyPath", "")
+			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
+			var value: String = mod.get("value", "")
+			if property_key == "m_Name" and source_obj_ref[1] == go_id:
+				print("Found overridden m_Name: Mod is " + str(mod))
+				return value
+		return source_prefab_meta.get_main_object_name()
+
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
 	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
@@ -1109,7 +1208,9 @@ class UnityPrefabInstance extends UnityGameObject:
 		print(str(target_prefab_meta.fileid_to_skeleton_bone))
 		print(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
 		print(" ------------")
-
+#				var component_key = component.get_component_key()
+#				if not name_map.has(component_key):
+#					name_map[component_key] = component.fileID
 		var fileID_to_keys = {}.duplicate()
 		var nodepath_to_first_virtual_object = {}.duplicate()
 		var nodepath_to_keys = {}.duplicate()
@@ -1155,6 +1256,9 @@ class UnityPrefabInstance extends UnityGameObject:
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
 			print("XXXd " + str(target_prefab_meta.guid) +"/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
+			if uprops.has("m_Name"):
+				var m_Name: String = uprops["m_Name"]
+				state.add_prefab_rename(fileID, m_Name)
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
@@ -1301,11 +1405,16 @@ class UnityPrefabInstance extends UnityGameObject:
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				if component.type == "MeshFilter":
 					gameobject_asset.meshFilter = component
+			var comp_map = {}
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				var tmp = component.create_godot_node(state, attachment)
 				component.configure_node(tmp)
+				var ckey = component.get_component_key()
+				if not comp_map.has(ckey):
+					comp_map[ckey] = component.fileID
 			gameobject_fileid_to_body[gameobject_asset.fileID] = state.body
 			state.body = orig_state_body
+			state.add_component_map_to_prefabbed_gameobject(gameobject_asset.fileID, comp_map)
 
 		# And now for the analogous code to process stripped Transforms.
 		for transform_asset in ps.transforms_by_parented_prefab.get(self.fileID, {}).values():
@@ -1352,11 +1461,20 @@ class UnityPrefabInstance extends UnityGameObject:
 				attachment.add_child(new_skelley.godot_skeleton, true)
 				new_skelley.godot_skeleton.owner = state.owner
 
+			var name_map = {}
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
 				if child_transform.gameObject != null:
 					print("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
-				recurse_to_child_transform(state, child_transform, attachment)
+				state.prefab_state.cur_gameobject_name_map = {}
+				var prefab_id: int = recurse_to_child_transform(state, child_transform, attachment)
+				if child_transform.gameObject != null:
+					if not state.prefab_state.cur_gameobject_name_map.is_empty():
+						name_map[child_transform.gameObject.name] = state.prefab_state.cur_gameobject_name_map
+				if prefab_id != 0:
+					if gameobject_asset != null:
+						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_id)
+			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
 
 			state.body = orig_state_body
 
@@ -1380,6 +1498,9 @@ class UnityPrefabInstance extends UnityGameObject:
 		#for mod in self.modifications:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
+		state.prefab_state.cur_gameobject_name_map = {}
+		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
+		state.prefab_state.cur_prefab_gameobject_name_map = meta.remap_prefab_gameobject_names({source_prefab: target_prefab_meta}, self.fileID, pgntfac)
 		return instanced_scene
 
 	func get_transform() -> Variant: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
@@ -1546,10 +1667,6 @@ class UnityTransform extends UnityComponent:
 				push_error("Attempted to access the parent of a stripped " + type + " " + uniq_key)
 				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
 			return meta.lookup(parent_ref)
-
-	var children_refs: Array:
-		get:
-			return keys.get("m_Children")
 
 
 class UnityRectTransform extends UnityTransform:
@@ -1858,7 +1975,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			return null
 
 	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
-		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, type, self, self.mesh, null, [])
+		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, component_name, self, self.get_mesh(), null, [])
 		var idx: int = 0
 		for m in keys.get("m_Materials", []):
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))

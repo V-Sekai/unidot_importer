@@ -41,6 +41,14 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				continue # We don't want these.
 			if asset.is_stripped:
 				push_error("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+			if is_prefab:
+				if asset.type == "PrefabInstance":
+					var target_prefab_meta = asset.meta.lookup_meta(asset.source_prefab)
+					asset.meta.prefab_main_gameobject_id = target_prefab_meta.prefab_main_gameobject_id ^ asset.fileID
+					asset.meta.prefab_main_transform_id = target_prefab_meta.prefab_main_transform_id ^ asset.fileID
+				else:
+					asset.meta.prefab_main_gameobject_id = asset.fileID
+					asset.meta.prefab_main_transform_id = asset.transform.fileID
 			arr.push_back(asset)
 
 	if arr.is_empty():
@@ -52,6 +60,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	var occlusion: OccluderInstance3D = null
 	var dirlight: DirectionalLight3D = null
 	var scene_contents: Node3D = null
+	var node_map: Dictionary = {}
 	if is_prefab:
 		if len(arr) > 1:
 			push_error("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
@@ -221,6 +230,8 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
+	var name_map = {}
+	var prefab_name_map = {}
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
@@ -235,9 +246,17 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
 				scene_contents.add_child(skel.godot_skeleton, true)
 				skel.owner = scene_contents
+			node_state.prefab_state.cur_gameobject_name_map = {}
 			asset.create_skeleton_bone(node_state, skel)
+			if is_prefab:
+				name_map = node_state.prefab_state.cur_gameobject_name_map
+				prefab_name_map = node_state.prefab_state.cur_prefab_gameobject_name_map
+			else:
+				name_map[asset.name] = node_state.prefab_state.cur_gameobject_name_map
+				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
 		else:
 			# print(str(asset) + " position " + str(asset.transform.godot_transform))
+			node_state.prefab_state.cur_gameobject_name_map = {}
 			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
 			if scene_contents == null:
 				assert(is_prefab)
@@ -248,19 +267,29 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					push_warning("May be a prefab with multiple roots, or hit unusual case.")
 				pass
 				# assert(not is_prefab)
+			if is_prefab:
+				name_map = node_state.prefab_state.cur_gameobject_name_map
+				prefab_name_map = node_state.prefab_state.cur_prefab_gameobject_name_map
+			elif asset.type == "PrefabInstance":
+				node_state.add_prefab_to_parent_transform(0, asset.fileID)
+				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
+			else:
+				name_map[asset.name] = node_state.prefab_state.cur_gameobject_name_map
+				prefab_name_map[asset.name] = node_state.prefab_state.cur_prefab_gameobject_name_map
 
 	node_state.env = env
+	node_state.set_main_name_map(name_map, prefab_name_map)
+
+	# scene_contents = node_state.owner
+	if scene_contents == null:
+		push_error("Failed to parse scene " + pkgasset.pathname)
+		return null
 
 	for asset in pkgasset.parsed_asset.assets.values():
 		if str(asset.type) == "SkinnedMeshRenderer":
 			var ret: Node = asset.create_skinned_mesh(node_state)
 			if ret != null:
 				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
-
-	# scene_contents = node_state.owner
-	if scene_contents == null:
-		push_error("Failed to parse scene " + pkgasset.pathname)
-		return null
 
 	if not is_prefab:
 		# Remove redundant directional light.

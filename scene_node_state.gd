@@ -27,6 +27,8 @@ class PrefabState extends RefCounted:
 	var skelleys_by_parented_prefab: Dictionary = {}.duplicate()
 
 	var non_stripped_prefab_references: Dictionary = {}.duplicate() # some legacy 5.6 thing I think
+	var cur_gameobject_name_map: Dictionary = {} # Just used for holding data while returning
+	var cur_prefab_gameobject_name_map: Dictionary = {} # Just used for holding data while returning
 
 	# Dictionary from parent_transform uniq_key -> array of UnityPrefabInstance
 	var prefab_parents: Dictionary = {}.duplicate()
@@ -36,6 +38,28 @@ class PrefabState extends RefCounted:
 
 var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
+
+func set_main_name_map(name_map: Dictionary, prefab_name_map: Dictionary={}):
+	meta.gameobject_name_to_fileid_and_children = name_map
+	meta.prefab_gameobject_name_to_fileid_and_children = prefab_name_map
+
+func add_prefab_to_parent_transform(gameobject_fileid: int, prefab_id):
+	if not meta.transform_fileid_to_prefab_ids.has(gameobject_fileid):
+		meta.transform_fileid_to_prefab_ids[gameobject_fileid] = PackedInt64Array().duplicate()
+	meta.transform_fileid_to_prefab_ids[gameobject_fileid].append(prefab_id)
+
+func add_name_map_to_prefabbed_transform(gameobject_fileid: int, name_map: Dictionary):
+	assert(not meta.transform_fileid_to_children.has(gameobject_fileid))
+	meta.transform_fileid_to_children[gameobject_fileid] = name_map
+
+func add_component_map_to_prefabbed_gameobject(gameobject_fileid: int, component_map: Dictionary):
+	assert(not meta.gameobject_fileid_to_components.has(gameobject_fileid))
+	meta.gameobject_fileid_to_components[gameobject_fileid] = component_map
+
+func add_prefab_rename(gameobject_fileid: int, new_name: String):
+	if meta.gameobject_fileid_to_rename.has(gameobject_fileid):
+		print("Duplicate rename for fileid " + str(gameobject_fileid) + " : was " + str(meta.gameobject_fileid_to_rename[gameobject_fileid]) + " is now " + new_name)
+	meta.gameobject_fileid_to_rename[gameobject_fileid] = new_name
 
 func get_godot_node(uo: RefCounted) -> Node:
 	var np = meta.fileid_to_nodepath.get(uo.fileID, NodePath())

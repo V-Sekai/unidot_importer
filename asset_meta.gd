@@ -18,7 +18,7 @@ var importer # unity_object_adapter.UnityAssetImporter subclass
 # for .fbx, must use fileIDToRecycleName in meta.
 @export var internal_data: Dictionary = {}
 
-@export var prefab_id_to_guid: Dictionary = {}
+@export var prefab_id_to_guid: Dictionary = {} # int -> String: object_adapter.create_godot_node
 
 # we have a list of all prefabs by ID
 #####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
@@ -30,17 +30,25 @@ var prefab_fileid_to_utype = {} # int -> int
 var prefab_type_to_fileids = {} # int -> int
 var prefab_fileid_to_gameobject_fileid: Dictionary = {} # int -> int
 var fileid_to_component_fileids: Dictionary = {} # int -> int
+var prefab_gameobject_name_to_fileid_and_children: Dictionary = {} # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
 
 ###### @export var nodepath_to_fileid: Dictionary = {} # TO IMPLEMENT!!!!
 
-
-@export var fileid_to_nodepath: Dictionary = {}
-@export var fileid_to_skeleton_bone: Dictionary = {} # int -> string
-@export var fileid_to_utype: Dictionary = {} # int -> int
-@export var fileid_to_gameobject_fileid: Dictionary = {} # int -> int
-@export var type_to_fileids: Dictionary = {} # string -> Array[int]
-@export var godot_resources: Dictionary = {}
+@export var prefab_main_gameobject_id = 0
+@export var prefab_main_transform_id = 0
+@export var fileid_to_nodepath: Dictionary = {} # int -> NodePath: scene_node_state.add_fileID
+@export var fileid_to_skeleton_bone: Dictionary = {} # int -> string: scene_node_state.add_fileID_to_skeleton_bone
+@export var fileid_to_utype: Dictionary = {} # int -> int: parse_binary_asset/parse_asset
+@export var fileid_to_gameobject_fileid: Dictionary = {} # int -> int: parse_binary_asset/parse_asset
+@export var type_to_fileids: Dictionary = {} # string -> Array[int]: parse_binary_asset/parse_asset
+@export var godot_resources: Dictionary = {} # int -> Resource: insert_resource/override_resource
 @export var main_object_id: int = 0 # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
+@export var gameobject_name_to_fileid_and_children: Dictionary = {} # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
+# @export var fileid_to_parent: Dictionary = {} # {400004: 400000, 400008: 400000, 400010: 12                    3456778901234^100100000}
+@export var transform_fileid_to_children: Dictionary = {} # {400000: {"SomeName": {null: 1234, "SomeName2": ...}}}
+@export var gameobject_fileid_to_components: Dictionary = {} # {400000: {"SomeName": {null: 1234, "SomeName2": ...}}}
+@export var transform_fileid_to_prefab_ids: Dictionary = {} # {400000: PackedInt64Array(1, 2, 3)}
+@export var gameobject_fileid_to_rename: Dictionary = {} # {400000: "CoolObject"}
 
 @export var dependency_guids: Dictionary = {}
 @export var prefab_dependency_guids: Dictionary = {}
@@ -95,9 +103,51 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 				child_meta.toposort_prefab_recurse(child_meta, tt)
 	return tt.output
 
+func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary, allow_init_meta: bool=true)-> Dictionary:
+	var gameobject_renames: Dictionary = self.gameobject_fileid_to_rename
+	var transform_new_children: Dictionary = self.transform_fileid_to_children
+	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
+	var gameobject_to_prefab_ids: Dictionary = self.transform_fileid_to_prefab_ids
+	var ret = {}
+	var my_id = original_map.get(1, 0) ^ prefab_id
+	var my_transform_id = original_map.get(4, 0) ^ prefab_id
+	for name in original_map:
+		if typeof(name) != TYPE_STRING and typeof(name) != TYPE_STRING_NAME:
+			# int: class_id; NodePath: script-type
+			ret[name] = original_map[name] ^ prefab_id
+			continue
+		var sub_map = original_map[name]
+		var sub_id = sub_map[1]
+		var new_name = gameobject_renames.get(prefab_id ^ sub_id, name)
+		ret[new_name] = remap_prefab_gameobject_names(prefab_metas, prefab_id, original_map[name])
+	if prefab_id != 0:
+		var component_map: Dictionary = gameobject_new_components.get(my_id, {})
+		for comp in component_map:
+			# TODO: Handle the case where the original component is Deleted and another one added
+			if not ret.has(comp):
+				ret[comp] = component_map[comp]
+		var children_map: Dictionary = transform_new_children.get(my_id, {})
+		for child in children_map:
+			ret[child] = children_map[child]
+	# This one applies to both prefabs and non-prefabs
+	for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
+		var target_prefab_meta: Dictionary
+		if not prefab_metas.has(target_prefab_id):
+			assert(allow_init_meta)
+			prefab_metas[target_prefab_id] = lookup_meta_by_guid_noinit(self.get_database(), self.prefab_id_to_guid.get(target_prefab_id))
+			if prefab_metas[target_prefab_id].get_database() == null:
+				prefab_metas[target_prefab_id].initialize(self.get_database())
+		target_prefab_meta = prefab_metas[target_prefab_id]
+		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
+		var prefab_name = gameobject_renames[target_prefab_id ^ pgntfac[1]]
+		ret[prefab_name] = self.remap_prefab_gameobject_names(prefab_metas, target_prefab_id, pgntfac)
+	# Note: overwrites of name should respect m_RootOrder (we may need to store m_RootOrder here too)
+	return ret
+
 # Expected to be called in topological order
 func calculate_prefab_nodepaths(database: Resource):
 	#if not is_toplevel:
+	var prefab_metas = {}
 	for prefab_fileid in self.prefab_id_to_guid:
 		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(database, self.prefab_id_to_guid.get(prefab_fileid))
 		if target_prefab_meta == null:
@@ -105,6 +155,8 @@ func calculate_prefab_nodepaths(database: Resource):
 			continue
 		if target_prefab_meta.get_database() == null:
 			target_prefab_meta.initialize(self.get_database())
+		prefab_metas[prefab_fileid] = target_prefab_meta
+		# xor is the actual operation used for a prefabbed fileid in a prefab instance.
 		var my_path_prefix: String = str(fileid_to_nodepath.get(prefab_fileid)) + "/"
 		for target_fileid in target_prefab_meta.fileid_to_nodepath:
 			self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
@@ -132,6 +184,11 @@ func calculate_prefab_nodepaths(database: Resource):
 			self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid)
 		for target_fileid in target_prefab_meta.prefab_fileid_to_gameobject_fileid:
 			self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid)
+
+	if self.prefab_id_to_guid.is_empty():
+		self.prefab_gameobject_name_to_fileid_and_children = {}
+	else:
+		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(prefab_metas, 0, self.gameobject_name_to_fileid_and_children, false)
 
 
 func calculate_prefab_nodepaths_recursive():
@@ -167,6 +224,9 @@ func insert_resource(fileID: int, godot_resource: Resource):
 
 func rename(new_path: String):
 	get_database().rename_meta(self, new_path)
+
+func get_main_object_name():
+	return path.get_file().get_basename().get_basename() # .prefab.tscn
 
 # Some properties cannot be serialized.
 func initialize(database: Resource):
@@ -310,7 +370,7 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 		parsed.assets[output_obj.fileID] = output_obj
 		fileid_to_utype[output_obj.fileID] = output_obj.utype
 		if not type_to_fileids.has(output_obj.type):
-			type_to_fileids[output_obj.type] = PackedInt64Array()
+			type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 		type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 		if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null,0,null,null])[1] != 0:
 			fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
@@ -347,7 +407,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 			parsed.assets[output_obj.fileID] = output_obj
 			fileid_to_utype[output_obj.fileID] = output_obj.utype
 			if not type_to_fileids.has(output_obj.type):
-				type_to_fileids[output_obj.type] = [].duplicate()
+				type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 			type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 			if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null,0,null,null])[1] != 0:
 				fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]

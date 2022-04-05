@@ -23,6 +23,7 @@ class ParseState:
 	var toplevel_node: Node
 	var metaobj: Resource
 	var source_file_path: String
+	var goname_to_unity_name: Dictionary = {}.duplicate()
 	var external_objects_by_id: Dictionary = {}.duplicate() # fileId -> UnityRef Array
 	var external_objects_by_type_name: Dictionary = {}.duplicate() # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate() # for Extract Legacy Materials / By Base Texture Name
@@ -248,6 +249,14 @@ class ParseState:
 					fileid_to_nodepath[fileId] = path
 					if fileId in fileid_to_skeleton_bone:
 						fileid_to_skeleton_bone.erase(fileId)
+			if node is Light3D:
+				fileId = get_obj_id("Light", node_name)
+				fileid_to_nodepath[fileId] = path
+				fileid_to_gameobject_fileid[fileId] = goFileId
+			if node is Camera3D:
+				fileId = get_obj_id("Camera", node_name)
+				fileid_to_nodepath[fileId] = path
+				fileid_to_gameobject_fileid[fileId] = goFileId
 			if node is MeshInstance3D and node.mesh != null:
 				#if fileId == 0 and (fileId_mf == 0 or fileId_mr == 0):
 				#	push_error("Missing fileId for MeshRenderer " + str(node_name))
@@ -564,6 +573,98 @@ class ParseState:
 		# Root motion?
 		# Splitting up animation?
 
+	func lookup_unity_name(node_or_bone_name: StringName):
+		var sanitized = sanitize_bone_name(node_or_bone_name)
+		if goname_to_unity_name.has(sanitized):
+			return goname_to_unity_name[sanitized]
+		return node_or_bone_name
+
+	func build_name_map_recursive(skinned_parents: Dictionary, node: Node, p_skel_bone=-1, attachments_by_bone_name={}, from_skinned_parent=false):
+		var name_map = {}
+		var children_to_recurse = []
+		if node is Skeleton3D:
+			var skel_bone: int = p_skel_bone
+			assert(skel_bone != -1)
+			for child_bone in node.get_bone_children(skel_bone):
+				name_map[lookup_unity_name(node.get_bone_name(child_bone))] = self.build_name_map_recursive(skinned_parents, node, child_bone, attachments_by_bone_name)
+			var bone_name = node.get_bone_name(skel_bone)
+			bone_name = self.sanitize_bone_name(bone_name)
+			var fileId_go: int = get_obj_id("GameObject", bone_name)
+			var fileId_trans: int = get_obj_id("Transform", bone_name)
+			name_map[1] = fileId_go
+			name_map[4] = fileId_trans
+			for p_attachment in attachments_by_bone_name.get(bone_name, []):
+				var attachment_node: Node = p_attachment
+				for child in attachment_node.get_children():
+					if child is MeshInstance3D:
+						if has_obj_id("SkinnedMeshRenderer", bone_name): #child.get_blend_shape_count() > 0:
+							var fileId_smr: int = get_obj_id("SkinnedMeshRenderer", bone_name)
+							name_map[137] = fileId_smr
+						else:
+							var fileId_mr: int = get_obj_id("MeshRenderer", bone_name)
+							var fileId_mf: int = get_obj_id("MeshFilter", bone_name)
+							name_map[23] = fileId_mr
+							name_map[33] = fileId_mf
+					elif child is Camera3D:
+						var fileId_cam: int = get_obj_id("Camera", bone_name)
+						name_map[20] = fileId_cam
+					elif child is Light3D:
+						var fileId_light: int = get_obj_id("Light", bone_name)
+						name_map[108] = fileId_light
+					elif child is Skeleton3D:
+						var new_attachments_by_bone_name = {}
+						for possible_attach in child.get_children():
+							if possible_attach is BoneAttachment3D:
+								var bn = possible_attach.bone_name
+								if not new_attachments_by_bone_name.has(bn):
+									new_attachments_by_bone_name[bn] = [].duplicate()
+								new_attachments_by_bone_name[bn].append(possible_attach)
+						for child_child_bone in child.get_parentless_bones():
+							name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name)
+					else:
+						name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child)
+			return name_map
+		else:
+			var node_name = self.sanitize_bone_name(node.name)
+			var fileId_go: int = get_obj_id("GameObject", node_name)
+			var fileId_trans: int = get_obj_id("Transform", node_name)
+			name_map[1] = fileId_go
+			name_map[4] = fileId_trans
+			if node is MeshInstance3D:
+				if node.skin != null and not skinned_parents.is_empty() and not from_skinned_parent:
+					return # We already recursed into this skinned mesh.
+				if has_obj_id("SkinnedMeshRenderer", node_name): #child.get_blend_shape_count() > 0:
+					var fileId_smr: int = get_obj_id("SkinnedMeshRenderer", node_name)
+					name_map[137] = fileId_smr
+				else:
+					var fileId_mr: int = get_obj_id("MeshRenderer", node_name)
+					var fileId_mf: int = get_obj_id("MeshFilter", node_name)
+					name_map[23] = fileId_mr
+					name_map[33] = fileId_mf
+			elif node is Camera3D:
+				var fileId_cam: int = get_obj_id("Camera", node_name)
+				name_map[20] = fileId_cam
+			elif node is Light3D:
+				var fileId_light: int = get_obj_id("Light", node_name)
+				name_map[108] = fileId_light
+			for child in node.get_children():
+				if child is Skeleton3D:
+					var new_attachments_by_bone_name = {}
+					for possible_attach in child.get_children():
+						if possible_attach is BoneAttachment3D:
+							var bn = possible_attach.bone_name
+							if not new_attachments_by_bone_name.has(bn):
+								new_attachments_by_bone_name[bn] = [].duplicate()
+							new_attachments_by_bone_name[bn].append(possible_attach)
+					for child_child_bone in child.get_parentless_bones():
+						name_map[self.lookup_unity_name(child.get_bone_name(child_child_bone))] = self.build_name_map_recursive(skinned_parents, child, child_child_bone, new_attachments_by_bone_name, false)
+				else:
+					name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child)
+			for child in skinned_parents.get(node.name, {}):
+				name_map[self.lookup_unity_name(child.name)] = self.build_name_map_recursive(skinned_parents, child, -1, {}, true)
+			return name_map
+
+
 func _post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
 	#print ("todo post import replace " + str(source_file_path))
@@ -630,22 +731,30 @@ func _post_import(p_scene: Node) -> Object:
 #      1: 100002
 #    second: Armature
 	var used_names_by_type: Dictionary = {}.duplicate()
+	# defaults:
+	metaobj.prefab_main_gameobject_id = 100000
+	metaobj.prefab_main_transform_id = 400000
+	var animator_fileid = 0
 	for id_mapping in internalIdMapping:
 		var og_obj_name: String = id_mapping.get("second")
 		for utypestr in id_mapping.get("first"):
 			var fileId: int = int(id_mapping.get("first").get(utypestr))
 			var utype: int = int(utypestr)
 			var obj_name: String = og_obj_name
+			var type: String = str(object_adapter.to_classname(fileId / 100000))
 			if obj_name.begins_with("//"):
 				# Not sure why, but Unity uses //RootNode
 				# Maybe it indicates that the node will be hidden???
 				obj_name = ""
 				ps.use_scene_root = true
+				if type == "GameObject":
+					metaobj.prefab_main_gameobject_id = fileId
+				if type == "Transform":
+					metaobj.prefab_main_transform_id = fileId
 				#if is_obj or is_dae:
 				#else:
 				#	obj_name = obj_name.substr(2)
-			var type: String = str(object_adapter.to_classname(fileId / 100000))
-			if (type == "Transform" or type == "GameObject" or type == "Animator"):
+			if (type == "Transform" or type == "GameObject" or type == "Animator" or type == "Light" or type == "Camera"):
 				obj_name = ps.sanitize_bone_name(obj_name)
 			elif type == "AnimationClip":
 				obj_name = ps.sanitize_anim_name(obj_name)
@@ -664,6 +773,10 @@ func _post_import(p_scene: Node) -> Object:
 			while used_names_by_type[type].has(obj_name):
 				obj_name = "%s%d" % [orig_obj_name, next_num] # No space is deliberate, from sanitization rules.
 				next_num += 1
+			if type == "GameObject":
+				ps.goname_to_unity_name[obj_name] = og_obj_name
+			if type == "Animator":
+				animator_fileid = fileId
 			used_names_by_type[type][orig_obj_name] = next_num
 			used_names_by_type[type][obj_name] = 1
 			#print("Adding recycle id " + str(fileId) + " and type " + str(type) + " and utype " + str(fileId / 100000) + ": " + str(obj_name))
@@ -722,6 +835,40 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.fileid_to_utype = ps.fileid_to_utype
 	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
 
+	var skinned_name_to_node = build_skinned_name_to_node_map(ps.toplevel_node, {}.duplicate())
+	var skinned_parents: Variant = metaobj.internal_data.get("skinned_parents", null)
+	var skinned_parent_to_node = {}
+	#print(skinned_name_to_node)
+	if typeof(skinned_parents) == TYPE_DICTIONARY:
+		for par in skinned_parents:
+			var node_list = []
+			for skinned_name in skinned_parents[par]:
+				if skinned_name_to_node.has(skinned_name):
+					node_list.append(skinned_name_to_node[skinned_name])
+				else:
+					print("Missing skinned " + str(skinned_name))
+			skinned_parent_to_node[par] = node_list
+	var name_map = ps.build_name_map_recursive(skinned_parent_to_node, ps.toplevel_node)
+	if ps.use_scene_root and new_toplevel == null:
+		for child in name_map:
+			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
+				name_map = name_map[child]
+				break
+	#print(ps.goname_to_unity_name)
+	name_map[95] = animator_fileid
+	#TODO: loop recursively through scene (including skeleton bones!) and add goname_to_unity_name[each thing] into name_map then set name
+	metaobj.gameobject_name_to_fileid_and_children = name_map
+	metaobj.prefab_gameobject_name_to_fileid_and_children = name_map
+
 	asset_database.save()
 
 	return p_scene
+
+func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary):
+	var name_to_node_dict = p_name_to_node_dict
+	for child in node.get_children():
+		name_to_node_dict = build_skinned_name_to_node_map(child, name_to_node_dict)
+	if node is MeshInstance3D:
+		if node.skin != null:
+			name_to_node_dict[node.name] = node
+	return name_to_node_dict

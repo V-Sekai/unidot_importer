@@ -647,6 +647,19 @@ class FbxHandler extends BaseModelHandler:
 		print("Updating file at " + output_path)
 		return output_path
 
+	func assign_skinned_parents(p_out_map, gltf_nodes, parent_node_name, cur_children):
+		var out_map = p_out_map
+		if cur_children.is_empty():
+			return out_map
+		var this_children = []
+		for child in cur_children:
+			if gltf_nodes[child].get("skin", -1) >= 0 and gltf_nodes[child].get("mesh", -1) >= 0:
+				this_children.append(gltf_nodes[child]["name"])
+			out_map = assign_skinned_parents(out_map, gltf_nodes, gltf_nodes[child]["name"], gltf_nodes[child].get("children", []))
+		if not this_children.is_empty():
+			out_map[parent_node_name] = this_children
+		return out_map
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
@@ -724,6 +737,7 @@ class FbxHandler extends BaseModelHandler:
 						var image_name: String = json.get("images", [])[image_index].get("name", "")
 						material_to_texture_name[mat.name] = image_name
 			pkgasset.parsed_meta.internal_data["material_to_texture_name"] = material_to_texture_name
+		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers"]:
 			if not json.has(key):
 				continue
