@@ -2605,6 +2605,10 @@ class UnityModelImporter extends UnityAssetImporter:
 		get:
 			return keys.get("fileIDToRecycleName", {})
 
+	var internalIDToNameTable: Array:
+		get:
+			return keys.get("internalIDToNameTable", [])
+
 	# 0: No compression; 1: keyframe reduction; 2: keyframe reduction and compress
 	# 3: all of the above and choose best curve for runtime memory.
 	func animation_optimizer_settings() -> Dictionary:

@@ -30,7 +30,8 @@ var prefab_fileid_to_utype = {} # int -> int
 var prefab_type_to_fileids = {} # int -> int
 var prefab_fileid_to_gameobject_fileid: Dictionary = {} # int -> int
 var fileid_to_component_fileids: Dictionary = {} # int -> int
-var prefab_gameobject_name_to_fileid_and_children: Dictionary = {} # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
+# TODO: remove @export
+@export var prefab_gameobject_name_to_fileid_and_children: Dictionary = {} # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
 
 ###### @export var nodepath_to_fileid: Dictionary = {} # TO IMPLEMENT!!!!
 

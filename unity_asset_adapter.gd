@@ -661,6 +661,17 @@ class FbxHandler extends BaseModelHandler:
 			out_map[parent_node_name] = this_children
 		return out_map
 
+	func sanitize_bone_name(bone_name: String) -> String:
+		var xret = bone_name.replace(":", "").replace("/", "")
+		return xret
+
+	func sanitize_unique_name(bone_name: String) -> String:
+		var xret = bone_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace("\"", "")
+		return xret
+
+	func sanitize_anim_name(anim_name: String) -> String:
+		return sanitize_unique_name(anim_name).replace("[", "").replace(",", "")
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
@@ -739,7 +750,9 @@ class FbxHandler extends BaseModelHandler:
 						material_to_texture_name[mat.name] = image_name
 			pkgasset.parsed_meta.internal_data["material_to_texture_name"] = material_to_texture_name
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
-		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers"]:
+		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
+		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers", "animations"]:
+			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
 			if not json.has(key):
 				continue
 			var used_names: Dictionary = {}.duplicate()
@@ -759,6 +772,15 @@ class FbxHandler extends BaseModelHandler:
 					try_name = "%s %d" % [orig_name, next_num]
 					next_num += 1
 				json[key][elem]["name"] = try_name
+				var sanitized_try_name: String = sanitize_unique_name(try_name)
+				if key == "animations":
+					sanitized_try_name = sanitize_anim_name(try_name)
+				if orig_name != sanitized_try_name:
+					pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key][sanitized_try_name] = orig_name
+				if key == "nodes":
+					var sanitized_bone_try_name = sanitize_bone_name(try_name)
+					if orig_name != sanitized_bone_try_name:
+						pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"]["bone_name"][sanitized_bone_try_name] = orig_name
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
