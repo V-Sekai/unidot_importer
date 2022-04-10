@@ -585,7 +585,15 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			if fileid_to_skeleton_nodepath.has(bone.fileID):
 				continue
 			var idx: int = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.fileID, ""))
-			var parent_bone_index: int = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.parent.fileID, ""))
+			var parent_bone_index: int = -1
+			if bone.parent.is_prefab_reference:
+				var source_obj_ref = bone.parent.prefab_source_object
+				var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
+					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
+				parent_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
+			else:
+				parent_bone_index = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.parent.fileID, ""))
+			print("Parent bone index: " + str(bone.name) + " / " + str(bone.uniq_key) + " / " + str(parent_bone_index))
 			skelley.godot_skeleton.set_bone_parent(idx, parent_bone_index)
 			# skelley.godot_skeleton.set_bone_rest(idx, bone.godot_transform) # Set later on.
 			fileid_to_skeleton_nodepath[bone.fileID] = godot_skeleton_nodepath
