@@ -553,7 +553,6 @@ class FbxHandler extends BaseModelHandler:
 			#return fbx_file_binary
 		var filename: String = pkgasset.pathname
 		var output_buf: PackedByteArray = fbx_file_binary
-		str(str(typeof(fbx_file_binary)) + "/" + str(fbx_file_binary))
 		var scale_factor_pos: int = buffer_as_ascii.find("\"UnitScaleFactor\"")
 		if scale_factor_pos == -1:
 			push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")

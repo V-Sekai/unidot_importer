@@ -803,8 +803,16 @@ func _post_import(p_scene: Node) -> Object:
 	for id_mapping in internalIdMapping:
 		var og_obj_name: String = id_mapping.get("second")
 		for utypestr in id_mapping.get("first"):
-			var fileId: int = int(id_mapping.get("first").get(utypestr))
-			var utype: int = int(utypestr)
+			var fIdMaybeString: Variant = id_mapping.get("first").get(utypestr)
+			# Casting to int became complicated... This could be string or int depending on yaml parser.
+			if typeof(fIdMaybeString) == TYPE_STRING:
+				fIdMaybeString = fIdMaybeString.to_int()
+			var fileId: int = int(fIdMaybeString)
+			var utype: int
+			if typeof(utypestr) == TYPE_STRING:
+				utype = int(utypestr.to_int())
+			else:
+				utype = int(utypestr)
 			var obj_name: String = og_obj_name
 			var type: String = str(object_adapter.to_classname(fileId / 100000))
 			if obj_name.begins_with("//"):

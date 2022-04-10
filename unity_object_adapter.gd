@@ -1452,8 +1452,9 @@ class UnityPrefabInstance extends UnityGameObject:
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
 			for new_skelley in list_of_skelleys:
-				attachment.add_child(new_skelley.godot_skeleton, true)
-				new_skelley.godot_skeleton.owner = state.owner
+				if new_skelley.godot_skeleton != null:
+					attachment.add_child(new_skelley.godot_skeleton, true)
+					new_skelley.godot_skeleton.owner = state.owner
 
 			var name_map = {}
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
