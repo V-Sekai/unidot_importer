@@ -127,7 +127,7 @@ class Stream extends StreamPeerBuffer:
 		if cnt == -1:
 			cnt = self.get_size() - self.get_position()
 		return self.get_data(cnt)[1]
-	func align(n: int, align_off: int):
+	func align(n: int, align_off: int=0):
 		var old_pos: int = self.tell()
 		var new_pos: int = ((old_pos - align_off + n - 1) & ~(n - 1)) + align_off
 		# if old_pos != new_pos:
@@ -174,18 +174,14 @@ class Def extends RefCounted:
 			self.full_name = str(par.name) + "." + self.full_name
 			par = par.parent
 
-	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array, align_off: int=0, align_data: int=0) -> Variant:
-		#if self.size >= 4:
-		#	s.align(min(self.size, 4), align_off)
+	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array) -> Variant:
 		if self.array:
-			# ALIGNMENT RULES
-			s.align(4, align_off)
 			var x: int = s.tell()
 			if self.children.is_empty():
 				push_error("Children is empty for " + str(self.full) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
 			# print("a " + self.full_name)
-			var arrlen: int = self.children[0].read(s, referenced_guids, referenced_reftypes, x)
+			var arrlen: int = self.children[0].read(s, referenced_guids, referenced_reftypes)
 			if not (arrlen < 100000000):
 				push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
@@ -195,7 +191,7 @@ class Def extends RefCounted:
 				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + ret)
 				if self.size >= 1:
 					s.seek(x + self.size)
-				s.align(4, x)
+				#s.align(4, x)
 				return ret
 			elif self.children[1].type_name == "UInt8":
 				# print("u8 " + str(arrlen))
@@ -203,10 +199,9 @@ class Def extends RefCounted:
 				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(ret)))
 				if self.size >= 1:
 					s.seek(x + self.size)
-				s.align(4, x)
 				return ret
 			else:
-				if not (arrlen < 100000):
+				if not (self.children[1].size * arrlen < 400000000 and arrlen < 100000000):
 					push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 					return []
 				var arr: Array = [].duplicate()
@@ -214,30 +209,20 @@ class Def extends RefCounted:
 				var pad: bool = true
 				if self.flags == 0x4000 and self.children[1].flags == 0x0:
 					pad = false
-				var pad_off: int = x
 				while i < arrlen:
-					if not pad:
-						pad_off = s.tell()
-					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes, pad_off, 0))
+					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
 					i += 1
 				# print("reading arr @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(arr)))
 				if self.size >= 1:
 					s.seek(x + self.size)
-				s.align(4, x)
 				return arr
 		elif not self.children.is_empty():
-			# s.align(4, align_off)
-			var x: int = align_off #####s.tell()
-			# print("o " + self.name)
+			var x: int = 0 #####s.tell()
 			var v: Dictionary = {}.duplicate()
-			var last_flags: int = 0
 			for i in self.children:
-				v[i.name] = i.read(s, referenced_guids, referenced_reftypes, x, last_flags)
-				last_flags = i.flags
-				#if i.size < 0:
-				#	s.align(4, x)
-			#if self.size >= 1:
-			#	s.seek(x + self.size)
+				v[i.name] = i.read(s, referenced_guids, referenced_reftypes)
+				if i.flags & 0x4000:
+					s.align(4, x)
 			match self.type_name:
 				"string":
 					if v.has("Array"):
@@ -250,6 +235,13 @@ class Def extends RefCounted:
 							res[kv.get("first")] = kv.get("second")
 					return [res]
 				"ColorRGBA":
+					if v.has("rgba"):
+						var color32: int = v.get("rgba")
+						return Color(
+							((color32&0xff000000)>>24) / 255.0,
+							((color32&0xff0000)>>16) / 255.0,
+							((color32&0xff00)>>8) / 255.0,
+							(color32&0xff) / 255.0)
 					# print("reading color @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
 				"Vector2f":
@@ -290,14 +282,6 @@ class Def extends RefCounted:
 							return [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
 			return v
 		else:
-			#if (self.flags & 0x100) != 0 and (self.size == 1 or self.size == 2):
-			#	s.align(4, align_off)
-			#if self.size >= 4:
-			#	s.align(min(self.size, 4), align_off)
-			#elif self.size == 2:
-			#	s.align(min(self.size, 2), align_off)
-			#if self.size < 0:
-			#	s.align(4, align_off)
 			var x: int = s.tell()
 			var ret: Variant = null
 			match self.type_name:
@@ -339,8 +323,6 @@ class Def extends RefCounted:
 					s.skip(self.size)
 			if self.size >= 1:
 				s.seek(x + self.size)
-			if (self.flags & 0x4000) == 0x4000:
-				s.align(4, align_off)
 			# print("reading @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(ret))
 			return ret
 
@@ -534,7 +516,7 @@ func decode_data(obj_headers: Array) -> Array:
 		var class_id: int = obj_header[1]
 		var path_id: int = obj_header[2]
 		var type_id: int = obj_header[3]
-		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes, 0)
+		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes)
 		var type_name: String = self.defs[type_id].type_name
 		var is_stripped: bool = type_name == "EditorExtension"
 		if is_stripped:

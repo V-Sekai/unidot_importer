@@ -221,6 +221,9 @@ class YamlHandler extends AssetHandler:
 			return self.ASSET_TYPE_SCENE
 		if extn == "prefab":
 			return self.ASSET_TYPE_PREFAB
+		if pkgasset.parsed_meta.type_to_fileids.has("TerrainData"):
+			# TerrainData depends on prefab assets.
+			return self.ASSET_TYPE_PREFAB
 		return self.ASSET_TYPE_YAML
 
 	func write_godot_asset(pkgasset: Object, temp_path: String):
@@ -251,7 +254,6 @@ class YamlHandler extends AssetHandler:
 			var new_pathname: String = pkgasset.pathname.get_basename() + main_asset.get_godot_extension() # ".mat.tres"
 			pkgasset.pathname = new_pathname
 			pkgasset.parsed_meta.rename(new_pathname)
-			ResourceSaver.save(pkgasset.pathname, godot_resource)
 			var extra_resources: Dictionary = main_asset.get_extra_resources()
 			for extra_asset_fileid in extra_resources:
 				var file_ext: String = extra_resources.get(extra_asset_fileid)
@@ -261,6 +263,8 @@ class YamlHandler extends AssetHandler:
 					ResourceSaver.save(new_pathname, created_res)
 					created_res = load(new_pathname)
 					pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
+			# Save main resource at end, so that it can reference extra resources.
+			ResourceSaver.save(pkgasset.pathname, godot_resource)
 
 class SceneHandler extends YamlHandler:
 

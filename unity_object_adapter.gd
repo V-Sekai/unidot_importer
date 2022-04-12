@@ -149,7 +149,7 @@ class UnityObject extends RefCounted:
 	func get_extra_resources() -> Dictionary:
 		return {}
 
-	func create_extra_resource(fileID: int) -> Resource:
+	func get_extra_resource(fileID: int) -> Resource:
 		return null
 
 	func create_godot_resource() -> Resource:
@@ -447,7 +447,7 @@ class UnityMesh extends UnityObject:
 	func get_extra_resources() -> Dictionary:
 		if binds.is_empty():
 			return {}
-		return {-meta.main_object_id: ".mesh.skin.tres"}
+		return {-self.fileID: ".mesh.skin.tres"}
 
 	func dict_to_matrix(b: Dictionary) -> Transform3D:
 		return Transform3D.FLIP_X.affine_inverse() * Transform3D(
@@ -457,7 +457,7 @@ class UnityMesh extends UnityObject:
 			Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
 		) * Transform3D.FLIP_X
 
-	func create_extra_resource(fileID: int) -> Skin:
+	func get_extra_resource(fileID: int) -> Skin:
 		var sk: Skin = Skin.new()
 		var idx: int = 0
 		for b in binds:
@@ -849,6 +849,79 @@ class UnityRenderTexture extends UnityTexture:
 class UnityCustomRenderTexture extends UnityRenderTexture:
 	pass
 
+
+class UnityTerrainLayer extends UnityObject:
+	func get_godot_extension() -> String:
+		return ".terrainlayer.tres"
+	func create_godot_resource() -> Resource:
+		var mat = StandardMaterial3D.new()
+		var diffuse_tex: Texture2D = meta.get_godot_resource(keys.get("m_DiffuseTexture", [null,0,null,null]))
+		var tilesize: Vector2 = keys.get("m_TileSize", Vector2(1,1))
+		var tileoffset: Vector2 = keys.get("m_TileOffset", Vector2(0,0))
+		var spec: Color = keys.get("m_Specular", Color.TRANSPARENT)
+		var metal: float = keys.get("m_Metallic", 0.0)
+		var smooth: float = keys.get("m_Smoothness", 0.0)
+		mat.albedo_texture = diffuse_tex
+		mat.roughness = 1.0 - smooth
+		mat.metallic = metal
+		mat.metallic_specular = spec
+		mat.uv1_scale = Vector3(tilesize.x, tilesize.y, 0.0)
+		mat.uv1_offset = Vector3(tileoffset.x, tileoffset.y, 0.0)
+
+		var normal_tex: Texture2D = meta.get_godot_resource(keys.get("m_NormalMapTexture", [null,0,null,null]))
+		var normalscale: float = keys.get("m_NormalScale", 1.0)
+		mat.normal_enabled = normal_tex != null
+		mat.normal_texture = normal_tex
+		mat.normal_scale = normalscale
+
+		# Mask not implemented for now.
+		# m_DiffuseRemapMin: {x: 0, y: 0, z: 0, w: 0}
+		# m_DiffuseRemapMax: {x: 1, y: 1, z: 1, w: 1}
+		# m_MaskMapRemapMin: {x: 0, y: 0, z: 0, w: 0}
+		# m_MaskMapRemapMax: {x: 1, y: 1, z: 1, w: 1}
+		#var maskmap_tex: Texture2D = meta.get_godot_resource(keys.get("m_MaskMapTexture", [null,0,null,null]))
+		return mat
+
+class UnityTerrainData extends UnityObject:
+	var mesh_data: ArrayMesh = null
+	var collision_mesh: ConcavePolygonShape3D = null
+
+	func get_godot_extension() -> String:
+		return ".terrain.tscn"
+
+	func get_extra_resources() -> Dictionary:
+		return {
+			self.fileID ^ 0xdeca604: ".terrain.mesh.res",
+			self.fileID ^ 0xc0111de4: ".terrain.collider.res",
+		}
+
+	func get_extra_resource(fileID: int) -> Resource:
+		if fileID == self.fileID ^ 0xdeca604:
+			return mesh_data
+		if fileID == self.fileID ^ 0xc0111de4:
+			return collision_mesh
+		assert(fileID == 0)
+		return null
+
+	func create_godot_resource() -> Resource:
+		mesh_data = ArrayMesh.new()
+		var mesh_arrays = []
+		var vertices: PackedVector3Array = PackedVector3Array().duplicate()
+		var normals: PackedVector3Array = PackedVector3Array().duplicate()
+		var tangents: PackedFloat32Array = PackedFloat32Array().duplicate()
+		var indices: PackedInt32Array = PackedInt32Array().duplicate() # 0 2 1 1 2 3 2 4 3 3 4 5 etc
+		mesh_arrays[Mesh.ARRAY_VERTEX] = vertices
+		mesh_arrays[Mesh.ARRAY_NORMAL] = normals
+		mesh_arrays[Mesh.ARRAY_TANGENT] = tangents
+		mesh_arrays[Mesh.ARRAY_INDEX] = indices
+		var heightmap: Dictionary = keys.get("m_Heightmap")
+		var resolution: int = heightmap["m_Resolution"]
+		assert (resolution * resolution == len(heightmap["m_Heights"]))
+		#for i in 
+		mesh_data.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh_arrays)
+		collision_mesh = mesh_data.create_trimesh_shape()
+		var ps: PackedScene
+		return ps
 
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
@@ -1847,6 +1920,27 @@ class UnityMeshCollider extends UnityCollider:
 				return mf.mesh
 		return ret
 
+class UnityTerrainCollider extends UnityMeshCollider:
+	func get_shape() -> Shape3D:
+		return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_collider(node, uprops)
+		var new_mesh: Mesh = meta.get_godot_resource(get_mesh(uprops))
+		outdict["shape"] = new_mesh.create_trimesh_shape()
+		return outdict
+
+	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
+		var ret = get_ref(uprops, "m_Mesh")
+		if ret[1] == 0:
+			if is_stripped or gameObject.is_stripped:
+				push_error("Oh no i am stripped MCgm")
+			var mf: RefCounted = self.meta.lookup(self.keys.get("m_TerrainData"))
+			if mf != null:
+				return mf.mesh
+		return ret
+
+
 class UnityRigidbody extends UnityComponent:
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
@@ -2485,6 +2579,18 @@ class UnityReflectionProbe extends UnityBehaviour:
 			outdict["update_mode"] = 0
 		return outdict
 
+class UnityTerrain extends UnityBehaviour:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var terrain: MeshInstance3D = MeshInstance3D.new()
+		terrain.name = "Terrain"
+		assign_object_meta(terrain)
+		state.add_child(terrain, new_parent, self)
+		return terrain
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		return outdict
+
 class UnityMonoBehaviour extends UnityBehaviour:
 	var script: Array:
 		get:
@@ -2507,6 +2613,7 @@ class UnityMonoBehaviour extends UnityBehaviour:
 				"48a79b01ea5641d4aa6daa2e23605641": # Glow
 					env.set_meta("glow", sobj.keys)
 		return env
+
 
 ### ================ IMPORTER TYPES ================
 class UnityAssetImporter extends UnityObject:
@@ -2970,10 +3077,10 @@ var _type_dictionary: Dictionary = {
 	# "SurfaceEffector2D": UnitySurfaceEffector2D,
 	# "TagManager": UnityTagManager,
 	# "TargetJoint2D": UnityTargetJoint2D,
-	# "Terrain": UnityTerrain,
-	# "TerrainCollider": UnityTerrainCollider,
-	# "TerrainData": UnityTerrainData,
-	# "TerrainLayer": UnityTerrainLayer,
+	"Terrain": UnityTerrain,
+	"TerrainCollider": UnityTerrainCollider,
+	"TerrainData": UnityTerrainData,
+	"TerrainLayer": UnityTerrainLayer,
 	# "TextAsset": UnityTextAsset,
 	# "TextMesh": UnityTextMesh,
 	"TextScriptImporter": UnityTextScriptImporter,
