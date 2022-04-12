@@ -123,11 +123,11 @@ class Stream extends StreamPeerBuffer:
 		self.seek(self.get_size() - p)
 	func skip(off: int) -> void:
 		self.seek(self.get_position() + off)
-	func read(cnt: int=-1):
+	func read(cnt: int=-1) -> PackedByteArray:
 		if cnt == -1:
 			cnt = self.get_size() - self.get_position()
 		return self.get_data(cnt)[1]
-	func align(n: int, align_off: int=0):
+	func align(n: int, align_off: int=0) -> void:
 		var old_pos: int = self.tell()
 		var new_pos: int = ((old_pos - align_off + n - 1) & ~(n - 1)) + align_off
 		# if old_pos != new_pos:
@@ -174,7 +174,7 @@ class Def extends RefCounted:
 			self.full_name = str(par.name) + "." + self.full_name
 			par = par.parent
 
-	func read(s: StreamPeer, referenced_guids: Array, referenced_reftypes: Array) -> Variant:
+	func read(s: Stream, referenced_guids: Array, referenced_reftypes: Array) -> Variant:
 		if self.array:
 			var x: int = s.tell()
 			if self.children.is_empty():
@@ -185,7 +185,8 @@ class Def extends RefCounted:
 			if not (arrlen < 100000000):
 				push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 				return []
-			if self.children[1].type_name == "char":
+			var child_type_name: String = self.children[1].type_name
+			if child_type_name == "char":
 				# print("s " + str(arrlen))
 				var ret: String = s.read(arrlen).get_string_from_utf8()
 				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + ret)
@@ -193,10 +194,8 @@ class Def extends RefCounted:
 					s.seek(x + self.size)
 				#s.align(4, x)
 				return ret
-			elif self.children[1].type_name == "UInt8":
-				# print("u8 " + str(arrlen))
+			elif child_type_name == "UInt8":
 				var ret: PackedByteArray = s.read(arrlen)
-				# print("reading string @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(ret)))
 				if self.size >= 1:
 					s.seek(x + self.size)
 				return ret
@@ -204,18 +203,63 @@ class Def extends RefCounted:
 				if not (self.children[1].size * arrlen < 400000000 and arrlen < 100000000):
 					push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
 					return []
-				var arr: Array = [].duplicate()
 				var i: int = 0
 				var pad: bool = true
 				if self.flags == 0x4000 and self.children[1].flags == 0x0:
 					pad = false
-				while i < arrlen:
-					arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
-					i += 1
+				var arr_variant: Variant = null
+				if (child_type_name == "SInt16" or child_type_name == "short" or
+						child_type_name == "UInt16" or child_type_name == "unsigned short"):
+					var arr: PackedInt32Array = PackedInt32Array().duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
+				elif (child_type_name == "SInt32" or child_type_name == "int" or
+						child_type_name == "long" or child_type_name == "unsigned int" or
+						child_type_name == "UInt32" or child_type_name == "unsigned long"):
+					arr_variant = s.read(arrlen * 4).to_int32_array()
+				elif (child_type_name == "SInt64" or child_type_name == "UInt64" or
+						child_type_name == "long long" or child_type_name == "unsigned long long"):
+					arr_variant = s.read(arrlen * 8).to_int64_array()
+				elif child_type_name == "float":
+					arr_variant = s.read(arrlen * 4).to_float32_array()
+				elif child_type_name == "double":
+					arr_variant = s.read(arrlen * 8).to_float64_array()
+				elif child_type_name == "Vector2f":
+					var arr: PackedVector2Array = PackedVector2Array().duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
+				elif child_type_name == "Vector3f":
+					var arr: PackedVector3Array = PackedVector3Array().duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
+				elif child_type_name == "ColorRGBA":
+					var arr: PackedColorArray = PackedColorArray().duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
+				elif child_type_name == "string":
+					var arr: PackedStringArray = PackedStringArray().duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
+				else:
+					var arr: Array = [].duplicate()
+					while i < arrlen:
+						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
+						i += 1
+					arr_variant = arr
 				# print("reading arr @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + ": " + str(len(arr)))
 				if self.size >= 1:
 					s.seek(x + self.size)
-				return arr
+				return arr_variant
 		elif not self.children.is_empty():
 			var x: int = 0 #####s.tell()
 			var v: Dictionary = {}.duplicate()
