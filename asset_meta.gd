@@ -104,23 +104,23 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 				child_meta.toposort_prefab_recurse(child_meta, tt)
 	return tt.output
 
-func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary, allow_init_meta: bool=true)-> Dictionary:
+func remap_prefab_gameobject_names_inner(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary)-> int:
 	var gameobject_renames: Dictionary = self.gameobject_fileid_to_rename
 	var transform_new_children: Dictionary = self.transform_fileid_to_children
 	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
 	var gameobject_to_prefab_ids: Dictionary = self.transform_fileid_to_prefab_ids
-	var ret = {}
-	var my_id = original_map.get(1, 0) ^ prefab_id
-	var my_transform_id = original_map.get(4, 0) ^ prefab_id
-	for name in original_map:
+	var ret: Dictionary = {}.duplicate()
+	var my_id: int = gameobject_id ^ prefab_id
+	var my_transform_id: int = original_map[gameobject_id].get(4, 0) ^ prefab_id
+	var this_map: Dictionary = original_map[gameobject_id]
+	for name in this_map:
+		var sub_id = this_map[name]
 		if typeof(name) != TYPE_STRING and typeof(name) != TYPE_STRING_NAME:
 			# int: class_id; NodePath: script-type
-			ret[name] = original_map[name] ^ prefab_id
+			ret[name] = sub_id ^ prefab_id
 			continue
-		var sub_map = original_map[name]
-		var sub_id = sub_map[1]
 		var new_name = gameobject_renames.get(prefab_id ^ sub_id, name)
-		ret[new_name] = remap_prefab_gameobject_names(prefab_metas, prefab_id, original_map[name])
+		ret[new_name] = remap_prefab_gameobject_names_inner(prefab_metas, prefab_id, original_map, sub_id, new_map)
 	if prefab_id != 0:
 		var component_map: Dictionary = gameobject_new_components.get(my_id, {})
 		for comp in component_map:
@@ -133,16 +133,23 @@ func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, ori
 	# This one applies to both prefabs and non-prefabs
 	for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
 		if not prefab_metas.has(target_prefab_id):
-			assert(allow_init_meta)
 			prefab_metas[target_prefab_id] = lookup_meta_by_guid_noinit(self.get_database(), self.prefab_id_to_guid.get(target_prefab_id))
 			if prefab_metas[target_prefab_id].get_database() == null:
 				prefab_metas[target_prefab_id].initialize(self.get_database())
 		var target_prefab_meta: Object = prefab_metas[target_prefab_id]
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
-		var prefab_name = gameobject_renames[target_prefab_id ^ pgntfac[1]]
-		ret[prefab_name] = self.remap_prefab_gameobject_names(prefab_metas, target_prefab_id, pgntfac)
+		var prefab_name = gameobject_renames[target_prefab_id ^ prefab_main_gameobject_id]
+		ret[prefab_name] = self.remap_prefab_gameobject_names_inner(prefab_metas, target_prefab_id, pgntfac, prefab_main_gameobject_id, new_map)
 	# Note: overwrites of name should respect m_RootOrder (we may need to store m_RootOrder here too)
-	return ret
+	new_map[prefab_main_gameobject_id] = ret
+	return prefab_main_gameobject_id
+
+func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary) -> Dictionary:
+	var new_map: Dictionary = {}.duplicate()
+	for key in original_map:
+		if not new_map.has(key):
+			remap_prefab_gameobject_names_inner(prefab_metas, prefab_id, original_map, key, new_map)
+	return new_map
 
 # Expected to be called in topological order
 func calculate_prefab_nodepaths(database: Resource):
@@ -188,7 +195,7 @@ func calculate_prefab_nodepaths(database: Resource):
 	if self.prefab_id_to_guid.is_empty():
 		self.prefab_gameobject_name_to_fileid_and_children = {}
 	else:
-		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(prefab_metas, 0, self.gameobject_name_to_fileid_and_children, false)
+		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(prefab_metas, 0, self.gameobject_name_to_fileid_and_children)
 
 
 func calculate_prefab_nodepaths_recursive():
@@ -361,6 +368,16 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	var bin_parser = bin_parser_class.new(self, bytearray)
 	print("Parsed " + str(guid) + ":" + str(bin_parser) + " found " + str(len(bin_parser.objs)) + " objects and " + str(len(bin_parser.defs)) + " defs")
 	var next_basic_id: Dictionary = {}.duplicate()
+	if self.main_object_id == 0:
+		for output_obj in bin_parser.objs:
+			if output_obj.fileID == 15600000:
+				# TerrainData may be special cased...
+				self.main_object_id = output_obj.fileID
+	if self.main_object_id == 0:
+		for output_obj in bin_parser.objs:
+			if (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000) and output_obj.fileID > 0:
+				push_error("We have no main_object_id but found a nice round number " + str(output_obj.fileID))
+				self.main_object_id = output_obj.fileID
 	var i = 0
 	for output_obj in bin_parser.objs:
 		i += 1
