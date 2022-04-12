@@ -893,7 +893,7 @@ class UnityTerrainLayer extends UnityObject:
 		mat.albedo_texture = diffuse_tex
 		mat.roughness = 1.0 - smooth
 		mat.metallic = metal
-		mat.metallic_specular = spec
+		# mat.metallic_specular = spec.a
 		mat.uv1_scale = Vector3(tilesize.x, tilesize.y, 0.0)
 		mat.uv1_offset = Vector3(tileoffset.x, tileoffset.y, 0.0)
 
@@ -915,42 +915,120 @@ class UnityTerrainData extends UnityObject:
 	var mesh_data: ArrayMesh = null
 	var collision_mesh: ConcavePolygonShape3D = null
 
-	func get_godot_extension() -> String:
-		return ".terrain.tscn"
-
 	func get_extra_resources() -> Dictionary:
+		#var vertices: PackedVector3Array = PackedVector3Array().duplicate()
+		var heightmap: Dictionary = keys.get("m_Heightmap")
+		var resolution: int = heightmap["m_Resolution"]
+		var vertex_count = resolution * resolution
+		var index_count = (resolution - 1) * (resolution - 1)
+		assert (resolution * resolution == len(heightmap["m_Heights"]))
+		var heights: PackedInt32Array = heightmap.get("m_Heights")
+		var scale: Vector3 = heightmap.get("m_Scale")
+		#var surface = SurfaceTool.new()
+		#surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var vertices: PackedVector3Array = PackedVector3Array().duplicate()
+		vertices.resize(resolution * resolution)
+		var uvs: PackedVector2Array = PackedVector2Array().duplicate()
+		uvs.resize(resolution * resolution)
+		var indices_tris: PackedInt32Array = PackedInt32Array().duplicate()
+		indices_tris.resize((resolution - 1) * (resolution - 1) * 6)
+		var idx: int = 0
+		for resy in range(resolution):
+			for resx in range(resolution):
+				var heightint: int = heights[resy * resolution + resx]
+				vertices[idx] = scale * Vector3(-1.0 * resx, heightint / 32767.0, 1.0 * resy)
+				uvs[idx] = Vector2((1.0 * resx) / resolution, (1.0 * resy) / resolution)
+				#surface.set_uv(Vector2((1.0 * resx) / resolution, (1.0 * resy) / resolution))
+				#surface.add_vertex(vertices[idx])
+				idx += 1
+		idx = 0
+		for resy in range(resolution - 1):
+			for resx in range(resolution - 1):
+				var baseidx: int = resy * resolution + resx
+				indices_tris[idx] = (baseidx + resolution)
+				indices_tris[idx + 1] = (baseidx + resolution + 1)
+				indices_tris[idx + 2] = (baseidx)
+				indices_tris[idx + 3] = (baseidx)
+				indices_tris[idx + 4] = (baseidx + resolution + 1)
+				indices_tris[idx + 5] = (baseidx + 1)
+				#surface.add_index(baseidx + resolution)
+				#surface.add_index(baseidx)
+				#surface.add_index(baseidx + resolution + 1)
+				#surface.add_index(baseidx + resolution + 1)
+				#surface.add_index(baseidx)
+				#surface.add_index(baseidx + 1)
+				idx += 6
+		var temp_mesh: ArrayMesh = ArrayMesh.new()
+		var really_temp_arrays: Array = []
+		really_temp_arrays.resize(Mesh.ARRAY_MAX)
+		really_temp_arrays[Mesh.ARRAY_VERTEX] = vertices
+		really_temp_arrays[Mesh.ARRAY_TEX_UV] = uvs
+		really_temp_arrays[Mesh.ARRAY_INDEX] = indices_tris
+		temp_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, really_temp_arrays)
+		var surface = SurfaceTool.new()
+		surface.create_from(temp_mesh, 0) # Missing API here to create directly from arrays!!!! :'-(
+		# generate_normals does not support triangle strip.
+		surface.generate_normals()
+		surface.generate_tangents()
+		# Missing API: No way to clear indices or convert to triangle strip?
+		temp_mesh = surface.commit()
+		collision_mesh = temp_mesh.create_trimesh_shape()
+		var mesh_arrays: Array = temp_mesh.surface_get_arrays(0)
+		# Missing API: No way to make SurfaceTool from arrays???
+		# I guess we just do it ourselves
+		var indices_optimized: PackedInt32Array = PackedInt32Array().duplicate()
+		indices_optimized.resize((resolution) * ((resolution - 1)/2) * 4)
+		indices_optimized.fill(0)
+		# Triangle strip:
+		idx = 0
+		for resy in range(0, resolution - 1, 2):
+			for resx in range(resolution):
+				indices_optimized[idx] = (resy * resolution + resx)
+				indices_optimized[idx + 1] = ((resy + 1) * resolution + resx)
+				idx += 2
+			for resx in range(resolution - 1, -1, -1):
+				indices_optimized[idx] = ((resy + 2) * resolution + resx)
+				indices_optimized[idx + 1] = ((resy + 1) * resolution + resx)
+				idx += 2
+		assert(len(indices_optimized) == idx)
+		mesh_arrays[Mesh.ARRAY_INDEX] = indices_optimized
+
+		#mesh_data = temp_mesh
+		mesh_data = ArrayMesh.new()
+		mesh_data.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLE_STRIP, mesh_arrays)
+
 		return {
 			self.fileID ^ 0xdeca604: ".terrain.mesh.res",
 			self.fileID ^ 0xc0111de4: ".terrain.collider.res",
 		}
 
+	func create_godot_resource() -> Resource:
+		var packed_scene = PackedScene.new()
+		var rootnode = Node3D.new()
+		rootnode.top_level = true # ideally only ignore rotation, scale.
+		rootnode.name = self.keys.get("m_Name", meta.resource_name)
+		var meshinst: MeshInstance3D = MeshInstance3D.new()
+		meshinst.name = "TerrainMesh"
+		meshinst.mesh = mesh_data
+		meshinst.owner = rootnode
+		rootnode.add_child(meshinst)
+		meshinst.owner = rootnode
+		var err = packed_scene.pack(rootnode)
+		if err != OK:
+			push_error("Error packing terrain scene. " + str(err))
+			return null
+		return packed_scene
+
+	func get_godot_extension() -> String:
+		return ".terrain.tscn"
+
 	func get_extra_resource(fileID: int) -> Resource:
 		if fileID == self.fileID ^ 0xdeca604:
-			return mesh_data
+			return self.mesh_data
 		if fileID == self.fileID ^ 0xc0111de4:
-			return collision_mesh
+			return self.collision_mesh
 		assert(fileID == 0)
 		return null
-
-	func create_godot_resource() -> Resource:
-		mesh_data = ArrayMesh.new()
-		var mesh_arrays = []
-		var vertices: PackedVector3Array = PackedVector3Array().duplicate()
-		var normals: PackedVector3Array = PackedVector3Array().duplicate()
-		var tangents: PackedFloat32Array = PackedFloat32Array().duplicate()
-		var indices: PackedInt32Array = PackedInt32Array().duplicate() # 0 2 1 1 2 3 2 4 3 3 4 5 etc
-		mesh_arrays[Mesh.ARRAY_VERTEX] = vertices
-		mesh_arrays[Mesh.ARRAY_NORMAL] = normals
-		mesh_arrays[Mesh.ARRAY_TANGENT] = tangents
-		mesh_arrays[Mesh.ARRAY_INDEX] = indices
-		var heightmap: Dictionary = keys.get("m_Heightmap")
-		var resolution: int = heightmap["m_Resolution"]
-		assert (resolution * resolution == len(heightmap["m_Heights"]))
-		#for i in 
-		mesh_data.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh_arrays)
-		collision_mesh = mesh_data.create_trimesh_shape()
-		var ps: PackedScene
-		return ps
 
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
@@ -1949,25 +2027,21 @@ class UnityMeshCollider extends UnityCollider:
 				return mf.mesh
 		return ret
 
+
 class UnityTerrainCollider extends UnityMeshCollider:
 	func get_shape() -> Shape3D:
-		return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
+		return get_collision_shape(self.keys)
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
-		var new_mesh: Mesh = meta.get_godot_resource(get_mesh(uprops))
-		outdict["shape"] = new_mesh.create_trimesh_shape()
+		outdict["shape"] = get_collision_shape(uprops)
 		return outdict
 
-	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
-		var ret = get_ref(uprops, "m_Mesh")
-		if ret[1] == 0:
-			if is_stripped or gameObject.is_stripped:
-				push_error("Oh no i am stripped MCgm")
-			var mf: RefCounted = self.meta.lookup(self.keys.get("m_TerrainData"))
-			if mf != null:
-				return mf.mesh
-		return ret
+	func get_collision_shape(uprops: Dictionary) -> Shape3D: # UnityRef
+		var coll_ref: Array = uprops.get("m_TerrainData")
+		coll_ref = [null, 0xc0111de4 ^ coll_ref[1], coll_ref[2], coll_ref[3]]
+		var concave: ConcavePolygonShape3D = self.meta.get_godot_resource(coll_ref)
+		return concave
 
 
 class UnityRigidbody extends UnityComponent:
@@ -2609,12 +2683,22 @@ class UnityReflectionProbe extends UnityBehaviour:
 		return outdict
 
 class UnityTerrain extends UnityBehaviour:
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
-		var terrain: MeshInstance3D = MeshInstance3D.new()
-		terrain.name = "Terrain"
-		assign_object_meta(terrain)
-		state.add_child(terrain, new_parent, self)
-		return terrain
+		#var terrain: MeshInstance3D = MeshInstance3D.new()
+		#terrain.name = "Terrain"
+		#assign_object_meta(terrain)
+		#state.add_child(terrain, new_parent, self)
+		# Traditional instanced scene case: It only requires calling instantiate() and setting the filename.
+		var packed_scene: PackedScene = meta.get_godot_resource(keys.get("m_TerrainData", [null,0,null,null]))
+		if packed_scene == null:
+			return null
+		var instanced_terrain: Node3D = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+		#instanced_scene.scene_file_path = packed_scene.resource_path
+		state.add_child(instanced_terrain, new_parent, self)
+		instanced_terrain.position = new_parent.global_transform.origin
+		instanced_terrain.name = "Terrain"
+		return instanced_terrain
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
