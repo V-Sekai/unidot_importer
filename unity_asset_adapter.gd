@@ -232,12 +232,40 @@ class YamlHandler extends AssetHandler:
 			return
 		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
+
 		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
-			godot_resource = main_asset.create_godot_resource()
 		else:
 			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
-		if godot_resource == null:
+		var new_pathname: String = pkgasset.pathname.get_basename()
+		if main_asset != null:
+			new_pathname += main_asset.get_godot_extension() # ".mat.tres"
+		else:
+			new_pathname += ".raw.tres"
+		pkgasset.pathname = new_pathname
+		pkgasset.parsed_meta.rename(new_pathname)
+
+		var extra_resources: Dictionary = main_asset.get_extra_resources()
+		for extra_asset_fileid in extra_resources:
+			var file_ext: String = extra_resources.get(extra_asset_fileid)
+			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
+			print("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(pkgasset.pathname.get_basename() + file_ext))
+			if created_res != null:
+				new_pathname = "res://" + pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
+				created_res.resource_name = pkgasset.pathname.get_basename().get_file()
+				created_res.take_over_path(new_pathname)
+				ResourceSaver.save(new_pathname, created_res)
+				#created_res = load(new_pathname)
+				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
+
+		if main_asset != null:
+			godot_resource = main_asset.create_godot_resource()
+
+		if godot_resource != null:
+			# Save main resource at end, so that it can reference extra resources.
+			godot_resource.take_over_path(pkgasset.pathname)
+			ResourceSaver.save(pkgasset.pathname, godot_resource)
+		else:
 			var rpa = raw_parsed_asset.new()
 			rpa.path = pkgasset.pathname
 			rpa.guid = pkgasset.guid
@@ -246,25 +274,8 @@ class YamlHandler extends AssetHandler:
 				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
-			var new_pathname: String = pkgasset.pathname + ".tres"
-			pkgasset.pathname = new_pathname
-			pkgasset.parsed_meta.rename(new_pathname)
+			rpa.take_over_path(pkgasset.pathname)
 			ResourceSaver.save(pkgasset.pathname, rpa)
-		else:
-			var new_pathname: String = pkgasset.pathname.get_basename() + main_asset.get_godot_extension() # ".mat.tres"
-			pkgasset.pathname = new_pathname
-			pkgasset.parsed_meta.rename(new_pathname)
-			var extra_resources: Dictionary = main_asset.get_extra_resources()
-			for extra_asset_fileid in extra_resources:
-				var file_ext: String = extra_resources.get(extra_asset_fileid)
-				var created_res: Resource = main_asset.create_extra_resource(extra_asset_fileid)
-				if created_res != null:
-					new_pathname = pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
-					ResourceSaver.save(new_pathname, created_res)
-					created_res = load(new_pathname)
-					pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
-			# Save main resource at end, so that it can reference extra resources.
-			ResourceSaver.save(pkgasset.pathname, godot_resource)
 
 class SceneHandler extends YamlHandler:
 
@@ -283,6 +294,9 @@ class BaseModelHandler extends AssetHandler:
 		var ret = self
 		ret.stub_file = stub_file
 		return ret
+
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
+		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_MODEL
@@ -675,7 +689,7 @@ class FbxHandler extends BaseModelHandler:
 	func sanitize_anim_name(anim_name: String) -> String:
 		return sanitize_unique_name(anim_name).replace("[", "").replace(",", "")
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
 		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
