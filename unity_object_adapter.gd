@@ -649,28 +649,57 @@ class UnityMesh extends UnityObject:
 
 class UnityMaterial extends UnityObject:
 
+	# Old:
+	#    m_Colors:
+	#    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
+	#    - _Color: {r: 1, g: 1, b: 1, a: 1}
+	# [{_EmissionColor:Color.TRANSPARENT,_Color:Color.WHITE}]
+
+	# New:
+	#    m_Colors:
+	#      data:
+	#        first:
+	#          name: _EmissionColor
+	#        second: {r: 0, g: 0, b: 0, a: 0}
+	#      data:
+	#        first:
+	#          name: _Color
+	#        second: {r: 1, g: 1, b: 1, a: 1}
+	# ...
+	# [{first:{name:_EmissionColor},second:Color.TRANSPARENT},{first:{name:_Color},second:Color.WHITE}]
+
 	func get_float_properties() -> Dictionary:
 		var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
 		var ret = {}.duplicate()
+		print(flts)
 		for dic in flts:
-			for key in dic:
-				ret[key] = dic.get(key)
+			if len(dic) == 2 and dic.has("first") and dic.has("second"):
+				ret[dic["first"]["name"]] = dic["second"]
+			else:
+				for key in dic:
+					ret[key] = dic.get(key)
 		return ret
 
 	func get_color_properties() -> Dictionary:
 		var cols = keys.get("m_SavedProperties", {}).get("m_Colors", [])
 		var ret = {}.duplicate()
 		for dic in cols:
-			for key in dic:
-				ret[key] = dic.get(key)
+			if len(dic) == 2 and dic.has("first") and dic.has("second"):
+				ret[dic["first"]["name"]] = dic["second"]
+			else:
+				for key in dic:
+					ret[key] = dic.get(key)
 		return ret
 
 	func get_tex_properties() -> Dictionary:
 		var texs = keys.get("m_SavedProperties", {}).get("m_TexEnvs", [])
 		var ret = {}.duplicate()
 		for dic in texs:
-			for key in dic:
-				ret[key] = dic.get(key)
+			if len(dic) == 2 and dic.has("first") and dic.has("second"):
+				ret[dic["first"]["name"]] = dic["second"]
+			else:
+				for key in dic:
+					ret[key] = dic.get(key)
 		return ret
 
 	func get_texture(texProperties: Dictionary, name: String) -> Texture:
@@ -1000,7 +1029,7 @@ class UnityGameObject extends UnityObject:
 				skip_first = false
 			else:
 				assert(ret != null)
-				var component = meta.lookup(component_ref.get("component"))
+				var component = meta.lookup(component_ref.values()[0])
 				var tmp = component.create_godot_node(state, ret)
 				component.configure_node(tmp)
 				var component_key = component.get_component_key()
@@ -1033,7 +1062,7 @@ class UnityGameObject extends UnityObject:
 		name_map[transform.utype] = transform.fileID # RectTransform may also point to this.
 
 		for component_ref in components:
-			var component = meta.lookup(component_ref.get("component"))
+			var component = meta.lookup(component_ref.values()[0])
 			# Some components take priority and must be created here.
 			if component.type == "Rigidbody":
 				ret = component.create_physics_body(state, new_parent, name)
@@ -1068,7 +1097,7 @@ class UnityGameObject extends UnityObject:
 				#Is it a fair assumption that Transform is always the first component???
 				skip_first = false
 			else:
-				var component = meta.lookup(component_ref.get("component"))
+				var component = meta.lookup(component_ref.values()[0])
 				var tmp = component.create_godot_node(state, ret)
 				component.configure_node(tmp)
 				var component_key = component.get_component_key()
@@ -1114,10 +1143,10 @@ class UnityGameObject extends UnityObject:
 			push_error(uniq_key + " has component array: " + str(components))
 		elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
 			push_error(uniq_key + " has invalid first component: " + str(components))
-		elif len(components[0].get("component", [])) < 3:
+		elif len(components[0].values()[0]) < 3:
 			push_error(uniq_key + " has invalid component: " + str(components))
 		else:
-			var component = meta.lookup(components[0].get("component"))
+			var component = meta.lookup(components[0].values()[0])
 			if component.type != "Transform" and component.type != "RectTransform":
 				push_error(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
 			return component
@@ -1125,7 +1154,7 @@ class UnityGameObject extends UnityObject:
 
 	func GetComponent(typ: String) -> RefCounted:
 		for component_ref in components:
-			var component = meta.lookup(component_ref.get("component"))
+			var component = meta.lookup(component_ref.values()[0])
 			if component.type == typ:
 				return component
 		return null

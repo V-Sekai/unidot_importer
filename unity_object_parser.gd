@@ -304,11 +304,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 			if endcontinuation:
 				new_indentation_level = continuation_line_indentation_level
 				obj_key_match = arr_obj_key_regex.search(line_plain)
-				if obj_key_match != null:
+				if obj_key_match != null and line_plain != "data:":
 					value_start = 0 + obj_key_match.get_end()
 					this_key = obj_key_match.get_string(1)
 		if new_indentation_level > indentation_level or (new_indentation_level == indentation_level and line_plain.begins_with("- ") and typeof(current_obj_tree.back()) != TYPE_ARRAY):
-			if line_plain.begins_with("- "):
+			if line_plain.begins_with("- ") or line_plain == "data:":
 				current_indent_tree.push_back(indentation_level)
 				var new_arr: Array = [].duplicate()
 				current_obj_tree.back()[prev_key] = new_arr
@@ -329,11 +329,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 				prev_key = ""
-			if typeof(current_obj_tree.back()) == TYPE_ARRAY and not line_plain.begins_with("- "):
+			if typeof(current_obj_tree.back()) == TYPE_ARRAY and not line_plain.begins_with("- ") and not line_plain.begins_with("data:"):
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 
-		if line_plain.begins_with("- ") and obj_key_match != null:
+		if (line_plain.begins_with("- ") or line_plain == "data:") and obj_key_match != null:
 			current_indent_tree.push_back(indentation_level)
 			indentation_level = new_indentation_level + 2
 			var new_obj = {}.duplicate()
@@ -342,7 +342,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		if obj_key_match != null:
 			if obj_key_match.get_end() == len(line_plain):
 				prev_key = this_key
-				if this_key != "first" and this_key != "second":
+				if this_key != "first" and this_key != "second" and this_key != "data":
 					prev_complex_key = this_key
 			else:
 				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()),this_key, prev_complex_key)
@@ -352,7 +352,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val
-		elif line_plain.begins_with("- "):
+		elif (line_plain.begins_with("- ") or line_plain == "data:"):
 			var parsed_val = parse_value(line_plain.substr(2), "", prev_complex_key)
 			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 				meta.dependency_guids[parsed_val[2]] = 1
