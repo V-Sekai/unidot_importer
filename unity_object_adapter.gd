@@ -820,9 +820,6 @@ class UnityMaterial extends UnityObject:
 class UnityShader extends UnityObject:
 	pass
 
-class UnityTexture extends UnityObject:
-	pass
-
 class UnityAnimationClip extends UnityObject:
 
 	func get_godot_extension() -> String:
@@ -857,20 +854,250 @@ class UnityAnimationClip extends UnityObject:
 	#	return null
 
 
+class UnityTexture extends UnityObject:
+	func get_godot_extension() -> String:
+		return ".tex.tres"
+
+	func get_image_data() -> PackedByteArray:
+		# hex_decode
+		if typeof(self.keys["image data"]) == TYPE_PACKED_BYTE_ARRAY:
+			return self.keys["image data"]
+		var tld = self.keys["_typelessdata"]
+		print("TLD LEN " + str(len(tld)))
+		var hexdec: PackedByteArray = aligned_byte_buffer.new().hex_decode(tld) # a bit slow :'-(
+		print(len(hexdec))
+		return hexdec
+
+	var width: int:
+		get:
+			return self.keys["m_Width"]
+
+	var height: int:
+		get:
+			return self.keys["m_Height"]
+
+	var mipmaps: int:
+		get:
+			return self.keys["m_MipCount"]
+
+	func get_unaligned_size() -> int:
+		var format_index: int = keys.get("m_TextureFormat", keys.get("m_Format", 0))
+		match format_index:
+			1, 63:
+				return 1
+			2, 7, 9, 13, 15, 62:
+				return 2
+			3:
+				return 3
+			73:
+				return 6
+			17, 19, 74:
+				return 8
+			20:
+				return 16
+			4, 5, 14, 16, 18, 72:
+				return 4
+			_:
+				return 0  # Compressed formats. Untested...
+
+	func get_godot_format() -> int:
+		var format_index: int = keys.get("m_TextureFormat", keys.get("m_Format", 0))
+		match format_index:
+			1: # A8
+				return Image.FORMAT_R8
+			2: # ARGB4444
+				return Image.FORMAT_RGBA4444
+			3:
+				return Image.FORMAT_RGB8
+			4:
+				return Image.FORMAT_RGBA8
+			5: # ARGB32
+				return Image.FORMAT_RGBA8
+			7:
+				return Image.FORMAT_RGB565
+			9: # R16 (16-bit int). not supported in Godot
+				return Image.FORMAT_RH
+			10:
+				return Image.FORMAT_DXT1
+			11:
+				return Image.FORMAT_DXT3
+			12:
+				return Image.FORMAT_DXT5
+			13:
+				return Image.FORMAT_RGBA4444
+			14: # BGRA32
+				return Image.FORMAT_RGBA8
+			15:
+				return Image.FORMAT_RH
+			16:
+				return Image.FORMAT_RGH
+			17:
+				return Image.FORMAT_RGBAH
+			18:
+				return Image.FORMAT_RF
+			19:
+				return Image.FORMAT_RGF
+			20:
+				return Image.FORMAT_RGBAF
+			21: # YUY2 for video playback
+				return Image.FORMAT_RGBA8
+			22:
+				return Image.FORMAT_RGBE9995
+			24: # BC6H
+				return Image.FORMAT_BPTC_RGBFU
+			25:
+				return Image.FORMAT_BPTC_RGBA
+			26: # BC4, compressed one-channel texture
+				return Image.FORMAT_RGTC_R
+			27: # BC5, compressed two-channel texture
+				return Image.FORMAT_RGTC_RG
+			28: # DXT1 crunched
+				push_error("ERROR: DXT1 Crunch not supported")
+			29: # DXT5 crunched
+				push_error("ERROR: DXT5 Crunch not supported")
+			30:
+				push_error("ERROR: PVRTC RGB2 not supported")
+			31:
+				push_error("ERROR: PVRTC RGBA2 not supported")
+			32:
+				push_error("ERROR: PVRTC RGB4 not supported")
+			33:
+				push_error("ERROR: PVRTC RGBA4 not supported")
+			34:
+				return Image.FORMAT_ETC
+			41:
+				return Image.FORMAT_ETC2_R11
+			42:
+				return Image.FORMAT_ETC2_R11S
+			43:
+				return Image.FORMAT_ETC2_RG11
+			44:
+				return Image.FORMAT_ETC2_RG11S
+			45:
+				return Image.FORMAT_ETC2_RGB8
+			46:
+				return Image.FORMAT_ETC2_RGB8A1
+			47:
+				return Image.FORMAT_ETC2_RGBA8
+			62: # RG16 int
+				return Image.FORMAT_RG8
+			63: # R8 int
+				return Image.FORMAT_R8
+			64: # ETC crunched
+				push_error("ERROR: ETC Crunch not supported")
+			65: # ETC2 crunched
+				push_error("ERROR: ETC2 Crunch not supported")
+			72: # RG32 int
+				return Image.FORMAT_RG16
+			73: # RGB48 int
+				return Image.FORMAT_RGB16
+			74: # RGB64 int
+				return Image.FORMAT_RGBA16
+			_:
+				push_error("ERROR: Format " + str(format_index) + " is not supported")
+		return Image.FORMAT_RGBA8 # most common
+
+	func gen_image_layer(imgdata: PackedByteArray, byteoffset: int, length: int) -> Image:
+		var format: int = self.get_godot_format()
+		print("Format for " + meta.path + " is " + str(format))
+		var img: Image = Image.new()
+		print(str(len(imgdata))+","+str(byteoffset)+","+str(byteoffset+length))
+		if byteoffset != 0 or length != 0:
+			imgdata = imgdata.slice(byteoffset, byteoffset + length)
+		print(" is now " + str(len(imgdata)))
+		#elif length != 0:
+		img.create_from_data(self.width, self.height, self.mipmaps > 1, format, imgdata)
+		return img
+
+	func gen_image() -> Image:
+		var imgdata: PackedByteArray = self.get_image_data()
+		return gen_image_layer(imgdata, 0, 0)
+
+
 class UnityTexture2D extends UnityTexture:
-	pass
+	func create_godot_resource() -> Resource:
+		var imgtex: ImageTexture = ImageTexture.new()
+		imgtex.create_from_image(self.gen_image())
+		return imgtex
 
-class UnityTexture2DArray extends UnityTexture:
-	pass
+class UnityTextureLayered extends UnityTexture:
 
-class UnityTexture3D extends UnityTexture:
-	pass
+	var depth: int:
+		get:
+			return keys["m_Depth"]
 
-class UnityCubemap extends UnityTexture:
-	pass
+	func gen_images(is_3d: bool=false) -> Array:
+		var imgdata: PackedByteArray = self.get_image_data()
+		print("Depth is " + str(self.depth) + " len(imgdata) is " + str(len(imgdata)))
+		if (self.depth <= 0):
+			return []
+		var stride_per: int = len(imgdata) / self.depth
+		if (stride_per <= 0):
+			push_error("len(imgdata) per layer is 0")
+			return []
+		var images: Array = []
+		var offset: int = 0
+		var unaligned = (self.width * self.height * self.get_unaligned_size()) % 4
+		var length_per: int = stride_per
+		var unaligned_size: int = get_unaligned_size()
+		if unaligned_size != 0:
+			length_per = 0
+			var mip_dim = max(self.width, self.height)
+			var mip_w = self.width
+			var mip_h = self.height
+			while mip_dim != 0:
+				length_per += mip_w * mip_h * unaligned_size
+				mip_w = max(1, mip_w / 2)
+				mip_h = max(1, mip_h / 2)
+				mip_dim /= 2
+				if is_3d or self.mipmaps == 0:
+					break
+		else:
+			length_per = 0
+			var tmp_img = Image.new()
+			tmp_img.create(self.width, self.height, true, self.get_godot_format())
+			var mip_idx = 0
+			var mip_dim = max(self.width, self.height)
+			var last_off = 0
+			while mip_dim != 1:
+				mip_dim /= 2
+				length_per = tmp_img.get_mipmap_offset(mip_idx)
+				mip_idx += 1
+				if mip_dim == 1:
+					length_per += length_per - last_off # last two mipmaps are always the same for compressed.
+					break
+				last_off = length_per
+		print(str(length_per) + " -> " + str(stride_per))
 
-class UnityCubemapArray extends UnityTexture:
-	pass
+		for i in range(self.depth):
+			images.append(self.gen_image_layer(imgdata, offset, length_per))
+			offset += stride_per
+		return images
+
+class UnityTexture2DArray extends UnityTextureLayered:
+	func create_godot_resource() -> Resource:
+		var imgtex: Texture2DArray = Texture2DArray.new()
+		imgtex.create_from_images(self.gen_images())
+		return imgtex
+
+class UnityTexture3D extends UnityTextureLayered:
+	func create_godot_resource() -> Resource:
+		var imgtex: ImageTexture3D = ImageTexture3D.new()
+		imgtex.create(self.get_godot_format(), self.width, self.height, self.depth, false,
+				self.gen_images(true))
+		return imgtex
+
+class UnityCubemap extends UnityTextureLayered:
+	func create_godot_resource() -> Resource:
+		var imgtex: Cubemap = Cubemap.new()
+		imgtex.create_from_images(self.gen_images())
+		return imgtex
+
+class UnityCubemapArray extends UnityTextureLayered:
+	func create_godot_resource() -> Resource:
+		var imgtex: CubemapArray = CubemapArray.new()
+		imgtex.create_from_images(self.gen_images())
+		return imgtex
 
 class UnityRenderTexture extends UnityTexture:
 	pass
@@ -914,8 +1141,37 @@ class UnityTerrainLayer extends UnityObject:
 class UnityTerrainData extends UnityObject:
 	var mesh_data: ArrayMesh = null
 	var collision_mesh: ConcavePolygonShape3D = null
+	var terrain_mat: Material = null
+	var other_resources: Dictionary = {}
+
+	func resolve_godot_resource(fileRef: Array) -> Resource:
+		if fileRef[2] == null or fileRef[2] == meta.guid:
+			return other_resources[fileRef[1]]
+		return meta.get_godot_resource(fileRef)
 
 	func get_extra_resources() -> Dictionary:
+		var dict = {
+			self.fileID ^ 0x1234567: ".terrain.mat.tres",
+			self.fileID ^ 0xdeca604: ".terrain.mesh.res",
+			self.fileID ^ 0xc0111de4: ".terrain.collider.res",
+		}.duplicate()
+		var found_splatmap: bool = false
+		for other_id in meta.fileid_to_utype:
+			if other_id != self.fileID:
+				var other_object: UnityObject = meta.parsed.assets.get(other_id)
+				if meta.parsed.assets.has(other_id):
+					var res: Resource = meta.parsed.assets.get(other_id).create_godot_resource()
+					if res != null:
+						other_resources[other_id] = res
+						if other_object.type.begins_with("Texture"):
+							if found_splatmap:
+								dict[other_id] = "." + str(other_id) + ".res"
+							else:
+								dict[other_id] = ".splatmap.res"
+								found_splatmap = true
+						else:
+							dict[other_id] = other_object.get_godot_extension()
+
 		#var vertices: PackedVector3Array = PackedVector3Array().duplicate()
 		var heightmap: Dictionary = keys.get("m_Heightmap")
 		var resolution: int = heightmap["m_Resolution"]
@@ -931,7 +1187,7 @@ class UnityTerrainData extends UnityObject:
 		var uvs: PackedVector2Array = PackedVector2Array().duplicate()
 		uvs.resize(resolution * resolution)
 		var indices_tris: PackedInt32Array = PackedInt32Array().duplicate()
-		indices_tris.resize((resolution - 1) * (resolution - 1) * 6)
+		indices_tris.resize((resolution - 1) * (resolution - 1) * 6 + (resolution - 1) * 3)
 		var idx: int = 0
 		for resy in range(resolution):
 			for resx in range(resolution):
@@ -942,6 +1198,14 @@ class UnityTerrainData extends UnityObject:
 				#surface.add_vertex(vertices[idx])
 				idx += 1
 		idx = 0
+		# Big hack because we are using SurfaceTool to generate vertices.
+		# SurfaceTool outputs vertices in index order. We want to ensure each vertex is referenced once in order.
+		# This seems to only affect the first row, because the second row is already referenced in order below.
+		for resx in range(resolution - 1):
+			indices_tris[idx] = resx
+			indices_tris[idx + 1] = resx + 1
+			indices_tris[idx + 2] = resx
+			idx += 3
 		for resy in range(resolution - 1):
 			for resx in range(resolution - 1):
 				var baseidx: int = resy * resolution + resx
@@ -997,10 +1261,96 @@ class UnityTerrainData extends UnityObject:
 		mesh_data = ArrayMesh.new()
 		mesh_data.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLE_STRIP, mesh_arrays)
 
-		return {
-			self.fileID ^ 0xdeca604: ".terrain.mesh.res",
-			self.fileID ^ 0xc0111de4: ".terrain.collider.res",
-		}
+		var mat = ShaderMaterial.new()
+		var matshader = Shader.new()
+		matshader.code = '''
+shader_type spatial;
+		'''
+		var splat_database = keys.get("m_SplatDatabase", {})
+		var terrain_layers: Array = splat_database.get("m_TerrainLayers", [])
+		var alpha_textures: Array = splat_database.get("m_AlphaTextures", [])
+		if len(terrain_layers) == 0:
+			terrain_layers.append(null)
+		if len(alpha_textures) > 0:
+			var normal_enabled = []
+			var any_normal_enabled = false
+			for terrain_layer in terrain_layers:
+				var layer_mat: StandardMaterial3D = resolve_godot_resource(terrain_layer)
+				var this_normal_enabled: bool = layer_mat.normal_enabled if layer_mat != null else true
+				normal_enabled.append(this_normal_enabled)
+				any_normal_enabled = any_normal_enabled or this_normal_enabled
+
+			var shader_code: String = "shader_type spatial;\n"
+			for i in range(len(terrain_layers)):
+				shader_code += "uniform sampler2D albedo%d: hint%s_albedo;\n" % [i, "" if i == 0 else "_black"]
+			for i in range(len(terrain_layers)):
+				if normal_enabled[i]:
+					shader_code += "uniform sampler2D normal%d: hint_normal;\n" % [i]
+			for splati in range(len(alpha_textures)):
+				shader_code += "uniform sampler2D splat%d;\n" % [splati * 4]
+			for i in range(len(terrain_layers)):
+				shader_code += "uniform vec4 smoothMetalNormal%d = vec4(0);\n" % [i]
+				shader_code += "uniform vec4 scaleOffset%d = vec4(1,1,0,0);\n" % [i]
+			shader_code += "\n\nvoid fragment() {\n";
+			shader_code += "\tvec4 splat, albedo0col = vec4(0), albedo = vec4(0); vec2 thisUV, normalXY = vec2(0);\n"
+			shader_code += "\tvec4 smoothMetalNormal = vec4(0); float normalStrength = 0.0; float strength = 0.0;\n\n"
+			for splati in range(len(alpha_textures)):
+				shader_code += "\tsplat = texture(splat%d, UV);\n" % [splati * 4]
+				for idx in range(min(len(terrain_layers) - splati * 4, 4)):
+					var i = splati * 4 + idx;
+					shader_code += "\tthisUV = UV * scaleOffset%d.xy + scaleOffset%d.zw;\n" % [i, i]
+					if i == 0:
+						shader_code += "\talbedo0col = splat[%d] * texture(albedo%d, thisUV); albedo = splat[%d] * albedo0col;\n" % [idx, i, idx]
+					else:
+						shader_code += "\talbedo += splat[%d] * texture(albedo%d, thisUV);\n" % [idx, i]
+					shader_code += "\tstrength += splat[%d];\n" % [idx]
+					if normal_enabled[i]:
+						shader_code += "\tnormalStrength += splat[%d] * smoothMetalNormal%d.z;\n" % [idx, i];
+						shader_code += "\tnormalXY += splat[%d] * smoothMetalNormal%d.z * (texture(albedo%d, thisUV).xy * 2.0 - 1.0);\n" % [idx, i, i]
+					shader_code += "\tsmoothMetalNormal += splat[%d] * smoothMetalNormal%d;\n\n" % [idx, i]
+			shader_code += "\tsmoothMetalNormal = max(0.0, 1.0 - strength) * smoothMetalNormal0 + min(1.0, 1.0 / strength) * smoothMetalNormal;\n"
+			shader_code += "\tALBEDO = max(0.0, 1.0 - strength) * albedo0col.xyz + min(1.0, 1.0 / strength) * albedo.xyz;\n"
+			shader_code += "\tROUGHNESS = 1.0 - albedo.w * smoothMetalNormal.x;\n"
+			shader_code += "\tMETALLIC = smoothMetalNormal.y;\n"
+			if any_normal_enabled:
+				shader_code += "\tnormalXY = mix(vec2(0.0), normalXY / normalStrength, smoothstep(0.01, 0.1, normalStrength));\n"
+				shader_code += "\tNORMAL_MAP = vec3(normalXY.xy, sqrt(1.0 - dot(normalXY, normalXY)));\n"
+				shader_code += "\tNORMAL_MAP_DEPTH = normalStrength;\n"
+			shader_code += "}\n"
+			matshader.code = shader_code
+			mat.shader = matshader
+			var i: int = 0
+			for terrain_layer in terrain_layers:
+				var layer_mat: StandardMaterial3D = resolve_godot_resource(terrain_layer)
+				if layer_mat == null:
+					continue
+				mat.set_shader_param("albedo%d" % [i], layer_mat.albedo_texture)
+				var normal_scale = 0.0
+				if layer_mat.normal_enabled:
+					mat.set_shader_param("normal%d" % [i], layer_mat.normal_texture)
+					normal_scale = layer_mat.normal_scale
+				var roughness = layer_mat.roughness
+				var metallic = layer_mat.metallic
+				var uv1_scale: Vector2 = Vector2(layer_mat.uv1_scale.x, layer_mat.uv1_scale.y) * Vector2(scale.x, scale.z) * resolution
+				var uv1_offset = layer_mat.uv1_offset
+				mat.set_shader_param("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
+				mat.set_shader_param("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
+				i += 1
+			i = 0
+			for splat_texture_obj in alpha_textures:
+				var splat_texture: Texture2D = resolve_godot_resource(splat_texture_obj)
+				mat.set_shader_param("splat%d" % [i], splat_texture)
+				i += 1
+			mat.resource_name = self.keys.get("m_Name", meta.resource_name) + "_material"
+			terrain_mat = mat
+		else:
+			terrain_mat = terrain_layers[0]
+
+		mesh_data.resource_name = self.keys.get("m_Name", meta.resource_name) + "_mesh"
+		mesh_data.surface_set_name(0, "TerrainSurf")
+		mesh_data.surface_set_material(0, mat)
+
+		return dict
 
 	func create_godot_resource() -> Resource:
 		var packed_scene = PackedScene.new()
@@ -1023,10 +1373,14 @@ class UnityTerrainData extends UnityObject:
 		return ".terrain.tscn"
 
 	func get_extra_resource(fileID: int) -> Resource:
+		if fileID == self.fileID ^ 0x1234567:
+			return self.terrain_mat
 		if fileID == self.fileID ^ 0xdeca604:
 			return self.mesh_data
 		if fileID == self.fileID ^ 0xc0111de4:
 			return self.collision_mesh
+		if other_resources.has(fileID):
+			return other_resources.get(fileID)
 		assert(fileID == 0)
 		return null
 

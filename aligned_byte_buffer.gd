@@ -59,8 +59,10 @@ func set_buffer_from_hex(source_buffer):
 	_buffer_words = len(source_buffer) / 8
 	_buffer = hex_decode(source_buffer, FLOAT_PREFIX)
 
-func _init(source_buffer):
-	set_buffer_from_hex(source_buffer)
+func _init(source_buffer=PackedByteArray()):
+	clear_views()
+	if source_buffer != PackedByteArray():
+		set_buffer_from_hex(source_buffer)
 
 func _replace_prefix(buffer_and_prefix):
 	var prefix = buffer_and_prefix[1]
