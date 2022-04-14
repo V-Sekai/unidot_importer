@@ -56,6 +56,7 @@ class ParseState:
 
 	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
+	var is_dae: bool = false
 	var use_scene_root: bool = true
 	var mesh_is_toplevel: bool = false
 	var extractLegacyMaterials: bool = false
@@ -87,6 +88,8 @@ class ParseState:
 		if type == "PrefabInstance":
 			# May be based on hash in gltf docs, not sure. Anyway for fbx 100100000 seems ok
 			return 100100000 # I think we'll just hardcode this.
+		if self.is_dae and path == PackedStringArray():
+			name = name.replace(" ", "_")
 		if objtype_to_name_to_id.get(type, {}).has(name):
 			return objtype_to_name_to_id.get(type, {}).get(name, 0)
 		elif use_new_names:
@@ -428,6 +431,7 @@ class ParseState:
 					if anim != null:
 						adjust_animation(anim)
 						var respath: String = get_resource_path(godot_anim_name, ".tres")
+						anim.take_over_path(respath)
 						ResourceSaver.save(respath, anim)
 						anim = load(respath)
 				if anim != null:
@@ -533,6 +537,7 @@ class ParseState:
 							print("    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
 							print("    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
+						mat.take_over_path(respath)
 						ResourceSaver.save(respath, mat)
 						mat = load(respath)
 						print("Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
@@ -560,12 +565,14 @@ class ParseState:
 					if mesh != null:
 						adjust_mesh_scale(mesh)
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
+						mesh.take_over_path(respath)
 						ResourceSaver.save(respath, mesh)
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
 						adjust_skin_scale(skin)
 						var respath: String = get_resource_path(godot_mesh_name, ".skin.tres")
+						skin.take_over_path(respath)
 						ResourceSaver.save(respath, skin)
 						skin = load(respath)
 				if mesh != null:
@@ -717,8 +724,6 @@ func _post_import(p_scene: Node) -> Object:
 	print("Parsing meta at " + source_file_path)
 	var asset_database: asset_database_class = asset_database_class.new().get_singleton()
 	default_material = asset_database.default_material_reference
-	var is_obj: bool = source_file_path.ends_with(".obj")
-	var is_dae: bool = source_file_path.ends_with(".dae")
 
 	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
 	var f: File
@@ -750,7 +755,8 @@ func _post_import(p_scene: Node) -> Object:
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
 	ps.default_material = default_material
-	ps.is_obj = is_obj
+	ps.is_obj = source_file_path.ends_with(".obj")
+	ps.is_dae = source_file_path.ends_with(".dae")
 	print("Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
@@ -824,7 +830,7 @@ func _post_import(p_scene: Node) -> Object:
 					metaobj.prefab_main_gameobject_id = fileId
 				if type == "Transform":
 					metaobj.prefab_main_transform_id = fileId
-				#if is_obj or is_dae:
+				#if ps.is_obj or ps.is_dae:
 				#else:
 				#	obj_name = obj_name.substr(2)
 				if type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer" and mesh_count == 1:
@@ -855,6 +861,14 @@ func _post_import(p_scene: Node) -> Object:
 	if ps.mesh_is_toplevel:
 		print("Mesh is toplevel for " + str(source_file_path))
 		new_toplevel = ps.fold_transforms_into_mesh(ps.toplevel_node)
+	# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
+	# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
+	# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
+	var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
+	if up_axis.to_upper() == "X_UP":
+		new_toplevel.transform = Transform3D(Basis.from_euler(Vector3(0, 0, PI/-2.0)), Vector3.ZERO) * new_toplevel.transform
+	if up_axis.to_upper() == "Z_UP":
+		new_toplevel.transform = Transform3D(Basis.from_euler(Vector3(PI/-2.0, 0, 0)), Vector3.ZERO) * new_toplevel.transform
 	#else:
 	# new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
 	if new_toplevel != null:

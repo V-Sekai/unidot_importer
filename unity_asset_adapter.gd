@@ -329,7 +329,28 @@ class BaseModelHandler extends AssetHandler:
 		var dres = Directory.new()
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		dres.rename(temp_path, pkgasset.pathname)
+		var already_rewrote_file = false
+		if str(pkgasset.pathname).to_lower().ends_with(".dae"):
+			var raw_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
+			var buffer_as_ascii: String = raw_file.get_string_from_utf8() # may contain unicode
+			var pos: int = buffer_as_ascii.find("up_axis")
+			if pos != -1:
+				pos = buffer_as_ascii.find(">", pos)
+				if pos != -1:
+					var next_pos: int = buffer_as_ascii.find("<", pos)
+					var up_axis = buffer_as_ascii.substr(pos + 1, next_pos - pos -1).strip_edges()
+					pkgasset.parsed_meta.internal_data["up_axis"] = up_axis
+					if up_axis != "Y_UP":
+						var outfile: File = File.new()
+						outfile.open(pkgasset.pathname, File.WRITE)
+						outfile.store_buffer(raw_file.slice(0, pos + 1))
+						outfile.store_string("Y_UP")
+						outfile.store_buffer(raw_file.slice(next_pos))
+						outfile.flush()
+						outfile.close()
+						already_rewrote_file = true
+		if not already_rewrote_file:
+			dres.rename(temp_path, pkgasset.pathname)
 		if temp_path.ends_with(".gltf"):
 			dres.rename(temp_path.get_basename() + ".bin", pkgasset.pathname.get_basename() + ".bin")
 

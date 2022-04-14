@@ -113,9 +113,11 @@ const baseStrings: Dictionary = {
 
 class Stream extends StreamPeerBuffer:
 	var d: PackedByteArray = self.data_array
+	var reference_prefab_guid_storage: Array
 	func _init(d: PackedByteArray, p: int=0):
 		self.d = d
 		self.data_array = d
+		self.reference_prefab_guid_storage = []
 		self.seek(p)
 	func tell() -> int:
 		return self.get_position()
@@ -323,7 +325,12 @@ class Def extends RefCounted:
 						elif v.get("m_FileID", 0) >= len(referenced_guids) or v.get("m_FileID", 0) < 0:
 							push_error("Asset " + self.full_name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
 						else:
-							return [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
+							var ret_ref = [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
+							if self.name == "prototype" or self.name == "prefab":
+								if ret_ref[2] != null:
+									#print(" Possible Ref " + str(self.full_name) + " to " + str(ret_ref[2]))
+									s.reference_prefab_guid_storage.append(ret_ref[2])
+							return ret_ref
 			return v
 		else:
 			var x: int = s.tell()
@@ -568,16 +575,18 @@ func decode_data(obj_headers: Array) -> Array:
 		var obj: RefCounted = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
 		obj.is_stripped = is_stripped
 		obj.keys = read_variant
-		if read_variant.has("m_SourcePrefab"):
-			# print("Found a prefab dependency: " + str(read_variant.get("m_SourcePrefab")))
-			var source_prefab_guid: Variant = read_variant.get("m_SourcePrefab")[2]
-			if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
-				meta.prefab_dependency_guids[source_prefab_guid] = 1
-		if read_variant.has("m_ParentPrefab"):
-			# print("Found an old prefab dependency: " + str(read_variant.get("m_ParentPrefab")))
-			var source_prefab_guid: Variant = read_variant.get("m_ParentPrefab")[2]
-			if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
-				meta.prefab_dependency_guids[source_prefab_guid] = 1
+		# m_SourcePrefab (new PrefabInstance) and m_ParentPrefab (legacy Prefab) used in scenes and prefabs.
+		# Terrain uses prefab (trees), prototype (details) for prefab references.
+		# If there are any other unusual Object->Prefab dependencies, it might be good to list them,
+		# but luckily this pattern is pretty rare.
+		for var_name in ["m_SourcePrefab", "m_ParentPrefab"]:
+			if read_variant.has(var_name):
+				var source_prefab_guid: Variant = read_variant.get(var_name)[2]
+				#print(" Possible Ref " + str(var_name) + " to " + str(source_prefab_guid))
+				if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
+					meta.prefab_dependency_guids[source_prefab_guid] = 1
+		for source_prefab_guid in self.s.reference_prefab_guid_storage:
+			meta.prefab_dependency_guids[source_prefab_guid] = 1
 		objs.push_back(obj)
 	self.s.seek(save)
 	return objs

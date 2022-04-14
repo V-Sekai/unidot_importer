@@ -146,11 +146,17 @@ func preload_builtin_assets():
 	guid_to_path[unity_extra.guid] = unity_extra.path
 	path_to_meta[unity_extra.path] = unity_extra
 
+	var default_skybox: ProceduralSkyMaterial = ProceduralSkyMaterial.new()
+	default_skybox.sky_top_color = Color(0.454902, 0.678431, 0.87451, 1)
+	default_skybox.sky_horizon_color = Color(0.894118, 0.952941, 1, 1)
+	default_skybox.sky_curve = 0.0731028
+	default_skybox.ground_bottom_color = Color(0.454902, 0.470588, 0.490196, 1)
+	default_skybox.ground_horizon_color = Color(1, 1, 1, 1)
 
 	unity_extra.override_resource(10905, "UISprite", stub)
 	unity_extra.override_resource(10302, "Default-Diffuse", default_material_reference) # Legacy Shaders/Diffuse
 	unity_extra.override_resource(10303, "Default-Material", default_material_reference) # Standard
-	unity_extra.override_resource(10304, "Default-Skybox", ProceduralSkyMaterial.new()) # Skybox/Procedural
+	unity_extra.override_resource(10304, "Default-Skybox", default_skybox) # Skybox/Procedural
 	unity_extra.override_resource(10306, "Default-Line", default_material_reference) # Particles/Alpha Blended
 	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new()) # Particles/Standard Unlit
 	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new()) # Sprites/Default

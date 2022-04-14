@@ -242,6 +242,9 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 	elif is_meta and line.begins_with("licenseType:"):
 		# For directories; Always says "Free"
 		pass
+	elif is_meta and (line.begins_with("labels:") or line.begins_with("- ")):
+		# labels and a list of strings that comes after it. ignore.
+		pass
 	elif is_meta and line.begins_with("guid:"):
 		meta.guid = line.split(":")[1].strip_edges()
 	elif new_indentation_level == 0 and line.ends_with(":"):
@@ -348,7 +351,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()),this_key, prev_complex_key)
 				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 					match this_key:
-						"m_SourcePrefab", "m_ParentPrefab":
+						# m_SourcePrefab (new), m_ParentPrefab (legacy) used in prefabs and scenes.
+						# prefab (trees) and prototype (details) are used in Terrain
+						# other Object->Prefab/GameObject/Transform references need to be added here:
+						"m_SourcePrefab", "m_ParentPrefab", "prefab", "prototype":
+							# print(" Possible Ref " + str(this_key))
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val

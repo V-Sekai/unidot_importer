@@ -1121,8 +1121,8 @@ class UnityTerrainLayer extends UnityObject:
 		mat.roughness = 1.0 - smooth
 		mat.metallic = metal
 		# mat.metallic_specular = spec.a
-		mat.uv1_scale = Vector3(tilesize.x, tilesize.y, 0.0)
-		mat.uv1_offset = Vector3(tileoffset.x, tileoffset.y, 0.0)
+		mat.uv1_scale = Vector3(1.0 / tilesize.x, 1.0 / tilesize.y, 0.0)
+		mat.uv1_offset = Vector3(tileoffset.x / tilesize.x, tileoffset.y / tilesize.x, 0.0)
 
 		var normal_tex: Texture2D = meta.get_godot_resource(keys.get("m_NormalMapTexture", [null,0,null,null]))
 		var normalscale: float = keys.get("m_NormalScale", 1.0)
@@ -1143,11 +1143,102 @@ class UnityTerrainData extends UnityObject:
 	var collision_mesh: ConcavePolygonShape3D = null
 	var terrain_mat: Material = null
 	var other_resources: Dictionary = {}
+	var scale: Vector3 = Vector3.ONE
+	var resolution: int = 0
 
 	func resolve_godot_resource(fileRef: Array) -> Resource:
 		if fileRef[2] == null or fileRef[2] == meta.guid:
 			return other_resources[fileRef[1]]
 		return meta.get_godot_resource(fileRef)
+
+	func find_meshinst(node: Node) -> MeshInstance3D:
+		if node is MeshInstance3D:
+			print("Returning " + str(node.name))
+			return node
+		for n in node.get_children():
+			var res: MeshInstance3D = find_meshinst(n)
+			if res != null:
+				return res
+		return null
+
+	func gen_multimeshes() -> Array:
+		var tree_prototype_matrices: Array[Transform3D]
+		var multimeshes: Array[MultiMesh]
+		var material_overrides: Array # can't use typed array if some elements are null
+		var transform_counts: PackedInt32Array = PackedInt32Array().duplicate()
+		var detail_data: Dictionary = keys.get("m_DetailDatabase", {})
+		var bend_factors: Array[float]
+		for detail in detail_data.get("m_TreePrototypes", []):
+			var target_ref: Array = detail.get("prefab", [null,0,null,null])
+			var tree_scene: Node = meta.get_godot_node(target_ref)
+			var meshinst: MeshInstance3D = null
+			var mesh: Mesh = null
+			if tree_scene != null:
+				recursive_print(tree_scene, " %d>   " % [len(multimeshes)])
+				meshinst = find_meshinst(tree_scene) # tree_scene.find_nodes("*", "MeshInstance3D")
+			if meshinst != null:
+				mesh = meshinst.mesh
+				if meshinst.material_override != null:
+					material_overrides.append(meshinst.material_override)
+				elif meshinst.get_surface_override_material_count() >= 1 and meshinst.get_surface_override_material(0) != null:
+					if meshinst.get_surface_override_material_count() > 1:
+						push_error("Godot Multimesh does not implement per-surface override materials! Will look wrong.")
+					material_overrides.append(meshinst.get_surface_override_material(0))
+				else:
+					material_overrides.append(null)
+				var xform: Transform3D = meshinst.transform
+				var tmpnode: Node3D = meshinst.get_parent_node_3d()
+				while tmpnode != null:
+					xform = tmpnode.transform * xform
+					tmpnode = tmpnode.get_parent_node_3d()
+				tree_prototype_matrices.append(xform)
+			else:
+				tree_prototype_matrices.append(Transform3D.IDENTITY)
+				material_overrides.append(null)
+			var mm: MultiMesh = MultiMesh.new()
+			mm.resource_name = str(meta.lookup_meta(target_ref).resource_name).get_file().get_basename() if tree_scene != null else ""
+			if mm.resource_name == "":
+				mm.resource_name = StringName("tree%d" % [len(multimeshes)])
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.use_colors = true
+			mm.mesh = mesh
+			bend_factors.append(detail.get("bendFactor", 0.0)) # not yet implemented.
+			multimeshes.append(mm)
+			transform_counts.append(0)
+			if tree_scene != null:
+				tree_scene.queue_free()
+		# instances:
+		# {'position': {'x': 0.378, 'y': 0.0074, 'z': 0.716}, 'widthScale': 0.73, 'heightScale': 0.73,
+		# 'rotation': 2.5, 'color': {'rgba': 4293848814}, 'lightmapColor': {'rgba': 4294967295}, 'index': 5}
+		for inst in detail_data.get("m_TreeInstances", []):
+			var idx: int = inst["index"]
+			transform_counts[idx] += 1
+		for idx in range(len(multimeshes)):
+			multimeshes[idx].instance_count = transform_counts[idx]
+			transform_counts[idx] = 0
+		for inst in detail_data.get("m_TreeInstances", []):
+			var idx: int = inst["index"]
+			var wid: float = inst.get("widthScale", 1.0)
+			var hei: float = inst.get("heightScale", 1.0)
+			var rot: float = inst.get("rotation", 0.0)
+			var pos: Vector3 = inst["position"] * scale * Vector3(resolution, 1.0, resolution)
+			var col: Color = inst.get("color", Color.WHITE)
+			var bas: Basis = Basis.from_euler(Vector3(0, rot, 0)).scaled(Vector3(wid, hei, wid))
+			var xform: Transform3D = Transform3D(bas, pos) * tree_prototype_matrices[idx]
+			xform = Transform3D.FLIP_X.inverse() * xform * Transform3D.FLIP_X
+			multimeshes[idx].set_instance_transform(transform_counts[idx], xform)
+			multimeshes[idx].set_instance_color(transform_counts[idx], col)
+			transform_counts[idx] += 1
+		return [multimeshes, material_overrides]
+
+
+	func recursive_print(node:Node, indent:String=""):
+		var fnstr = "" if str(node.scene_file_path) == "" else (" (" + str(node.scene_file_path) + ")")
+		print(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
+		#print(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
+		var new_indent: String = indent + "  "
+		for c in node.get_children():
+			recursive_print(c, new_indent)
 
 	func get_extra_resources() -> Dictionary:
 		var dict = {
@@ -1174,12 +1265,12 @@ class UnityTerrainData extends UnityObject:
 
 		#var vertices: PackedVector3Array = PackedVector3Array().duplicate()
 		var heightmap: Dictionary = keys.get("m_Heightmap")
-		var resolution: int = heightmap["m_Resolution"]
+		self.resolution = heightmap["m_Resolution"]
 		var vertex_count = resolution * resolution
 		var index_count = (resolution - 1) * (resolution - 1)
 		assert (resolution * resolution == len(heightmap["m_Heights"]))
 		var heights: PackedInt32Array = heightmap.get("m_Heights")
-		var scale: Vector3 = heightmap.get("m_Scale")
+		self.scale = heightmap.get("m_Scale")
 		#var surface = SurfaceTool.new()
 		#surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 		var vertices: PackedVector3Array = PackedVector3Array().duplicate()
@@ -1260,7 +1351,16 @@ class UnityTerrainData extends UnityObject:
 		#mesh_data = temp_mesh
 		mesh_data = ArrayMesh.new()
 		mesh_data.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLE_STRIP, mesh_arrays)
+		terrain_mat = self.gen_terrain_mat()
 
+		mesh_data.resource_name = self.keys.get("m_Name", meta.resource_name) + "_mesh"
+		mesh_data.surface_set_name(0, "TerrainSurf")
+		mesh_data.surface_set_material(0, terrain_mat)
+
+		return dict
+
+	func gen_terrain_mat() -> Material:
+		var terrain_mat: Material = null
 		var mat = ShaderMaterial.new()
 		var matshader = Shader.new()
 		matshader.code = '''
@@ -1345,12 +1445,7 @@ shader_type spatial;
 			terrain_mat = mat
 		else:
 			terrain_mat = terrain_layers[0]
-
-		mesh_data.resource_name = self.keys.get("m_Name", meta.resource_name) + "_mesh"
-		mesh_data.surface_set_name(0, "TerrainSurf")
-		mesh_data.surface_set_material(0, mat)
-
-		return dict
+		return terrain_mat
 
 	func create_godot_resource() -> Resource:
 		var packed_scene = PackedScene.new()
@@ -1360,9 +1455,21 @@ shader_type spatial;
 		var meshinst: MeshInstance3D = MeshInstance3D.new()
 		meshinst.name = "TerrainMesh"
 		meshinst.mesh = mesh_data
-		meshinst.owner = rootnode
 		rootnode.add_child(meshinst)
-		meshinst.owner = rootnode
+		meshinst.owner = rootnode # must happen after add_child
+		var multimeshes_and_materials = self.gen_multimeshes()
+		var multimeshes: Array[MultiMesh] = multimeshes_and_materials[0]
+		var material_overrides: Array = multimeshes_and_materials[1]
+		var i = 0
+		for mm in multimeshes:
+			var multimesh: MultiMesh = mm
+			var mminst: MultiMeshInstance3D = MultiMeshInstance3D.new()
+			mminst.name = multimesh.resource_name
+			mminst.multimesh = multimesh
+			mminst.material_override = material_overrides[i]
+			rootnode.add_child(mminst, true)
+			mminst.owner = rootnode # must happen after add_child
+			i += 1
 		var err = packed_scene.pack(rootnode)
 		if err != OK:
 			push_error("Error packing terrain scene. " + str(err))
@@ -2383,6 +2490,12 @@ class UnityMeshCollider extends UnityCollider:
 
 
 class UnityTerrainCollider extends UnityMeshCollider:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var coll: Node3D = super.create_godot_node(state, new_parent)
+		coll.top_level = true
+		coll.position = new_parent.global_transform.origin
+		return coll
+
 	func get_shape() -> Shape3D:
 		return get_collision_shape(self.keys)
 
@@ -3050,6 +3163,8 @@ class UnityTerrain extends UnityBehaviour:
 		var instanced_terrain: Node3D = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 		#instanced_scene.scene_file_path = packed_scene.resource_path
 		state.add_child(instanced_terrain, new_parent, self)
+		state.owner.set_editable_instance(instanced_terrain, true)
+		instanced_terrain.top_level = true
 		instanced_terrain.position = new_parent.global_transform.origin
 		instanced_terrain.name = "Terrain"
 		return instanced_terrain

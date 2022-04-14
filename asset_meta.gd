@@ -81,6 +81,7 @@ func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 			if child_meta == null:
 				push_error("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
 			else:
+				print("toposort inner guid " + str(child_meta.guid) + "/" + str(child_meta.path) + "/" + str(target_guid) + " " + str(child_meta.prefab_dependency_guids))
 				child_meta.database_holder = database_holder
 				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
@@ -101,6 +102,7 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 			if child_meta == null:
 				push_error("Unable to find dependency " + str(target_guid))
 			else:
+				print("toposort toplevel guid " + str(target_guid) + "/" + str(child_meta.path) + " " + str(child_meta.prefab_dependency_guids))
 				child_meta.toposort_prefab_recurse(child_meta, tt)
 	return tt.output
 
@@ -295,6 +297,75 @@ func lookup(unityref: Array) -> Resource:
 	ret.meta = found_meta
 	return ret
 
+func set_owner_rec(node: Node, owner: Node):
+	node.owner = owner
+	for n in node.get_children():
+		set_owner_rec(n, owner)
+
+func get_godot_node(unityref: Array) -> Node:
+	var found_meta: Resource = lookup_meta(unityref)
+	if found_meta == null:
+		return null
+	var ps: Resource = load("res://" + found_meta.path)
+	if ps == null:
+		return null
+	if ps is PackedScene:
+		var root_node: Node = ps.instantiate()
+		var node: Node = root_node
+		var local_id: int = unityref[1]
+		if local_id == 100100000:
+			push_warning("Looking up prefab " + str(unityref) + " in loaded scene " + ps.resource_name)
+			return node
+		var np: NodePath = found_meta.fileid_to_nodepath.get(local_id, found_meta.prefab_fileid_to_nodepath.get(local_id, NodePath()))
+		if np == NodePath():
+			push_error("Could not find node " + str(unityref) + " in loaded scene " + ps.resource_name)
+			return null
+		node = node.get_node(np)
+		if node == null:
+			push_error("Path " + str(np) + " was missing in " + str(unityref) + " in loaded scene " + ps.resource_name)
+			return null
+		if node is Skeleton3D:
+			var bone_to_reroot: String = found_meta.fileid_to_skeleton_bone.get(local_id, found_meta.prefab_fileid_to_skeleton_bone.get(local_id, ""))
+			var bone_to_keep: int = node.find_bone(bone_to_reroot)
+			var keep: Array = []
+			for b in range(node.get_bone_count()):
+				var parb: int = b
+				while parb != -1:
+					if parb == bone_to_keep:
+						var parname: String = "" if b == bone_to_keep else node.get_bone_name(node.get_bone_parent(b))
+						keep.append([node.get_bone_name(b), parname, node.get_bone_pose_position(b),
+							node.get_bone_pose_rotation(b), node.get_bone_pose_scale(b), node.get_bone_rest(b)])
+						break
+					parb = node.get_bone_parent(parb)
+			var cache: Dictionary = {}
+			node.clear_bones()
+			for bonedata in keep:
+				var b = node.get_bone_count()
+				cache[bonedata[0]] = b
+				node.add_bone(bonedata[0])
+				node.set_bone_pose_position(b, bonedata[2])
+				node.set_bone_pose_rotation(b, bonedata[3])
+				node.set_bone_pose_scale(b, bonedata[4])
+				node.set_bone_rest(b, bonedata[5])
+			for bonedata in keep:
+				if cache[bonedata[0]] != bone_to_keep:
+					node.set_bone_parent(cache[bonedata[0]], cache[bonedata[1]])
+			for child in node.get_children():
+				if child is BoneAttachment3D:
+					if not cache.has(child.bone_name):
+						child.queue_free()
+				else:
+					child.queue_free() # sub-skeleton = no skinned meshes should exist since they will reference deleted bones.
+		if node == root_node:
+			return node
+		node.owner = null
+		for child in node.get_children():
+			set_owner_rec(child, node)
+		node.get_parent().remove_child(node)
+		root_node.queue_free()
+		return node
+	return null
+
 func get_godot_resource(unityref: Array) -> Resource:
 	var found_meta: Resource = lookup_meta(unityref)
 	if found_meta == null:
@@ -305,6 +376,8 @@ func get_godot_resource(unityref: Array) -> Resource:
 		return null
 	var local_id: int = unityref[1]
 	# print("guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
+	if found_meta.fileid_to_nodepath.has(local_id) or found_meta.prefab_fileid_to_nodepath.has(local_id):
+		local_id = found_meta.main_object_id
 	if found_meta.main_object_id != 0 and found_meta.main_object_id == local_id:
 		return load("res://" + found_meta.path)
 	if found_meta.godot_resources.has(local_id):
