@@ -820,7 +820,609 @@ class UnityMaterial extends UnityObject:
 class UnityShader extends UnityObject:
 	pass
 
-class UnityAnimationClip extends UnityObject:
+# todo: create
+
+class UnityAnimatorRelated extends UnityObject: # Helper functions
+	func get_unique_name(name: StringName, used_names: Dictionary) -> StringName:
+		var renamed_layer: StringName = name
+		while used_names.has(renamed_layer):
+			used_names[name] = used_names.get(name, 0) + 1
+			renamed_layer = StringName(str(name) + str(used_names[name]))
+		used_names[renamed_layer] = 0
+		return renamed_layer
+
+	func ref_to_anim_key(motion_ref: Array) -> String:
+		return "%s:%d" % [meta.guid if typeof(motion_ref[2]) == TYPE_NIL else motion_ref[2], motion_ref[1]]
+
+	func recurse_to_motion(motion_ref: Array, animation_guid_fileid_to_name: Dictionary):
+		var motion_node: AnimationRootNode = null
+		var anim_key: String = ref_to_anim_key(motion_ref)
+		if animation_guid_fileid_to_name.has(anim_key):
+			motion_node = AnimationNodeAnimation.new()
+			motion_node.animation = animation_guid_fileid_to_name[anim_key]
+		else:
+			var blend_tree = meta.lookup(motion_ref)
+			assert(blend_tree.type == "BlendTree")
+			motion_node = blend_tree.create_animation_node(animation_guid_fileid_to_name)
+		return motion_node
+
+class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
+
+	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
+		return null
+
+	func create_animation_library_clips_at_node(animator: RefCounted, node_parent: Node, animation_guid_fileid_to_name: Dictionary, requested_clips: Dictionary) -> AnimationLibrary:
+		for key in animation_guid_fileid_to_name:
+			var guid_fid = key.split(":")
+			var anim_guid = guid_fid[0]
+			var anim_fileid: int = guid_fid[1].to_int()
+			var anim_ref = [null, anim_fileid, anim_guid, 2]
+			var clip_name = animation_guid_fileid_to_name[key]
+			if not requested_clips.has(clip_name):
+				requested_clips[clip_name] = anim_ref
+
+		var anim_library = AnimationLibrary.new()
+		for clip_name in requested_clips:
+			var anim_clip_obj: UnityAnimationClip = meta.lookup(requested_clips[clip_name]) # TODO: What if this fails? What if animation in glb file?
+			var anim_res: Animation = null
+			if anim_clip_obj != null:
+				anim_res = anim_clip_obj.create_animation_clip_at_node(animator, node_parent)
+			else:
+				anim_res = meta.get_godot_resource(requested_clips[clip_name])
+			if anim_res != null:
+				anim_library.add_animation(StringName(clip_name), anim_res)
+		return anim_library
+
+	func create_godot_resource() -> Resource:
+		return null
+
+class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
+	# Store original unity object!
+	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
+		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(keys["m_Controller"])
+		var animation_guid_fileid_to_name: Dictionary = referenced_sm.get_meta(&"guid_fileid_to_animation_name", {})
+		var override_clips = {}.duplicate()
+		for clip in keys["m_Clips"]:
+			var orig_clip: Array = clip["m_OriginalClip"]
+			var override_clip: Array = clip["m_OverrideClip"]
+			override_clips[animation_guid_fileid_to_name[ref_to_anim_key(orig_clip)]] = override_clip
+		# m_Clips: m_OriginalClip / m_OverrideClip
+		return self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, override_clips)
+
+	func create_godot_resource() -> Resource:
+		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(keys["m_Controller"])
+		var wrapped_sm = AnimationNodeStateMachine.new()
+		wrapped_sm.add_node(&"Target", referenced_sm)
+		wrapped_sm.set_start_node(&"Target")
+		return wrapped_sm
+
+class UnityAnimatorController extends UnityRuntimeAnimatorController:
+	# An AnimationController references two things:\
+	# 1. an animation library which depends on the node.
+	# 2. 
+	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
+		var this_res: AnimationRootNode = meta.get_godot_resource([null, self.fileID, null, 0])
+		var animation_guid_fileid_to_name: Dictionary = this_res.get_meta(&"guid_fileid_to_animation_name", {})
+		assert(not animation_guid_fileid_to_name.is_empty())
+		return self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, {}.duplicate())
+
+	func create_godot_resource() -> Resource:
+		return create_animation_node()
+
+	func create_animation_node() -> AnimationRootNode:
+		# Add all layers to a blend tree.
+		var parameters = {}
+		for param in keys['m_AnimatorParameters']:
+			var type: String = "unknown"
+			var defval: Variant = 0
+			match str(param["m_Type"]):
+				'1':
+					type = "float"
+					defval = param["m_DefaultFloat"]
+				'3':
+					type = "int"
+					defval = param["m_DefaultInt"]
+				'4':
+					type = "bool"
+					defval = param["m_DefaultBool"]
+				'9':
+					type = "trigger"
+					defval = param["m_DefaultBool"]
+			parameters[param["m_Name"]] = {"type": type, "default": defval}
+		var blended_layers = AnimationNodeBlendTree.new()
+		var lay_y: float = 0.0
+		var last_output: StringName = &""
+		var used_names: Dictionary = {}.duplicate()
+		var animation_guid_fileid_to_name: Dictionary = {}.duplicate()
+		var animation_used_names: Dictionary = {}.duplicate()
+		var sm_path: Array = [].duplicate()
+		for lay in keys['m_AnimatorLayers']:
+			var sm: UnityAnimatorStateMachine = meta.lookup(lay['m_StateMachine'])
+			sm_path.append(lay.get("m_Name", "layer"))
+			sm.get_all_animations(sm_path, animation_used_names, animation_guid_fileid_to_name)
+			sm_path.clear()
+
+		# Godot: "An AnimationNodeOutput node named output is created by default."
+		used_names[&"output"] = 0
+		for lay in keys['m_AnimatorLayers']:
+			'''
+	m_Name: Base Layer
+	m_StateMachine: {fileID: 8941230547955804434}
+	m_Mask: {fileID: 0}
+	m_Motions: []
+	m_Behaviours: []
+	m_BlendingMode: 0
+	m_SyncedLayerIndex: -1
+	m_DefaultWeight: 0
+	m_IKPass: 0
+	m_SyncedLayerAffectsTiming: 0
+	m_Controller: {fileID: 9100000}
+			'''
+			var renamed_layer = get_unique_name(lay["m_Name"], used_names)
+			blended_layers.add_node(renamed_layer, create_flat_state_machine(lay['m_StateMachine'], animation_guid_fileid_to_name), Vector2(500.0, lay_y))
+			if last_output != &"":
+				# TODO: We may wish to generate the correct mask based on animation clip outputs...
+				# but this will depend on the animation clips in question, and I wanted to keep this agnostic.
+
+				# Add2 will be a reasonable output in most cases, except when clips override each others' outputs.
+				# So I will use this for now.
+				var mixing_node = AnimationNodeAdd2.new()
+				# parameter is &"blend" for Blend2 and &"add" for Add2. Make sure to switch if we change types.
+				mixing_node.set_parameter(&"add", lay["m_DefaultWeight"])
+				var mixing_name = get_unique_name(&"Blend", used_names)
+				blended_layers.add_node(mixing_name, mixing_node, Vector2(-500.0, lay_y - 100.0))
+				blended_layers.connect_node(mixing_name, 0, last_output)
+				blended_layers.connect_node(mixing_name, 1, lay["m_Name"])
+				last_output = mixing_name
+				lay_y += 200.0
+			else:
+				last_output = renamed_layer
+		blended_layers.connect_node(&"output", 0, last_output)
+		# Create a StateMachine for m_StateMachine and all child state machines too.
+		# State Machine blending does not currently seem to work.
+		# Then, add to blended_layers
+		blended_layers.set_meta(&"guid_fileid_to_animation_name", animation_guid_fileid_to_name)
+		return blended_layers
+
+	func create_flat_state_machine(root_state_machine_ref: Array, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+		var root_sm: UnityAnimatorStateMachine = meta.lookup(root_state_machine_ref)
+		var state_uniq_names = {}.duplicate()
+		var state_duplicates = {}.duplicate() # such as any state self transitions; other self transitions; multi transitions.
+		var state_data = {}.duplicate()
+		root_sm.get_state_data("", state_data, state_uniq_names, Vector3.ZERO, 1.0)
+
+		# var exit_state_name: StringName = &""
+		var any_transition_list = [].duplicate()
+		root_sm.get_any_state_transitions(any_transition_list)
+		any_transition_list.reverse()
+		var exit_parent = {}.duplicate()
+		exit_parent[root_sm.uniq_key] = root_sm # null # make a sort of temporary exit node which holds it for one frame.
+		root_sm.get_exit_parent(exit_parent)
+		var sm = AnimationNodeStateMachine.new()
+		sm.resource_name = keys.get("m_Name", "")
+
+		var transition_count = {}.duplicate()
+		var state_count = {}.duplicate()
+		for state_key in state_data:
+			transition_count[state_key + state_key] = 1 # state to itself is not allowed anyway.
+			state_count[state_key] = 1
+
+		for transition_obj in any_transition_list: # Godot favors last transition.
+			var can_trans_to_self: bool = transition_obj.keys.get("m_CanTransitionToSelf", 0) != 0
+			var transition_list = transition_obj.resolve_state_transitions(exit_parent, null)
+			for src_state_key in state_data:
+				for condition_list in transition_list:
+					var dst_state: UnityAnimatorState = condition_list[-1]
+					if dst_state == null:
+						continue
+					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
+						continue
+					var trans_key: String = src_state_key + dst_state.uniq_key
+					if not transition_count.has(trans_key):
+						transition_count[trans_key] = 0
+					transition_count[trans_key] += 1
+					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
+
+		for state_key in state_data:
+			var this_state: Dictionary = state_data[state_key]
+			for trans in this_state["state"].keys["m_Transitions"]:
+				var transition_obj = this_state["state"].meta.lookup(trans)
+				var transition_list = transition_obj.resolve_state_transitions(exit_parent, this_state["sm"])
+				for condition_list in transition_list:
+					var dst_state: UnityAnimatorState = condition_list[-1]
+					if dst_state == null:
+						continue
+					var trans_key: String = state_key + dst_state.uniq_key
+					if not transition_count.has(trans_key):
+						transition_count[trans_key] = 0
+					transition_count[trans_key] += 1
+					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
+
+		for state_key in state_data:
+			var this_state: Dictionary = state_data[state_key]
+			var anim_node = this_state["state"].create_animation_node(animation_guid_fileid_to_name)
+			sm.add_node(this_state["name"], anim_node, this_state["pos"])
+			var dup_prefix = StringName(str(this_state["name"]) + "~Dup")
+			get_unique_name(dup_prefix, state_uniq_names)
+			var dupes = [].duplicate()
+			dupes.append(this_state["name"])
+			for i in range(1, state_count[state_key]):
+				var dup_name = get_unique_name(dup_prefix, state_uniq_names)
+				anim_node = this_state["state"].create_animation_node(animation_guid_fileid_to_name)
+				sm.add_node(dup_name, anim_node, this_state["pos"] + Vector2(0,5))
+				dupes.append(dup_name)
+			state_duplicates[this_state["name"]] = dupes
+
+		transition_count = {}.duplicate()
+		for x_transition_obj in any_transition_list: # Godot favors last transition.
+			var transition_obj: UnityAnimatorStateTransition = x_transition_obj
+			var can_trans_to_self: bool = transition_obj.keys.get("m_CanTransitionToSelf", 0) != 0
+			var transition_list: Array = transition_obj.resolve_state_transitions(exit_parent, null)
+			for src_state_key in state_data:
+				for condition_list in transition_list:
+					var dst_state: UnityAnimatorState = condition_list[-1]
+					if dst_state == null:
+						continue
+					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
+						continue
+					var trans_key: String = src_state_key + dst_state.uniq_key
+					if not transition_count.has(trans_key):
+						transition_count[trans_key] = 0
+					create_dupe_transitions(sm, transition_obj, state_data[src_state_key]["name"], state_data[dst_state.uniq_key]["name"],
+								state_duplicates, transition_count[trans_key], condition_list)
+					transition_count[trans_key] += 1
+
+
+		for state_key in state_data:
+			var this_state: Dictionary = state_data[state_key]
+			var trans_list: Array = this_state["state"].keys["m_Transitions"].duplicate()
+			trans_list.reverse()
+			for trans in trans_list:
+				var transition_obj = this_state["state"].meta.lookup(trans)
+				var transition_list = transition_obj.resolve_state_transitions(exit_parent, this_state["sm"])
+				for condition_list in transition_list:
+					var dst_state: UnityAnimatorState = condition_list[-1]
+					if dst_state == null:
+						continue
+					var trans_key: String = state_key + dst_state.uniq_key
+					if not transition_count.has(trans_key):
+						transition_count[trans_key] = 0
+					create_dupe_transitions(sm, transition_obj, this_state["name"], state_data[dst_state.uniq_key]["name"],
+								state_duplicates, transition_count[trans_key], condition_list)
+					transition_count[trans_key] += 1
+
+		var def_state = meta.lookup(root_sm.keys["m_DefaultState"])
+		if def_state != null and state_data.has(def_state.uniq_key):
+			sm.set_start_node(state_data[def_state.uniq_key]["name"])
+		return sm
+
+	func create_dupe_transitions(sm: AnimationNodeStateMachine, transition_obj: UnityAnimatorStateTransition, src_state_name: StringName, dst_state_name: StringName,
+					state_duplicates: Dictionary, dst_idx: int, condition_list: Array):
+		var conditions: String = ""
+		var is_muted: bool = transition_obj.keys.get("m_Mute", false)
+		for trans in condition_list:
+			if trans == null or not trans.type.ends_with("Transition"):
+				continue
+			is_muted = is_muted or trans.keys.get("m_Mute", false)
+			for cond in trans.keys["m_Conditions"]:
+				var parameter: String = str(cond["m_ConditionEvent"])
+				var thresh: float = float(cond["m_EventTreshold"])
+				var event: int = cond["m_ConditionMode"]
+				var cond_to_add = ""
+				match event:
+					1:
+						cond_to_add = "%s" % [parameter] # bool true
+					2:
+						cond_to_add = "not %s" % [parameter]
+					3:
+						cond_to_add = "%s > %f" % [parameter, thresh]
+					4:
+						cond_to_add = "%s < %f" % [parameter, thresh]
+					6:
+						cond_to_add = "%s == %f" % [parameter, thresh]
+					7:
+						cond_to_add = "%s != %f" % [parameter, thresh]
+				if not cond_to_add.is_empty():
+					if not conditions.is_empty():
+						conditions += " and "
+					conditions += cond_to_add
+
+		var trans = AnimationNodeStateMachineTransition.new()
+		trans.xfade_time = transition_obj.keys["m_TransitionDuration"]
+		# Godot does not currently support exit time. transition_obj.keys["m_ExitTime"]
+		if transition_obj.keys["m_HasExitTime"] and transition_obj.keys["m_ExitTime"] > 0.0001:
+			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
+		else:
+			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_IMMEDIATE
+		if conditions == "":
+			trans.auto_advance = true
+		else:
+			trans.advance_condition = conditions
+		trans.disabled = is_muted
+		# TODO: Solo is not implemented yet. It requires knowledge of all sibling transitions at each stage of state machine.
+		# Not too hard to do if someone uses the Solo feature for something.
+
+		var src_dupe_idx = 0
+		for src_dupe in state_duplicates[src_state_name]:
+			var actual_dst_idx = dst_idx
+			if src_state_name == dst_state_name:
+				actual_dst_idx = 1 if src_dupe_idx == 0 else 0
+			var dst_dupe: StringName = state_duplicates[dst_state_name][actual_dst_idx]
+			sm.add_transition(src_dupe, dst_dupe, trans)
+			src_dupe_idx += 1
+
+class UnityAnimatorStateMachine extends UnityAnimatorRelated:
+	func get_state_data(sm_prefix: String, state_data: Dictionary, unique_names: Dictionary, sm_pos: Vector3, pos_scale: float):
+		for state in keys["m_ChildStates"]:
+			var child: UnityAnimatorState = meta.lookup(state["m_State"])
+			var child_name: StringName = get_unique_name(StringName(sm_prefix + child.keys["m_Name"]), unique_names)
+			var child_pos: Vector3 = sm_pos + state["m_Position"] * pos_scale
+			state_data[child.uniq_key] = {"name": child_name, "state": child, "pos": Vector2(child_pos.x, child_pos.y), "sm": self}
+		
+		for state_machine in keys["m_ChildStateMachines"]:
+			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
+			var child_pos: Vector3 = sm_pos + state_machine["m_Position"] * pos_scale
+			child.get_state_data(sm_prefix + child.keys["m_Name"] + "/", state_data, unique_names, child_pos, pos_scale * 0.25)
+
+	func get_exit_parent(sm_to_parent: Dictionary):
+		for state_machine in keys["m_ChildStateMachines"]:
+			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
+			sm_to_parent[child.uniq_key] = self
+			child.get_exit_parent(sm_to_parent)
+
+	func get_any_state_transitions(transition_list: Array):
+		for transition in keys["m_AnyStateTransitions"]:
+			transition_list.append(meta.lookup(transition))
+		
+		for state_machine in keys["m_ChildStateMachines"]:
+			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
+			child.get_any_state_transitions(transition_list)
+
+	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
+		for state in keys["m_ChildStates"]:
+			var child: UnityAnimatorState = meta.lookup(state["m_State"])
+			var basename: String = child.keys["m_Name"]
+			var motion_ref: Array = child.keys["m_Motion"]
+			var motion: UnityMotion = child.meta.lookup(motion_ref, true)
+			if motion != null:
+				sm_path.append(basename)
+				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
+				sm_path.remove_at(len(sm_path)-1)
+			else:
+				var name: String = basename
+				for i in range(len(uniq_name_dict) + 1):
+					if not uniq_name_dict.has(name):
+						break
+					for sm_name in sm_path:
+						if not uniq_name_dict.has(name):
+							break
+						if i > 0:
+							name = "%s %s %d" % [sm_name, basename, i]
+						else:
+							name = "%s %s" % [sm_name, basename]
+						print("Trying %s name %s from %s %s" % [str(sm_name), str(name), str(basename), str(uniq_name_dict)])
+				uniq_name_dict[name] = 1
+				out_guid_fid_to_anim_name[child.ref_to_anim_key(motion_ref)] = name
+
+		for state_machine in keys["m_ChildStateMachines"]:
+			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
+			sm_path.append(child.keys["m_Name"])
+			state_machine.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
+			sm_path.remove_at(len(sm_path)-1)
+
+	func resolve_entry_state_transitions(exit_src: Object, exit_parent: Dictionary, transition_list: Array, transition_dict: Dictionary, inp_condition_list: Array):
+		var trans_list: Array = keys["m_EntryTransitions"]
+		if exit_src != null and exit_src.uniq_key != self.uniq_key: # if root, we use entry transitions anyway.
+			trans_list = []
+			#m_StateMachineTransitions:
+			#- first: {fileID: 7243501764948564761}
+			#  second:
+			#  - {fileID: -5738504938746420287}
+			#  - {fileID: -1730057159985691264}
+			for elem in keys["m_StateMachineTransitions"]:
+				var src_sm = meta.lookup(elem["first"])
+				if src_sm != null and src_sm.uniq_key == exit_src.uniq_key:
+					trans_list = elem["second"]
+		for etrans in trans_list:
+			var trans_obj: UnityAnimatorTransition = meta.lookup(etrans)
+			var condition_list = inp_condition_list.duplicate()
+			condition_list.append(trans_obj)
+			if transition_dict.has(trans_obj.uniq_key):
+				push_error("Cycle detected... " + str(transition_dict) + " " + trans_obj.uniq_key)
+				continue
+			transition_dict[trans_obj.uniq_key] = 1
+			var dst_state = meta.lookup(trans_obj.keys["m_DstState"])
+			var dst_sm = meta.lookup(trans_obj.keys["m_DstStateMachine"])
+			if dst_state != null and not trans_obj.keys["m_IsExit"]:
+				condition_list.append(dst_state)
+				transition_list.append(condition_list)
+			else: # if dst_sm != null or trans_obj.keys["m_IsExit"]:
+				var new_exit_src: Object = null
+				if trans_obj.keys["m_IsExit"]:
+					new_exit_src = self
+					dst_sm = exit_parent.get(self.uniq_key)
+				if dst_sm == null:
+					dst_sm = exit_parent.get(self.uniq_key)
+				#if dst_sm == null:
+				#	condition_list.append(null)
+				#	transition_list.append(condition_list) # transition to broken link or top-level exit: go to special exit state.
+				#else:
+				dst_sm.resolve_entry_state_transitions(new_exit_src, exit_parent, transition_list, transition_dict, condition_list)
+			transition_dict.erase(trans_obj.uniq_key)
+		var def_state = meta.lookup(keys["m_DefaultState"])
+		if def_state != null:
+			inp_condition_list.append(def_state)
+			transition_list.append(inp_condition_list)
+
+class UnityAnimatorState extends UnityAnimatorRelated:
+	func create_animation_node(animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+		var motion_ref: Array = keys["m_Motion"]
+		var motion_node: AnimationRootNode = recurse_to_motion(motion_ref, animation_guid_fileid_to_name)
+		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
+		var speed: float = keys.get("m_Speed", 1)
+		var cycle_off: float = keys.get("m_CycleOffset", 0)
+		var speed_param_active: int = keys.get("m_SpeedParameterActive", 0)
+		var time_param_active: int = keys.get("m_TimeParameterActive", 0)
+		var cycle_param_active: int = keys.get("m_CycleParameterActive", 0)
+		var ret = motion_node
+		# not sure we support cycle offset?
+		if speed != 1 or speed_param_active == 1 or time_param_active == 1:
+			var bt = AnimationNodeBlendTree.new()
+			ret = bt
+			bt.add_node(&"Animation", motion_node, Vector2(-300,0))
+			var last_node = &"Animation"
+			if speed != 1 or speed_param_active:
+				var tsnode = AnimationNodeTimeScale.new()
+				tsnode.set_parameter("scale", speed)
+				bt.add_node(&"TimeScale", tsnode, Vector2(-150,0))
+				bt.connect_node(&"TimeScale", 0, last_node)
+				last_node = &"TimeScale"
+			if time_param_active:
+				var seeknode = AnimationNodeTimeSeek.new()
+				seeknode.set_parameter("seek_position", 1.0)
+				bt.add_node(&"TimeSeek", seeknode, Vector2(50,0))
+				bt.connect_node(&"TimeSeek", 0, last_node)
+				last_node = &"TimeSeek"
+			bt.connect_node(&"output", 0, last_node)
+		return ret
+
+class UnityAnimatorTransitionBase extends UnityAnimatorRelated:
+	pass # abstract
+
+class UnityAnimatorStateTransition extends UnityAnimatorTransitionBase:
+	func resolve_state_transitions(exit_parent: Dictionary, this_sm: Object):
+		var dst_sm: UnityAnimatorStateMachine = meta.lookup(keys.get("m_DstStateMachine"))
+		var dst_state: UnityAnimatorState = meta.lookup(keys.get("m_DstState"))
+
+		var transition_list = [].duplicate()
+		var condition_list = [].duplicate()
+		condition_list.append(self)
+		var exit_src = null
+		if keys["m_IsExit"]:
+			dst_state = null
+			dst_sm = exit_parent[this_sm.uniq_key]
+			exit_src = this_sm
+		if dst_state != null:
+			condition_list.append(dst_state)
+			transition_list.append(condition_list)
+		elif dst_sm != null:
+			var transition_dict = {}.duplicate() # avoid cycles
+			dst_sm.resolve_entry_state_transitions(exit_src, exit_parent, transition_list, transition_dict, condition_list)
+		return transition_list
+
+class UnityAnimatorTransition extends UnityAnimatorTransitionBase:
+	pass
+
+class UnityMotion extends UnityAnimatorRelated:
+	pass # abstract
+		
+
+class UnityBlendTree extends UnityMotion:
+
+	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
+		for child in keys["m_Childs"]:
+			var basename: String = sm_path[-1]
+			if keys["m_BlendType"] == 0:
+				basename = "%s_%s" % [basename, child.get("m_Threshold", 0)]
+			elif keys["m_BlendType"] == 4:
+				basename = "%s_%s" % [basename, child.get("m_DirectBlendParameter", "")]
+			else:
+				var pos: Vector2 = child.get("m_Position", Vector2())
+				basename = "%s_%.02f_%.02f" % [pos.x, pos.y]
+			var motion_ref: Array = child["m_Motion"]
+			var motion: UnityMotion = meta.lookup(motion_ref, true) # TODO: Need to get the godot resource's name for imported glb
+			if motion != null:
+				sm_path.append(basename)
+				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
+				sm_path.remove_at(len(sm_path)-1)
+			else:
+				var name: String = basename
+				for i in range(len(uniq_name_dict) + 1):
+					if not uniq_name_dict.has(name):
+						break
+					for j in range(len(sm_path)-1, -1, -1):
+						var sm_name = sm_path[j]
+						if not uniq_name_dict.has(name):
+							break
+						if i > 0:
+							name = "%s %s %d" % [sm_name, basename, i]
+						else:
+							name = "%s %s" % [sm_name, basename]
+						print("Trying %s name %s from %s %s" % [str(sm_name), str(name), str(basename), str(uniq_name_dict)])
+				uniq_name_dict[name] = 1
+				out_guid_fid_to_anim_name[ref_to_anim_key(motion_ref)] = name
+
+	func create_animation_node(animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+		var ret: AnimationRootNode = null
+		match keys["m_BlendType"]:
+			0: # Simple1D
+				var bs = AnimationNodeBlendSpace1D.new()
+				for child in keys["m_Childs"]:
+					# TODO: m_TimeScale and m_CycleOffset
+					var motion_node: AnimationRootNode = recurse_to_motion(child["m_Motion"], animation_guid_fileid_to_name)
+					if child.get("m_TimeScale", 1) != 1:
+						var bt = AnimationNodeBlendTree.new()
+						var tsnode = AnimationNodeTimeScale.new()
+						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						bt.add_node(&"Motion", motion_node, Vector2(-150,-300))
+						bt.add_node(&"TimeScale", tsnode, Vector2(150,-150))
+						bt.connect_node(&"TimeScale", 0, &"Motion")
+						bt.connect_node(&"output", 0, &"TimeScale")
+						motion_node = bt
+					bs.add_blend_point(motion_node, child["m_Threshold"])
+				ret = bs
+			1, 2, 3: # SimpleDirectional2D, FreeformDirectional2D, FreeformCartesian2D
+				# TODO: Does Godot support the different types of 2D blending?
+				var bs = AnimationNodeBlendSpace2D.new()
+				for child in keys["m_Childs"]:
+					# TODO: m_TimeScale and m_CycleOffset
+					var motion_node: AnimationRootNode = recurse_to_motion(child["m_Motion"], animation_guid_fileid_to_name)
+					if child.get("m_TimeScale", 1) != 1:
+						var bt = AnimationNodeBlendTree.new()
+						var tsnode = AnimationNodeTimeScale.new()
+						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						bt.add_node(&"Motion", motion_node, Vector2(-150,-300))
+						bt.add_node(&"TimeScale", tsnode, Vector2(150,-150))
+						bt.connect_node(&"TimeScale", 0, &"Motion")
+						bt.connect_node(&"output", 0, &"TimeScale")
+						motion_node = bt
+					bs.add_blend_point(motion_node, child["m_Position"])
+				ret = bs
+			4: # Direct
+				# Add a bunch of AnimationNodeAdd2? Do these get chained somehow?
+				var bt = AnimationNodeBlendTree.new()
+				var uniq_dict: Dictionary = {}.duplicate()
+				uniq_dict[&"output"] = 1
+				uniq_dict[&"Child"] = 1
+				uniq_dict[&"TimeScale"] = 1
+				uniq_dict[&"Transition"] = 1
+				bt.add_node(&"Transition", AnimationNodeTransition.new(), Vector2(-100,-200))
+				var last_name = &"Transition"
+
+				var i = 0
+				for child in keys["m_Childs"]:
+					var motion_node: AnimationRootNode = recurse_to_motion(child["m_Motion"], animation_guid_fileid_to_name)
+					var motion_name = get_unique_name("Child", uniq_dict)
+					bt.add_node(motion_name, motion_node, Vector2(-100, i * 200))
+					if child.get("m_TimeScale", 1) != 1:
+						var tsnode = AnimationNodeTimeScale.new()
+						var tsname = get_unique_name("TimeScale", uniq_dict)
+						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						bt.add_node(tsname, tsnode, Vector2(-50, i * 200 - 50))
+						bt.connect_node(tsname, 0, motion_name)
+						motion_name = tsname
+					var add_node = AnimationNodeAdd2.new()
+					var add_name = get_unique_name(child.get("m_DirectBlendParameter", "Blend"), uniq_dict)
+					bt.add_node(add_name, add_node, Vector2(200, i * 200 - 100))
+					bt.connect_node(add_name, 0, last_name)
+					bt.connect_node(add_name, 1, motion_name)
+					last_name = add_name
+					i += 1
+				bt.connect_node(&"output", 0, last_name)
+				ret = bt
+		return ret
+
+class UnityAnimationClip extends UnityMotion:
 
 	func get_godot_extension() -> String:
 		return ".anim.tres"
@@ -829,6 +1431,16 @@ class UnityAnimationClip extends UnityObject:
 		# We will try our best to infer this data, but we get better results
 		# if created relative to a particular node.
 		return create_animation_clip_at_node(null, null)
+
+	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
+		var basename: String = self.keys["m_Name"]
+		var num = 1
+		var name: String = basename
+		while uniq_name_dict.has(name):
+			name = "%s %d" % [name, num]
+			num += 1
+		uniq_name_dict[name] = 1
+		out_guid_fid_to_anim_name["%s:%d" % [self.meta.guid, self.fileID]] = name
 
 	func resolve_gameobject_component_path(animator: Object, unipath: String, unicomp: Variant) -> NodePath:  # UnityAnimator
 		if animator == null:
@@ -843,15 +1455,29 @@ class UnityAnimationClip extends UnityObject:
 		var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
 		var extra_path: String = ""
 		for path_component in path_split:
+			print("Look for component %s in %d:%s" % [path_component, current_fileID, str(current_obj)])
 			if extra_path.is_empty() and current_obj.has(path_component):
 				current_fileID = current_obj[path_component]
 				current_obj = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
 			else:
 				extra_path += "/" + str(path_component)
+		print("Path %s became %d comp %s %s current %s" % [str(path_split), current_fileID, str(unicomp), extra_path, str(current_obj)])
 		if extra_path.is_empty() and (typeof(unicomp) != TYPE_INT or unicomp != 1):
 			current_fileID = current_obj.get(unicomp, current_fileID)
 		var nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(current_fileID,
 				animator.meta.fileid_to_nodepath.get(current_fileID, NodePath()))
+		print("Resolving %d from %s and %s to %s" % [current_fileID,
+				str(animator.meta.prefab_fileid_to_nodepath.keys()),
+				str(animator.meta.fileid_to_nodepath.keys()), str(nodepath)])
+		if nodepath == NodePath():
+			print("Returning default nodepath because some path failed to resolve.")
+			if typeof(unicomp) == TYPE_INT:
+				if unicomp == 1 or unicomp == 4:
+					return NodePath(unipath)
+				return NodePath(unipath + "/" + adapter.to_classname(unicomp))
+			return NodePath(unipath)
+		if not extra_path.is_empty():
+			nodepath = NodePath(str(nodepath) + extra_path)
 		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(current_fileID,
 				animator.meta.fileid_to_skeleton_bone.get(current_fileID, ""))
 		if skeleton_bone != "" and (typeof(unicomp) == TYPE_INT or unicomp == 4):
@@ -963,6 +1589,10 @@ class UnityAnimationClip extends UnityObject:
 				var target_node: Node = null
 				if node_parent != null:
 					target_node = node_parent.get_node(nodepath)
+					print("nodepath %s from %s %s became %s" % [str(nodepath), str(node_parent), str(node_parent.name), str(target_node)])
+					if target_node == null:
+						var gdscriptweird: Node = null
+						target_node = gdscriptweird
 				# yuk yuk. This needs to be improved but should be a good start for some properties:
 				var converted_property_keys = adapted_obj.convert_properties(target_node, {attr: 0.0}).keys()
 				if converted_property_keys.is_empty():
@@ -1712,19 +2342,17 @@ shader_type spatial;
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject extends UnityObject:
 
-	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> int:
+	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> Array: # prefab_fileID,prefab_name,go_fileID,node
 		if child_transform.type == "PrefabInstance":
 			# PrefabInstance child of stripped Transform part of another PrefabInstance
 			var prefab_instance: UnityPrefabInstance = child_transform
-			prefab_instance.create_godot_node(state, new_parent)
-			return prefab_instance.fileID
+			return prefab_instance.instantiate_prefab_node(state, new_parent)
 		elif child_transform.is_prefab_reference:
 			# PrefabInstance child of ordinary Transform
 			if not child_transform.is_stripped:
 				print("Expected a stripped transform for prefab root as child of transform")
 			var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
-			prefab_instance.create_godot_node(state, new_parent)
-			return prefab_instance.fileID
+			return prefab_instance.instantiate_prefab_node(state, new_parent)
 		else:
 			if child_transform.is_stripped:
 				push_error("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
@@ -1739,7 +2367,7 @@ class UnityGameObject extends UnityObject:
 				child_game_object.create_skeleton_bone(state, new_skelley)
 			else:
 				child_game_object.create_godot_node(state, new_parent)
-			return 0
+			return [null]
 
 	func create_skeleton_bone(xstate: RefCounted, skelley: RefCounted): # SceneNodeState, Skelley
 		var state: Object = xstate
@@ -1796,10 +2424,12 @@ class UnityGameObject extends UnityObject:
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
-			if prefab_id != 0:
-				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
-			else:
+			var prefab_data: Array = recurse_to_child_transform(state, child_transform, ret)
+			if len(prefab_data) == 4:
+				name_map[prefab_data[1]] = prefab_data[2]
+				prefab_name_map[prefab_data[1]] = prefab_data[2]
+				state.add_prefab_to_parent_transform(transform.fileID, prefab_data[0])
+			elif len(prefab_data) == 1:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
@@ -1872,15 +2502,18 @@ class UnityGameObject extends UnityObject:
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			var prefab_id: int = recurse_to_child_transform(state, child_transform, ret)
-			if prefab_id != 0:
-				state.add_prefab_to_parent_transform(transform.fileID, prefab_id)
-			else:
+			var prefab_data: Array = recurse_to_child_transform(state, child_transform, ret)
+			if len(prefab_data) == 4:
+				name_map[prefab_data[1]] = prefab_data[2]
+				prefab_name_map[prefab_data[1]] = prefab_data[2]
+				state.add_prefab_to_parent_transform(transform.fileID, prefab_data[0])
+			elif len(prefab_data) == 1:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
+
 		return ret
 
 	var components: Variant: # Array:
@@ -2001,20 +2634,29 @@ class UnityPrefabInstance extends UnityGameObject:
 		return source_prefab_meta.get_main_object_name()
 
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
-	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
+	func instantiate_prefab_node(xstate: RefCounted, new_parent: Node3D) -> Array: # [prefab_fileid, prefab_name, prefab_root_gameobject_id, godot_node]
 		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
 		var state: RefCounted = xstate # scene_node_state
 		var ps: RefCounted = state.prefab_state # scene_node_state.PrefabState
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
 		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
 			push_error("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
-			return null
+			return []
 		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
 		if packed_scene == null:
 			push_error("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid))
-			return null
+			return []
 		print("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
 		var instanced_scene: Node3D = null
+		var toplevel_rename: String = ""
+		for mod in modifications:
+			var property_key: String = mod.get("propertyPath", "")
+			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
+			var value: String = mod.get("value", "")
+			var mod_fileID: int = source_obj_ref[1]
+			if property_key == "m_Name" and mod_fileID == target_prefab_meta.prefab_main_gameobject_id:
+				toplevel_rename = value
+				break
 		if new_parent == null:
 			# This is the "Inherited Scene" case (Godot), or "Prefab Variant" as it is called.
 			# Godot does not have an API to create an inherited scene. However, luckily, the file format is simple.
@@ -2034,10 +2676,12 @@ class UnityPrefabInstance extends UnityGameObject:
 			fres.close()
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
 			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			instanced_scene.name = StringName(toplevel_rename)
 			state.add_child(instanced_scene, new_parent, self)
 		else:
 			# Traditional instanced scene case: It only requires calling instantiate() and setting the filename.
 			instanced_scene = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			instanced_scene.name = StringName(toplevel_rename)
 			#instanced_scene.scene_file_path = packed_scene.resource_path
 			state.add_child(instanced_scene, new_parent, self)
 
@@ -2051,6 +2695,13 @@ class UnityPrefabInstance extends UnityGameObject:
 			# Here is how we keep track of it:
 		##	ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
 		# state = state.state_with_owner(instanced_scene)
+
+		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
+		var gntfac = target_prefab_meta.gameobject_name_to_fileid_and_children
+		#state.prefab_state.prefab_gameobject_name_map[self.fileID ^ self.meta.prefab_main_gameobject_id] =
+		target_prefab_meta.remap_prefab_gameobject_names_update({source_prefab: target_prefab_meta}, self.fileID, gntfac, ps.prefab_gameobject_name_map)
+		target_prefab_meta.remap_prefab_gameobject_names_update({source_prefab: target_prefab_meta}, self.fileID, pgntfac, ps.prefab_gameobject_name_map)
+		meta.remap_prefab_fileids(self.fileID, target_prefab_meta)
 
 		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
 
@@ -2106,6 +2757,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID,
 					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
 			print("XXXc")
+			# FIXME: I think this fileID is wrong...
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
 			print("XXXd " + str(target_prefab_meta.guid) +"/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
@@ -2113,6 +2765,22 @@ class UnityPrefabInstance extends UnityGameObject:
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
 			var existing_node = instanced_scene.get_node(target_nodepath)
+			if uprops.get("m_Controller", [null,0])[1] != 0:
+				if target_utype == 91 and existing_node != null and existing_node.get_class() == "AnimationPlayer":
+					var animtree = AnimationTree.new()
+					animtree.name = "AnimationTree"
+					existing_node.get_parent().add_child(animtree, true)
+					animtree.anim_player = animtree.get_path_to(existing_node)
+					animtree.active = true
+					# Weird special case, likely to break.
+					# The original file was a .glb and doesn't have an AnimationTree node.
+					# We add one and try to pretend it's ours.
+					# Maybe better to change glb post-import script to add one.
+					state.add_fileID(animtree, virtual_unity_object)
+				if target_utype == 91:
+					virtual_unity_object.fileID = fileID ^ self.fileID
+					virtual_unity_object.keys = uprops
+					state.prefab_state.animator_node_to_object[existing_node] = virtual_unity_object
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
 				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops))
@@ -2320,12 +2988,13 @@ class UnityPrefabInstance extends UnityGameObject:
 				if child_transform.gameObject != null:
 					print("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
-				var prefab_id: int = recurse_to_child_transform(state, child_transform, attachment)
+				var prefab_data: Array = recurse_to_child_transform(state, child_transform, attachment)
 				if child_transform.gameObject != null:
 					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
-				if prefab_id != 0:
+				if len(prefab_data) == 4:
+					name_map[prefab_data[1]] = prefab_data[2]
 					if gameobject_asset != null:
-						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_id)
+						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_data[0])
 			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
 
 			state.body = orig_state_body
@@ -2350,9 +3019,8 @@ class UnityPrefabInstance extends UnityGameObject:
 		#for mod in self.modifications:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
-		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
-		state.prefab_state.prefab_gameobject_name_map[self.fileID ^ self.meta.prefab_main_gameobject_id] = meta.remap_prefab_gameobject_names({source_prefab: target_prefab_meta}, self.fileID, pgntfac)
-		return instanced_scene
+
+		return [self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene]
 
 	func get_transform() -> Variant: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
 		return self
@@ -3416,6 +4084,70 @@ class UnityMonoBehaviour extends UnityBehaviour:
 					env.set_meta("glow", sobj.keys)
 		return env
 
+class UnityAnimation extends UnityBehaviour:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var animplayer: AnimationPlayer = AnimationPlayer.new()
+		state.add_child(animplayer, new_parent, self)
+		animplayer.name = "Animation"
+		state.prefab_state.animator_node_to_object[animplayer] = self
+		# TODO: Add AnimationTree as well.
+		return animplayer
+
+	func setup_post_children(node: Node):
+		var animplayer: AnimationPlayer = node
+		var which_playing: StringName = &""
+		var default_ref = keys["m_Animation"]
+		var anim_library = AnimationLibrary.new()
+		for anim_ref in keys["m_Animations"]:
+			var anim_clip_obj = meta.lookup(anim_ref)
+			var anim_res: Animation
+			var anim_name: StringName
+			if anim_clip_obj != null:
+				anim_res = anim_clip_obj.create_animation_clip_at_node(self, node.get_parent())
+				anim_name = StringName(anim_clip_obj.keys["m_Name"])
+			else:
+				anim_res = meta.get_godot_resource(anim_ref)
+				anim_name = StringName(anim_res.resource_name)
+			anim_library.add_animation(anim_name, anim_res)
+			if default_ref == anim_ref:
+				which_playing = anim_name
+		animplayer.add_animation_library(&"", anim_library)
+		animplayer.autoplay = which_playing
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		print(outdict)
+		return outdict
+
+class UnityAnimator extends UnityBehaviour:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+
+		var animplayer: AnimationPlayer = AnimationPlayer.new()
+		animplayer.name = "AnimationPlayer"
+		state.add_child(animplayer, new_parent, self)
+		animplayer.root_node = NodePath("..")
+
+		var animtree: AnimationTree = AnimationTree.new()
+		animtree.name = "AnimationTree"
+		state.add_child(animtree, new_parent, self)
+		animtree.anim_player = animtree.get_path_to(animplayer)
+		animtree.active = true
+		animtree.tree_root = meta.get_godot_resource(keys["m_Controller"])
+		state.prefab_state.animator_node_to_object[animtree] = self
+		# TODO: Add AnimationTree as well.
+		return animtree
+
+	func setup_post_children(node: Node):
+		var animtree: AnimationTree = node
+		var animplayer: AnimationPlayer = animtree.get_node(animtree.anim_player)
+		var anim_controller: UnityRuntimeAnimatorController = meta.lookup(keys["m_Controller"])
+		if anim_controller != null:
+			animplayer.add_animation_library(&"", anim_controller.create_animation_library_at_node(self, node.get_parent()))
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		print(outdict)
+		return outdict
 
 ### ================ IMPORTER TYPES ================
 class UnityAssetImporter extends UnityObject:
@@ -3619,16 +4351,16 @@ class DiscardUnityComponent extends UnityComponent:
 var _type_dictionary: Dictionary = {
 	# "AimConstraint": UnityAimConstraint,
 	# "AnchoredJoint2D": UnityAnchoredJoint2D,
-	# "Animation": UnityAnimation,
+	"Animation": UnityAnimation,
 	"AnimationClip": UnityAnimationClip,
-	# "Animator": UnityAnimator,
-	# "AnimatorController": UnityAnimatorController,
-	# "AnimatorOverrideController": UnityAnimatorOverrideController,
-	# "AnimatorState": UnityAnimatorState,
-	# "AnimatorStateMachine": UnityAnimatorStateMachine,
-	# "AnimatorStateTransition": UnityAnimatorStateTransition,
-	# "AnimatorTransition": UnityAnimatorTransition,
-	# "AnimatorTransitionBase": UnityAnimatorTransitionBase,
+	"Animator": UnityAnimator,
+	"AnimatorController": UnityAnimatorController,
+	"AnimatorOverrideController": UnityAnimatorOverrideController,
+	"AnimatorState": UnityAnimatorState,
+	"AnimatorStateMachine": UnityAnimatorStateMachine,
+	"AnimatorStateTransition": UnityAnimatorStateTransition,
+	"AnimatorTransition": UnityAnimatorTransition,
+	"AnimatorTransitionBase": UnityAnimatorTransitionBase,
 	# "AnnotationManager": UnityAnnotationManager,
 	# "AreaEffector2D": UnityAreaEffector2D,
 	# "AssemblyDefinitionAsset": UnityAssemblyDefinitionAsset,
@@ -3673,7 +4405,7 @@ var _type_dictionary: Dictionary = {
 	"Behaviour": UnityBehaviour,
 	# "BillboardAsset": UnityBillboardAsset,
 	# "BillboardRenderer": UnityBillboardRenderer,
-	# "BlendTree": UnityBlendTree,
+	"BlendTree": UnityBlendTree,
 	"BoxCollider": UnityBoxCollider,
 	# "BoxCollider2D": UnityBoxCollider2D,
 	# "BuildReport": UnityBuildReport,
@@ -3780,7 +4512,7 @@ var _type_dictionary: Dictionary = {
 	# "MonoManager": UnityMonoManager,
 	# "MonoObject": UnityMonoObject,
 	# "MonoScript": UnityMonoScript,
-	# "Motion": UnityMotion,
+	"Motion": UnityMotion,
 	# "NamedObject": UnityNamedObject,
 	"NativeFormatImporter": UnityNativeFormatImporter,
 	# "NativeObjectType": UnityNativeObjectType,
@@ -3841,7 +4573,7 @@ var _type_dictionary: Dictionary = {
 	# "Rigidbody2D": UnityRigidbody2D,
 	# "RootMotionData": UnityRootMotionData,
 	# "RotationConstraint": UnityRotationConstraint,
-	# "RuntimeAnimatorController": UnityRuntimeAnimatorController,
+	"RuntimeAnimatorController": UnityRuntimeAnimatorController,
 	# "RuntimeInitializeOnLoadManager": UnityRuntimeInitializeOnLoadManager,
 	# "SampleClip": UnitySampleClip,
 	# "ScaleConstraint": UnityScaleConstraint,

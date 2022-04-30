@@ -35,6 +35,7 @@ class PrefabState extends RefCounted:
 	var prefab_instance_paths: Array = [].duplicate()
 
 	var main_cameras: Array = [].duplicate()
+	var animator_node_to_object: Dictionary = {}.duplicate()
 
 var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")

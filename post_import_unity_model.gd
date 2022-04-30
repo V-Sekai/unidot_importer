@@ -409,16 +409,18 @@ class ParseState:
 
 	func process_animation_player(node: AnimationPlayer):
 		var i = 0
-		for godot_anim_name in node.get_animation_list():
-			var anim: Animation = node.get_animation(godot_anim_name)
+		var anim_lib = node.get_animation_library(node.get_animation_library_list()[0])
+		for godot_anim_name in anim_lib.get_animation_list():
+			var anim: Animation = anim_lib.get_animation(godot_anim_name)
 			var anim_name: String = get_orig_name("animations", godot_anim_name)
 			if saved_animations_by_name.has(anim_name):
 				anim = saved_animations_by_name.get(anim_name)
 				if anim != null:
-					node.remove_animation(godot_anim_name)
-					node.add_animation(godot_anim_name, anim)
+					anim_lib.remove_animation(godot_anim_name)
+					anim_lib.add_animation(godot_anim_name, anim)
 				continue
 			saved_animations_by_name[anim_name] = null
+			print("Process ANIM " + str(godot_anim_name))
 			#if not has_obj_id("AnimationClip", get_orig_name("animations", anim_name))
 			#if fileId == 0:
 			#	push_error("Missing fileId for Animation " + str(anim_name))
@@ -435,8 +437,8 @@ class ParseState:
 						ResourceSaver.save(respath, anim)
 						anim = load(respath)
 				if anim != null:
-					node.remove_animation(godot_anim_name)
-					node.add_animation(godot_anim_name, anim)
+					anim_lib.remove_animation(godot_anim_name)
+					anim_lib.add_animation(godot_anim_name, anim)
 					saved_animations_by_name[anim_name] = anim
 					self.register_resource(anim, anim_name, "AnimationClip", fileId)
 			# print("AnimationPlayer " + str(scene.get_path_to(node)) + " / Anim " + str(i) + " anim_name: " + anim_name + " resource_name: " + str(anim.resource_name))
@@ -664,8 +666,9 @@ class ParseState:
 			var path: String = anim.get("tracks/" + str(trackidx) + "/path")
 			if path.ends_with(":x") or path.ends_with(":y") or path.ends_with(":z"):
 				path = path.substr(0, len(path) - 2) # To make matching easier.
+			print("ANIM Type is " + str(anim.get("tracks/" + str(trackidx) + "/type")))
 			match anim.get("tracks/" + str(trackidx) + "/type"):
-				"transform":
+				"position":
 					var xform_keys: PackedFloat32Array = anim.get("tracks/" + str(trackidx) + "/keys")
 					var i: int = 0
 					var ilen: int = len(xform_keys)
@@ -673,7 +676,7 @@ class ParseState:
 						xform_keys[i + 2] *= scale_correction_factor
 						xform_keys[i + 3] *= scale_correction_factor
 						xform_keys[i + 4] *= scale_correction_factor
-						i += 12
+						i += 5
 					anim.set("tracks/" + str(trackidx) + "/keys", xform_keys)
 				"value":
 					if path.ends_with(":position") or path.ends_with(":transform"):

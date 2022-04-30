@@ -231,6 +231,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
 
+	node_state.env = env
+	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
+
 	arr.sort_custom(customComparison)
 	for asset in arr:
 		if asset.is_stripped:
@@ -260,8 +263,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if asset.type == "PrefabInstance":
 				node_state.add_prefab_to_parent_transform(0, asset.fileID)
 
-	node_state.env = env
-	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
 
 	# scene_contents = node_state.owner
 	if scene_contents == null:
@@ -273,6 +274,13 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			var ret: Node = asset.create_skinned_mesh(node_state)
 			if ret != null:
 				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
+
+	for animtree in node_state.prefab_state.animator_node_to_object:
+		var obj: RefCounted = node_state.prefab_state.animator_node_to_object[animtree] # UnityAnimator
+		# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
+		# If not found, we can't recreate the animationLibrary
+		obj.setup_post_children(animtree)
+		
 
 	if not is_prefab:
 		# Remove redundant directional light.
