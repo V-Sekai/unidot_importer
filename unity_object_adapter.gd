@@ -825,18 +825,31 @@ class UnityShader extends UnityObject:
 # todo: create
 
 class UnityAnimatorRelated extends UnityObject: # Helper functions
-	func get_unique_name(name: StringName, used_names: Dictionary) -> StringName:
+	func get_unique_identifier(p_name: String, used_names: Dictionary) -> StringName:
+		var out_str: String = ""
+		for ch in p_name:
+			if not out_str.is_empty() and ("a" + ch).is_valid_identifier():
+				out_str += ch
+			elif ch.is_valid_identifier():
+				out_str += ch
+			else:
+				out_str += "_"
+		return get_unique_name(StringName(out_str), used_names)
+
+	func get_unique_name(p_name: StringName, used_names: Dictionary) -> StringName:
+		var name: StringName = StringName(str(p_name).replace("/", "-").replace(":", ";"))
 		var renamed_layer: StringName = name
 		while used_names.has(renamed_layer):
 			used_names[name] = used_names.get(name, 0) + 1
 			renamed_layer = StringName(str(name) + str(used_names[name]))
 		used_names[renamed_layer] = 0
+		print("get_unique_name: " + str(p_name) + " => " + str(renamed_layer))
 		return renamed_layer
 
 	func ref_to_anim_key(motion_ref: Array) -> String:
 		return "%s:%d" % [meta.guid if typeof(motion_ref[2]) == TYPE_NIL else motion_ref[2], motion_ref[1]]
 
-	func recurse_to_motion(controller: UnityAnimatorController, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary):
+	func recurse_to_motion(controller: RefCounted, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary):
 		var motion_node: AnimationRootNode = null
 		var anim_key: String = ref_to_anim_key(motion_ref)
 		if animation_guid_fileid_to_name.has(anim_key):
@@ -845,8 +858,11 @@ class UnityAnimatorRelated extends UnityObject: # Helper functions
 		else:
 			var blend_tree = meta.lookup(motion_ref)
 			print("type: " + str(blend_tree.type) + " class " + str(blend_tree.get_class()) + " " + str(blend_tree.uniq_key))
-			assert(blend_tree.type == "BlendTree")
-			motion_node = blend_tree.create_animation_node(controller, layer_index, animation_guid_fileid_to_name)
+			if blend_tree.type != "BlendTree":
+				push_error("Animation not in animation_guid_fileid_to_name: " + str(anim_key))
+				motion_node = AnimationNodeAnimation.new()
+			else:
+				motion_node = blend_tree.create_animation_node(controller, layer_index, animation_guid_fileid_to_name)
 		return motion_node
 
 class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
@@ -902,7 +918,12 @@ class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
 		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(keys["m_Controller"])
 		var wrapped_sm = AnimationNodeStateMachine.new()
 		wrapped_sm.add_node(&"Target", referenced_sm)
-		wrapped_sm.set_start_node(&"Target")
+		if wrapped_sm.get_node(&"Start") != null:
+			var trans = AnimationNodeStateMachineTransition.new()
+			trans.auto_advance = true
+			wrapped_sm.add_transition(&"Start", &"Target", trans)
+		else:
+			wrapped_sm.set_start_node(&"Target")
 		return wrapped_sm
 
 class UnityAnimatorController extends UnityRuntimeAnimatorController:
@@ -923,6 +944,8 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 
 	func create_animation_node() -> AnimationRootNode:
 		# Add all layers to a blend tree.
+		var blended_layers = AnimationNodeBlendTree.new()
+		var tmp_used_params: Dictionary = {}.duplicate()
 		self.parameters = {}.duplicate()
 		for param in keys['m_AnimatorParameters']:
 			var type: String = "unknown"
@@ -930,18 +953,25 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 			match str(param["m_Type"]):
 				'1':
 					type = "float"
-					defval = param["m_DefaultFloat"]
+					defval = float(param["m_DefaultFloat"])
 				'3':
 					type = "int"
-					defval = param["m_DefaultInt"]
+					defval = int(param["m_DefaultInt"])
 				'4':
 					type = "bool"
-					defval = param["m_DefaultBool"]
+					if param["m_DefaultBool"]:
+						defval = true
+					else:
+						defval = false
 				'9':
 					type = "trigger"
-					defval = param["m_DefaultBool"]
-			parameters[param["m_Name"]] = {"type": type, "default": defval}
-		var blended_layers = AnimationNodeBlendTree.new()
+					if param["m_DefaultBool"]:
+						defval = true
+					else:
+						defval = false
+			var param_name: StringName = get_unique_identifier(param["m_Name"], tmp_used_params)
+			parameters[param["m_Name"]] = {"uniq_name": param_name, "type": type, "default": defval}
+			blended_layers.set_meta(param_name, defval) # toplevel meta is used.
 		var lay_x: float = 0.0
 		var last_output: StringName = &""
 		var used_names: Dictionary = {}.duplicate()
@@ -958,7 +988,9 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 
 		# Godot: "An AnimationNodeOutput node named output is created by default."
 		used_names[&"output"] = 0
+		lay_idx = -1
 		for lay in keys['m_AnimatorLayers']:
+			lay_idx += 1
 			'''
 	m_Name: Base Layer
 	m_StateMachine: {fileID: 8941230547955804434}
@@ -974,7 +1006,10 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 			'''
 			var renamed_layer = get_unique_name(lay["m_Name"], used_names)
 			lay["m_Controller"] = [null, self.fileID, null, 0]
-			blended_layers.add_node(renamed_layer, create_flat_state_machine(lay_idx, animation_guid_fileid_to_name), Vector2(100 + lay_x, 400))
+			var node_to_add: AnimationRootNode = create_flat_state_machine(lay_idx, animation_guid_fileid_to_name)
+			print('aaa')
+			blended_layers.add_node(renamed_layer, node_to_add, Vector2(100 + lay_x, 400))
+			print('bbb ' + str(renamed_layer))
 			if last_output != &"":
 				# TODO: We may wish to generate the correct mask based on animation clip outputs...
 				# but this will depend on the animation clips in question, and I wanted to keep this agnostic.
@@ -982,13 +1017,13 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 				# Add2 will be a reasonable output in most cases, except when clips override each others' outputs.
 				# So I will use this for now.
 				var mixing_node = AnimationNodeAdd2.new()
-				# parameter is &"blend" for Blend2 and &"add" for Add2. Make sure to switch if we change types.
-				mixing_node.set_parameter(&"add", lay["m_DefaultWeight"])
+				# parameter is &"blend" for Blend2 and &"add_amount" for Add2. Make sure to switch if we change types.
+				mixing_node.set_meta(&"add_amount", lay["m_DefaultWeight"])
 				var mixing_name = get_unique_name(&"Blend", used_names)
 				lay_x += 400.0
 				blended_layers.add_node(mixing_name, mixing_node, Vector2(100 + lay_x, 100))
 				blended_layers.connect_node(mixing_name, 0, last_output)
-				blended_layers.connect_node(mixing_name, 1, lay["m_Name"])
+				blended_layers.connect_node(mixing_name, 1, renamed_layer)
 				last_output = mixing_name
 			else:
 				lay_x += 400.0
@@ -1001,7 +1036,31 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		blended_layers.set_meta(&"guid_fileid_to_animation_name", animation_guid_fileid_to_name)
 		return blended_layers
 
-	const STATE_MACHINE_SCALE: float = 2.0
+	func allows_dupe_transitions() -> bool:
+		var sm = AnimationNodeStateMachine.new()
+		var n1 = AnimationNodeAnimation.new()
+		var n2 = AnimationNodeAnimation.new()
+		var t1 = AnimationNodeStateMachineTransition.new()
+		var t2 = AnimationNodeStateMachineTransition.new()
+		sm.add_node(&"test1", n1)
+		sm.add_node(&"test2", n2)
+		sm.add_transition(&"test1", &"test2", t1)
+		sm.add_transition(&"test1", &"test2", t2)
+		var has_dupe_transitions: bool = (sm.get_transition(0) == t1 && sm.get_transition(1) == t2)
+		sm.remove_transition_by_index(1)
+		sm.remove_transition_by_index(0)
+		sm.remove_node(&"test1")
+		sm.remove_node(&"test2")
+		return has_dupe_transitions
+
+	func get_parameter_uniq_name(param_name: String) -> StringName:
+		if not self.parameters.has(param_name):
+			push_warning("Parameter " + param_name + " is missing from " + str(self.parameters.keys()))
+			return &""
+		return self.parameters[param_name]["uniq_name"]
+
+	const STATE_MACHINE_SCALE: float = 1.0
+	const STATE_MACHINE_OFFSET: Vector3 = Vector3(300, 200, 0)
 
 	func create_flat_state_machine(layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
 		var lay: Dictionary = keys['m_AnimatorLayers'][layer_index]
@@ -1010,7 +1069,11 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		var state_uniq_names = {}.duplicate()
 		var state_duplicates = {}.duplicate() # such as any state self transitions; other self transitions; multi transitions.
 		var state_data = {}.duplicate()
-		root_sm.get_state_data("", state_data, state_uniq_names, Vector3(300, 200, 0), STATE_MACHINE_SCALE)
+		state_uniq_names[&"Start"] = 0
+		state_uniq_names[&"End"] = 0
+		state_uniq_names[&"playback"] = 0
+		state_uniq_names[&"conditions"] = 0
+		root_sm.get_state_data("", state_data, state_uniq_names, STATE_MACHINE_OFFSET, STATE_MACHINE_SCALE)
 
 		# var exit_state_name: StringName = &""
 		var any_transition_list = [].duplicate()
@@ -1021,6 +1084,11 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		root_sm.get_exit_parent(exit_parent)
 		var sm = AnimationNodeStateMachine.new()
 		sm.resource_name = keys.get("m_Name", "")
+		var tmppos: Vector3 = STATE_MACHINE_OFFSET + keys.get("m_EntryPosition", Vector3()) * STATE_MACHINE_SCALE
+		sm.set_node_position(&"Start", Vector2(tmppos.x, tmppos.y))
+		tmppos = STATE_MACHINE_OFFSET + keys.get("m_ExitPosition", Vector3()) * STATE_MACHINE_SCALE
+		sm.set_node_position(&"End", Vector2(tmppos.x, tmppos.y))
+		var allow_dupe_transitions: bool = allows_dupe_transitions()
 
 		var transition_count = {}.duplicate()
 		var state_count = {}.duplicate()
@@ -1039,9 +1107,14 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
 						continue
 					var trans_key: String = src_state_key + dst_state.uniq_key
-					if not transition_count.has(trans_key):
-						transition_count[trans_key] = 0
-					transition_count[trans_key] += 1
+					if allow_dupe_transitions:
+						if dst_state.uniq_key != src_state_key:
+							continue
+						transition_count[trans_key] = 2
+					else:
+						if not transition_count.has(trans_key):
+							transition_count[trans_key] = 0
+						transition_count[trans_key] += 1
 					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
 
 		for state_key in state_data:
@@ -1054,9 +1127,14 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if dst_state == null:
 						continue
 					var trans_key: String = state_key + dst_state.uniq_key
-					if not transition_count.has(trans_key):
-						transition_count[trans_key] = 0
-					transition_count[trans_key] += 1
+					if allow_dupe_transitions:
+						if dst_state.uniq_key != state_key:
+							continue
+						transition_count[trans_key] = 2
+					else:
+						if not transition_count.has(trans_key):
+							transition_count[trans_key] = 0
+						transition_count[trans_key] += 1
 					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
 
 		print(state_count)
@@ -1089,11 +1167,12 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
 						continue
 					var trans_key: String = src_state_key + dst_state.uniq_key
-					if not transition_count.has(trans_key):
-						transition_count[trans_key] = 0
 					create_dupe_transitions(sm, transition_obj, state_data[src_state_key]["name"], state_data[dst_state.uniq_key]["name"],
-								state_duplicates, transition_count[trans_key], condition_list)
-					transition_count[trans_key] += 1
+								state_duplicates, transition_count.get(trans_key, 0), condition_list)
+					if not allow_dupe_transitions:
+						if not transition_count.has(trans_key):
+							transition_count[trans_key] = 0
+						transition_count[trans_key] += 1
 
 
 		for state_key in state_data:
@@ -1108,15 +1187,21 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if dst_state == null:
 						continue
 					var trans_key: String = state_key + dst_state.uniq_key
-					if not transition_count.has(trans_key):
-						transition_count[trans_key] = 0
 					create_dupe_transitions(sm, transition_obj, this_state["name"], state_data[dst_state.uniq_key]["name"],
-								state_duplicates, transition_count[trans_key], condition_list)
-					transition_count[trans_key] += 1
+								state_duplicates, transition_count.get(trans_key, 0), condition_list)
+					if not allow_dupe_transitions:
+						if not transition_count.has(trans_key):
+							transition_count[trans_key] = 0
+						transition_count[trans_key] += 1
 
 		var def_state = meta.lookup(root_sm.keys["m_DefaultState"])
 		if def_state != null and state_data.has(def_state.uniq_key):
-			sm.set_start_node(state_data[def_state.uniq_key]["name"])
+			if sm.get_node(&"Start") != null:
+				var trans = AnimationNodeStateMachineTransition.new()
+				trans.auto_advance = true
+				sm.add_transition(&"Start", state_data[def_state.uniq_key]["name"], trans)
+			else:
+				sm.set_start_node(state_data[def_state.uniq_key]["name"])
 		return sm
 
 	func create_dupe_transitions(sm: AnimationNodeStateMachine, transition_obj: UnityAnimatorStateTransition, src_state_name: StringName, dst_state_name: StringName,
@@ -1128,7 +1213,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 				continue
 			is_muted = is_muted or trans.keys.get("m_Mute", false)
 			for cond in trans.keys["m_Conditions"]:
-				var parameter: String = str(cond["m_ConditionEvent"])
+				var parameter: String = get_parameter_uniq_name(str(cond["m_ConditionEvent"]))
 				var thresh: float = float(cond["m_EventTreshold"])
 				var event: int = cond["m_ConditionMode"]
 				var cond_to_add = ""
@@ -1151,7 +1236,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					conditions += cond_to_add
 
 		var trans = AnimationNodeStateMachineTransition.new()
-		trans.xfade_time = transition_obj.keys["m_TransitionDuration"]
+		trans.xfade_time = 0 ##### FIXME: xfade_time > 0 sometimes causes hung machines ##### transition_obj.keys["m_TransitionDuration"]
 		# Godot does not currently support exit time. transition_obj.keys["m_ExitTime"]
 		if transition_obj.keys["m_HasExitTime"] and transition_obj.keys["m_ExitTime"] > 0.0001:
 			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
@@ -1160,7 +1245,10 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		if conditions == "":
 			trans.auto_advance = true
 		else:
-			trans.advance_condition = conditions
+			if typeof(trans.get("advance_expression")) == TYPE_STRING:
+				trans.advance_expression = conditions
+			else:
+				trans.advance_condition = conditions
 		trans.disabled = is_muted
 		# TODO: Solo is not implemented yet. It requires knowledge of all sibling transitions at each stage of state machine.
 		# Not too hard to do if someone uses the Solo feature for something.
@@ -1186,7 +1274,7 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 		for state_machine in keys["m_ChildStateMachines"]:
 			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
 			var child_pos: Vector3 = sm_pos + state_machine["m_Position"] * pos_scale
-			child.get_state_data(sm_prefix + child.keys["m_Name"] + "/", state_data, unique_names, child_pos, pos_scale * 0.25)
+			child.get_state_data(sm_prefix + child.keys["m_Name"] + "/", state_data, unique_names, child_pos, pos_scale * 0.5)
 
 	func get_exit_parent(sm_to_parent: Dictionary):
 		for state_machine in keys["m_ChildStateMachines"]:
@@ -1207,6 +1295,8 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 			var child: UnityAnimatorState = meta.lookup(state["m_State"])
 			var basename: String = child.keys["m_Name"]
 			var motion_ref: Array = child.keys["m_Motion"]
+			if out_guid_fid_to_anim_name.has(child.ref_to_anim_key(motion_ref)):
+				continue
 			var motion: UnityMotion = child.meta.lookup(motion_ref, true)
 			if motion != null:
 				sm_path.append(basename)
@@ -1280,7 +1370,7 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 			transition_list.append(inp_condition_list)
 
 class UnityAnimatorState extends UnityAnimatorRelated:
-	func create_animation_node(controller: UnityAnimatorController, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
 		var motion_ref: Array = keys["m_Motion"]
 		var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, motion_ref, animation_guid_fileid_to_name)
 		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
@@ -1299,23 +1389,23 @@ class UnityAnimatorState extends UnityAnimatorRelated:
 			var xval = 500
 			if speed != 1:
 				var tsnode = AnimationNodeTimeScale.new()
-				tsnode.set_parameter("scale", speed)
+				tsnode.set_meta("scale", speed)
 				bt.add_node(&"TimeScale", tsnode, Vector2(xval,0))
 				xval += 200
 				bt.connect_node(&"TimeScale", 0, last_node)
 				last_node = &"TimeScale"
 			if speed_param_active:
 				var tsnode = AnimationNodeTimeScale.new()
-				tsnode.set_parameter("scale", float(controller.parameters.get(keys["m_SpeedParameter"], {}).get("default", 1.0)))
-				var node_name = StringName("TimeScale:" + keys["m_SpeedParameter"])
+				tsnode.set_meta("scale", controller.get_parameter_uniq_name(keys["m_SpeedParameter"]))
+				var node_name = StringName("TimeScaleParam")
 				bt.add_node(node_name, tsnode, Vector2(xval,0))
 				xval += 200
 				bt.connect_node(node_name, 0, last_node)
 				last_node = node_name
 			if time_param_active:
 				var seeknode = AnimationNodeTimeSeek.new()
-				seeknode.set_parameter("seek_position", float(controller.parameters.get(keys["m_TimeParameter"], {}).get("default", 1.0)))
-				var node_name = StringName("TimeSeek:" + keys["m_TimeParameter"])
+				seeknode.set_meta("seek_position", controller.get_parameter_uniq_name(keys["m_TimeParameter"]))
+				var node_name = StringName("TimeSeek")
 				bt.add_node(node_name, seeknode, Vector2(xval,0))
 				xval += 200
 				bt.connect_node(node_name, 0, last_node)
@@ -1366,9 +1456,11 @@ class UnityBlendTree extends UnityMotion:
 				basename = "%s_%s" % [basename, child.get("m_DirectBlendParameter", "")]
 			else:
 				var pos: Vector2 = child.get("m_Position", Vector2())
-				basename = "%s_%.02f_%.02f" % [pos.x, pos.y]
+				basename = "%s_%.02f_%.02f" % [basename, pos.x, pos.y]
 			var motion_ref: Array = child["m_Motion"]
-			var motion: UnityMotion = meta.lookup(motion_ref, true) # TODO: Need to get the godot resource's name for imported glb
+			if out_guid_fid_to_anim_name.has(ref_to_anim_key(motion_ref)):
+				continue
+			var motion: Object = meta.lookup(motion_ref, true) # TODO: Need to get the godot resource's name for imported glb
 			if motion != null:
 				sm_path.append(basename)
 				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
@@ -1390,7 +1482,7 @@ class UnityBlendTree extends UnityMotion:
 				uniq_name_dict[name] = 1
 				out_guid_fid_to_anim_name[ref_to_anim_key(motion_ref)] = name
 
-	func create_animation_node(controller: UnityAnimatorController, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
 		var minmax: Rect2 = Rect2(-1.1,-1.1,2.2,2.2)
 		var ret: AnimationRootNode = null
 		match keys["m_BlendType"]:
@@ -1402,7 +1494,7 @@ class UnityBlendTree extends UnityMotion:
 					if child.get("m_TimeScale", 1) != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
-						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
 						bt.add_node(&"Motion", motion_node, Vector2(200,200))
 						bt.add_node(&"TimeScale", tsnode, Vector2(500,200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
@@ -1413,6 +1505,7 @@ class UnityBlendTree extends UnityMotion:
 					minmax = minmax.expand(Vector2(child["m_Threshold"] * 1.1, 0.0))
 				bs.min_space = minmax.position.x
 				bs.max_space = minmax.end.x
+				bs.set_meta("blend_position", controller.get_parameter_uniq_name(keys.get("m_BlendParameter", "Blend")))
 				ret = bs
 			1, 2, 3: # SimpleDirectional2D, FreeformDirectional2D, FreeformCartesian2D
 				# TODO: Does Godot support the different types of 2D blending?
@@ -1423,7 +1516,7 @@ class UnityBlendTree extends UnityMotion:
 					if child.get("m_TimeScale", 1) != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
-						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
 						bt.add_node(&"Motion", motion_node, Vector2(200,200))
 						bt.add_node(&"TimeScale", tsnode, Vector2(500,200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
@@ -1434,6 +1527,8 @@ class UnityBlendTree extends UnityMotion:
 					minmax = minmax.expand(child["m_Position"] * 1.1)
 				bs.min_space = minmax.position
 				bs.max_space = minmax.end
+				bs.set_meta("blend_position_x", controller.get_parameter_uniq_name(keys.get("m_BlendParameter", "Blend")))
+				bs.set_meta("blend_position_y", controller.get_parameter_uniq_name(keys.get("m_BlendParameterY", "Blend")))
 				ret = bs
 			4: # Direct
 				# Add a bunch of AnimationNodeAdd2? Do these get chained somehow?
@@ -1454,11 +1549,12 @@ class UnityBlendTree extends UnityMotion:
 					if child.get("m_TimeScale", 1) != 1:
 						var tsnode = AnimationNodeTimeScale.new()
 						var tsname = get_unique_name("TimeScale", uniq_dict)
-						tsnode.set_parameter("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
 						bt.add_node(tsname, tsnode, Vector2(700, i * 200 - 50))
 						bt.connect_node(tsname, 0, motion_name)
 						motion_name = tsname
 					var add_node = AnimationNodeAdd2.new()
+					add_node.set_meta("add_amount", controller.get_parameter_uniq_name(child.get("m_DirectBlendParameter", "Blend")))
 					var add_name = get_unique_name(child.get("m_DirectBlendParameter", "Blend"), uniq_dict)
 					bt.add_node(add_name, add_node, Vector2(900, i * 200 - 100))
 					bt.connect_node(add_name, 0, last_name)
@@ -1483,6 +1579,9 @@ class UnityAnimationClip extends UnityMotion:
 		return create_animation_clip_at_node(null, null)
 
 	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
+		var anim_key = "%s:%d" % [self.meta.guid, self.fileID]
+		if out_guid_fid_to_anim_name.has(anim_key):
+			return
 		var basename: String = self.keys["m_Name"]
 		var num = 1
 		var name: String = basename
@@ -1490,7 +1589,7 @@ class UnityAnimationClip extends UnityMotion:
 			name = "%s %d" % [name, num]
 			num += 1
 		uniq_name_dict[name] = 1
-		out_guid_fid_to_anim_name["%s:%d" % [self.meta.guid, self.fileID]] = name
+		out_guid_fid_to_anim_name[anim_key] = name
 
 	func default_gameobject_component_path(unipath: String, unicomp: Variant) -> NodePath:
 		if typeof(unicomp) == TYPE_INT and (unicomp == 1 or unicomp == 4):
@@ -1701,7 +1800,6 @@ class UnityAnimationClip extends UnityMotion:
 		# m_EulerCurves, m_FloatCurves, m_PositionCruves, m_PPtrCurves, m_RotationCurves, m_ScaleCurves
 		var resolved_to_default: Dictionary = {}
 		for track in keys["m_FloatCurves"]:
-			print(track.keys())
 			var attr: String = track["attribute"]
 			var path: String = track.get("path", "") # Some omit path if for the current GameObject...?
 			var classID: int = track["classID"] # Todo: convet classID to class guid+id
@@ -2943,6 +3041,7 @@ class UnityPrefabInstance extends UnityGameObject:
 					existing_node.get_parent().add_child(animtree, true)
 					animtree.anim_player = animtree.get_path_to(existing_node)
 					animtree.active = true
+					animtree.set_script(get_script().get_base_dir() + "/runtime/anim_tree.gd")
 					# Weird special case, likely to break.
 					# The original file was a .glb and doesn't have an AnimationTree node.
 					# We add one and try to pretend it's ours.
@@ -4308,6 +4407,7 @@ class UnityAnimator extends UnityBehaviour:
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = true
+		animtree.set_script(get_script().get_base_dir() + "/runtime/anim_tree.gd")
 		animtree.tree_root = meta.get_godot_resource(keys["m_Controller"])
 		state.prefab_state.animator_node_to_object[animtree] = self
 		# TODO: Add AnimationTree as well.
@@ -4323,6 +4423,8 @@ class UnityAnimator extends UnityBehaviour:
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		print(outdict)
+		if uprops.has("m_Controller"):
+			node.tree_root = meta.get_godot_resource(uprops["m_Controller"])
 		return outdict
 
 ### ================ IMPORTER TYPES ================

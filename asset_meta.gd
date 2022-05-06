@@ -448,6 +448,14 @@ func get_components_fileids(fileid: int, type: String="") -> PackedInt64Array:
 			out_fileids.push_back(comp_fileid)
 	return out_fileids
 
+const BLACKLISTED_OBJECT_TYPES: Dictionary = {
+	"AnimatorStateTransition":1,
+	"AnimatorState":1,
+	"AnimatorTransition":1,
+	"AnimatorStateMachine":1,
+	"BlendTree":1,
+}
+
 func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	var parsed = ParsedAsset.new()
 	print("Parsing " + str(guid))
@@ -461,6 +469,8 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 				self.main_object_id = output_obj.fileID
 	if self.main_object_id == 0:
 		for output_obj in bin_parser.objs:
+			if BLACKLISTED_OBJECT_TYPES.has(output_obj.type) or (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) != 0:
+				continue
 			if (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000) and output_obj.fileID > 0:
 				push_error("We have no main_object_id but found a nice round number " + str(output_obj.fileID))
 				self.main_object_id = output_obj.fileID
@@ -468,8 +478,9 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	for output_obj in bin_parser.objs:
 		i += 1
 		if self.main_object_id == 0:
-			push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
-			self.main_object_id = output_obj.fileID
+			if (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0:
+				push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
+				self.main_object_id = output_obj.fileID
 		parsed.assets[output_obj.fileID] = output_obj
 		fileid_to_utype[output_obj.fileID] = output_obj.utype
 		if not type_to_fileids.has(output_obj.type):
@@ -495,6 +506,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 
 	var yaml_parser = yaml_parser_class.new()
 	var i = 0
+
 	# var recycle_ids: Dictionary = {}
 	#if self.importer != null:
 	#	recycle_ids = self.importer.keys.get("fileIDToRecycleName", {})
@@ -504,8 +516,10 @@ func parse_asset(file: Object) -> ParsedAsset:
 		var lin = file.get_line()
 		var output_obj = yaml_parser.parse_line(lin, self, false)
 		if output_obj != null:
-			if self.main_object_id == 0:
-				push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
+			if (not BLACKLISTED_OBJECT_TYPES.has(output_obj.type) and output_obj.fileID > 0 and
+					(output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0 and
+					(output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000)):
+				push_error("We have no main_object_id but found a nice round number " + str(output_obj.fileID))
 				self.main_object_id = output_obj.fileID
 			parsed.assets[output_obj.fileID] = output_obj
 			fileid_to_utype[output_obj.fileID] = output_obj.utype
@@ -520,6 +534,12 @@ func parse_asset(file: Object) -> ParsedAsset:
 		if file.get_error() == ERR_FILE_EOF:
 			break
 	self.parsed = parsed
+	if self.main_object_id == 0:
+		for fileID in parsed.assets:
+			if (parsed.assets[fileID].keys.get("m_ObjectHideFlags", 0) & 1) == 0:
+				push_error("We have no main_object_id but it should be " + str(fileID))
+				self.main_object_id = fileID
+
 	return parsed
 
 func _init():
