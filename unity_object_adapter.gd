@@ -892,11 +892,22 @@ class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
 				continue
 			elif anim_res == null and anim_clip_obj != null:
 				anim_res = anim_clip_obj.create_animation_clip_at_node(animator, node_parent)
-			elif anim_res != null and anim_clip_obj != null:
+			elif anim_res != null and anim_clip_obj != null and node_parent != null:
 				anim_clip_obj.adapt_animation_clip_at_node(animator, node_parent, anim_res)
 			if anim_res != null:
 				anim_library.add_animation(StringName(clip_name), anim_res)
+		anim_library.set_meta("animation_guid_fileid_to_name", animation_guid_fileid_to_name)
 		return anim_library
+
+	func adapt_animation_player_at_node(animator: RefCounted, anim_player: AnimationPlayer):
+		var node_parent: Node = anim_player.get_parent()
+		var virtual_animation_clip: UnityAnimationClip = adapter.instantiate_unity_object(meta, 0, 0, "AnimationClip")
+
+		for library_name in anim_player.get_animation_library_list():
+			var library: AnimationLibrary = anim_player.get_animation_library(library_name)
+			for clip_name in library.get_animation_list():
+				var clip = library.get_animation(clip_name)
+				virtual_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
 
 	func create_godot_resource() -> Resource:
 		return null
@@ -904,7 +915,10 @@ class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
 class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
 	# Store original unity object!
 	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
-		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(keys["m_Controller"])
+		var controller_ref: Array = keys["m_Controller"]
+		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(controller_ref)
+		var lib_ref: Array = [null, -controller_ref[1], controller_ref[2], controller_ref[3]]
+		var referenced_library: AnimationLibrary = self.meta.get_godot_resource(lib_ref)
 		var animation_guid_fileid_to_name: Dictionary = referenced_sm.get_meta(&"guid_fileid_to_animation_name", {})
 		var override_clips = {}.duplicate()
 		for clip in keys["m_Clips"]:
@@ -912,19 +926,13 @@ class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
 			var override_clip: Array = clip["m_OverrideClip"]
 			override_clips[animation_guid_fileid_to_name[ref_to_anim_key(orig_clip)]] = override_clip
 		# m_Clips: m_OriginalClip / m_OverrideClip
-		return self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, override_clips)
+		var anim_library = self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, override_clips)
+		anim_library.set_meta("base_node", referenced_sm)
+		anim_library.set_meta("base_library", referenced_library)
+		return anim_library
 
 	func create_godot_resource() -> Resource:
-		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(keys["m_Controller"])
-		var wrapped_sm = AnimationNodeStateMachine.new()
-		wrapped_sm.add_node(&"Target", referenced_sm)
-		if wrapped_sm.get_node(&"Start") != null:
-			var trans = AnimationNodeStateMachineTransition.new()
-			trans.auto_advance = true
-			wrapped_sm.add_transition(&"Start", &"Target", trans)
-		else:
-			wrapped_sm.set_start_node(&"Target")
-		return wrapped_sm
+		return create_animation_library_at_node(null, null)
 
 class UnityAnimatorController extends UnityRuntimeAnimatorController:
 
@@ -938,6 +946,28 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		var animation_guid_fileid_to_name: Dictionary = this_res.get_meta(&"guid_fileid_to_animation_name", {})
 		assert(not animation_guid_fileid_to_name.is_empty())
 		return self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, {}.duplicate())
+
+	func get_animation_guid_fileid_to_name():
+		var animation_guid_fileid_to_name: Dictionary = {}.duplicate()
+		var animation_used_names: Dictionary = {}.duplicate()
+		var sm_path: Array = [].duplicate()
+		var lay_idx: int = -1
+		for lay in keys['m_AnimatorLayers']:
+			lay_idx += 1
+			var sm: UnityAnimatorStateMachine = meta.lookup(lay['m_StateMachine'])
+			sm_path.append(lay.get("m_Name", "layer"))
+			sm.get_all_animations(sm_path, animation_used_names, animation_guid_fileid_to_name)
+			sm_path.clear()
+		return animation_guid_fileid_to_name
+
+	func get_extra_resources() -> Dictionary:
+		return {-self.fileID: ".library.tres"}
+
+	func get_extra_resource(fileID: int) -> AnimationLibrary:
+		var sk: AnimationLibrary = AnimationLibrary.new()
+		var fileid_to_name: Dictionary = get_animation_guid_fileid_to_name()
+		var anim_library = self.create_animation_library_clips_at_node(null, null, fileid_to_name, {}.duplicate())
+		return anim_library
 
 	func create_godot_resource() -> Resource:
 		return create_animation_node()
@@ -1959,8 +1989,9 @@ class UnityAnimationClip extends UnityMotion:
 				res_path = meta.path
 			else:
 				res_path = meta.path.get_basename() + (".%d.tres" % [self.fileID])
+			res_path = "res://" + res_path
+			anim.take_over_path(res_path)
 			ResourceSaver.save(res_path, anim)
-			anim.resource_path = res_path
 			meta.insert_resource(self.fileID, anim)
 		else:
 			ResourceSaver.save(anim.resource_path, anim)
@@ -3035,8 +3066,9 @@ class UnityPrefabInstance extends UnityGameObject:
 				state.add_prefab_rename(fileID, m_Name)
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			if uprops.get("m_Controller", [null,0])[1] != 0:
+				var animtree: AnimationTree = null
 				if target_utype == 91 and existing_node != null and existing_node.get_class() == "AnimationPlayer":
-					var animtree = AnimationTree.new()
+					animtree = AnimationTree.new()
 					animtree.name = "AnimationTree"
 					existing_node.get_parent().add_child(animtree, true)
 					animtree.anim_player = animtree.get_path_to(existing_node)
@@ -3047,10 +3079,13 @@ class UnityPrefabInstance extends UnityGameObject:
 					# We add one and try to pretend it's ours.
 					# Maybe better to change glb post-import script to add one.
 					state.add_fileID(animtree, virtual_unity_object)
+				else:
+					animtree = existing_node
 				if target_utype == 91:
 					virtual_unity_object.fileID = fileID ^ self.fileID
 					virtual_unity_object.keys = uprops
-					state.prefab_state.animator_node_to_object[existing_node] = virtual_unity_object
+					state.prefab_state.animator_node_to_object[animtree] = virtual_unity_object
+					virtual_unity_object.assign_controller(animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"])
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
 				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops))
@@ -4395,8 +4430,28 @@ class UnityAnimation extends UnityBehaviour:
 		return outdict
 
 class UnityAnimator extends UnityBehaviour:
-	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 
+	func assign_controller(anim_player: AnimationPlayer, anim_tree: AnimationTree, controller_ref: Array):
+		var main_library: AnimationLibrary = null
+		var base_library: AnimationLibrary = null
+		var root_node: AnimationRootNode = null
+		var referenced_resource: Resource = meta.get_godot_resource(controller_ref)
+		if referenced_resource is AnimationLibrary:
+			main_library = referenced_resource
+			root_node = main_library.get_meta("base_node")
+			base_library = main_library.get_meta("base_library")
+		else:
+			root_node = referenced_resource
+			var lib_ref: Array = [null, -controller_ref[1], controller_ref[2], controller_ref[3]]
+			main_library = meta.get_godot_resource(lib_ref)
+		for libname in anim_player.get_animation_library_list():
+			anim_player.remove_animation_library(StringName(libname))
+		anim_player.add_animation_library(&"", main_library)
+		if base_library != null:
+			anim_player.add_animation_library(&"base", base_library)
+		anim_tree.tree_root = root_node
+
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var animplayer: AnimationPlayer = AnimationPlayer.new()
 		animplayer.name = "AnimationPlayer"
 		state.add_child(animplayer, new_parent, self)
@@ -4408,23 +4463,28 @@ class UnityAnimator extends UnityBehaviour:
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = true
 		animtree.set_script(get_script().get_base_dir() + "/runtime/anim_tree.gd")
-		animtree.tree_root = meta.get_godot_resource(keys["m_Controller"])
 		state.prefab_state.animator_node_to_object[animtree] = self
 		# TODO: Add AnimationTree as well.
+		assign_controller(animplayer, animtree, keys["m_Controller"])
 		return animtree
 
 	func setup_post_children(node: Node):
 		var animtree: AnimationTree = node
 		var animplayer: AnimationPlayer = animtree.get_node(animtree.anim_player)
-		var anim_controller: UnityRuntimeAnimatorController = meta.lookup(keys["m_Controller"])
-		if anim_controller != null:
-			animplayer.add_animation_library(&"", anim_controller.create_animation_library_at_node(self, node.get_parent()))
+		var anim_controller_meta: Resource = meta.lookup_meta(keys["m_Controller"], true)
+		var virtual_unity_object: UnityRuntimeAnimatorController = meta.lookup_or_instantiate(keys["m_Controller"], "RuntimeAnimatorController")
+		if virtual_unity_object == null:
+			return # couldn't find meta. this means it probably won't work.
+		virtual_unity_object.adapt_animation_player_at_node(self, animplayer)
+		#if anim_controller != null:
+		#	animplayer.add_animation_library(&"", anim_controller.create_animation_library_at_node(self, node.get_parent()))
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		print(outdict)
 		if uprops.has("m_Controller"):
-			node.tree_root = meta.get_godot_resource(uprops["m_Controller"])
+			if node is AnimationTree:
+				assign_controller(node.get_node(node.anim_player), node, uprops["m_Controller"])
 		return outdict
 
 ### ================ IMPORTER TYPES ================

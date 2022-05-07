@@ -307,6 +307,17 @@ func lookup(unityref: Array, silent: bool=false) -> RefCounted:
 	ret.meta = found_meta
 	return ret
 
+func lookup_or_instantiate(unityref: Array, type: String) -> RefCounted:
+	var found_object: RefCounted = lookup(unityref, true)
+	if found_object != null:
+		#if found_object.type != type: # Too hard to verify because it could be a subclass.
+		#	push_warning("lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type))
+		return found_object
+	var found_meta: Resource = lookup_meta(unityref)
+	if found_meta == null:
+		return null
+	return object_adapter.instantiate_unity_object(found_meta, unityref[1], 0, type)
+
 func set_owner_rec(node: Node, owner: Node):
 	node.owner = owner
 	for n in node.get_children():

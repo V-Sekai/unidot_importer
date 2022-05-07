@@ -221,6 +221,9 @@ class YamlHandler extends AssetHandler:
 			return self.ASSET_TYPE_SCENE
 		if extn == "prefab":
 			return self.ASSET_TYPE_PREFAB
+		if extn == "anim":
+			# FIXME: need to find PPtr dependencies and toposort.
+			return self.ASSET_TYPE_TEXTURE
 		if pkgasset.parsed_meta.type_to_fileids.has("TerrainData"):
 			# TerrainData depends on prefab assets.
 			return self.ASSET_TYPE_PREFAB
