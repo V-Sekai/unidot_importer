@@ -160,7 +160,8 @@ class Def extends RefCounted:
 	var flags: int = 0
 	var array: bool = false
 	var parent: RefCounted = null
-	func _init(name: String, type_name: String, size: int, flags: int, array: bool):
+	var serVer: int = 1
+	func _init(name: String, type_name: String, size: int, flags: int, array: bool, serVer: int):
 		self.children = [].duplicate()
 		self.name = name
 		self.full_name = name
@@ -168,6 +169,7 @@ class Def extends RefCounted:
 		self.size = size
 		self.flags = flags
 		self.array = array
+		self.serVer = serVer
 
 	func set_parent(new_par: RefCounted):
 		parent = new_par
@@ -265,6 +267,9 @@ class Def extends RefCounted:
 		elif not self.children.is_empty():
 			var x: int = 0 #####s.tell()
 			var v: Dictionary = {}.duplicate()
+			if self.serVer != 1:
+				print("Adding serializedVersion to " + str(self.type_name) + " " + str(self.name) + ": " + str(self.serVer))
+				v["serializedVersion"] = self.serVer
 			for i in self.children:
 				v[i.name] = i.read(s, referenced_guids, referenced_reftypes)
 				if i.flags & 0x4000:
@@ -716,12 +721,12 @@ func decode_attrtab() -> Def:
 					break
 				d = d.children[-1]
 			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
-			var newdef: Def = Def.new(name, type_name, size, flags, a4 != 0)
+			var newdef: Def = Def.new(name, type_name, size, flags, a4 != 0, a1)
 			newdef.set_parent(d)
 			d.append(newdef)
 		else:
 			if def == null:
-				def = Def.new(name, type_name, size, flags, a4 != 0)
+				def = Def.new(name, type_name, size, flags, a4 != 0, a1)
 			else:
 				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
 		var indstr: String = ""

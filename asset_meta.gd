@@ -106,13 +106,19 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 				child_meta.toposort_prefab_recurse(child_meta, tt)
 	return tt.output
 
-func remap_prefab_gameobject_names_inner(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary)-> int:
+
+func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary)-> int:
 	var gameobject_renames: Dictionary = self.gameobject_fileid_to_rename
 	var transform_new_children: Dictionary = self.transform_fileid_to_children
 	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
 	var gameobject_to_prefab_ids: Dictionary = self.transform_fileid_to_prefab_ids
 	var ret: Dictionary = {}.duplicate()
 	var my_id: int = gameobject_id ^ prefab_id
+	if new_map.has(my_id):
+		#push_error("remap_prefab_gameobject_names_inner: Avoided infinite recursion: " + str(prefab_id) + "/" + str(gameobject_id))
+		#return prefab_main_gameobject_id
+		ret = new_map[my_id]
+	#new_map[my_id] = {}
 	var my_transform_id: int = original_map[gameobject_id].get(4, 0) ^ prefab_id
 	var this_map: Dictionary = original_map[gameobject_id]
 	for name in this_map:
@@ -122,7 +128,8 @@ func remap_prefab_gameobject_names_inner(prefab_metas: Dictionary, prefab_id: in
 			ret[name] = sub_id ^ prefab_id
 			continue
 		var new_name = gameobject_renames.get(prefab_id ^ sub_id, name)
-		ret[new_name] = remap_prefab_gameobject_names_inner(prefab_metas, prefab_id, original_map, sub_id, new_map)
+		ret[new_name] = sub_id ^ prefab_id
+		#ret[new_name] = remap_prefab_gameobject_names_inner(prefab_id, original_map, sub_id, new_map)
 	if prefab_id != 0:
 		var component_map: Dictionary = gameobject_new_components.get(my_id, {})
 		for comp in component_map:
@@ -132,37 +139,34 @@ func remap_prefab_gameobject_names_inner(prefab_metas: Dictionary, prefab_id: in
 		var children_map: Dictionary = transform_new_children.get(my_id, {})
 		for child in children_map:
 			ret[child] = children_map[child]
-	# This one applies to both prefabs and non-prefabs
-	for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
-		if not prefab_metas.has(target_prefab_id):
-			prefab_metas[target_prefab_id] = lookup_meta_by_guid_noinit(self.get_database(), self.prefab_id_to_guid.get(target_prefab_id))
-			if prefab_metas[target_prefab_id].get_database() == null:
-				prefab_metas[target_prefab_id].initialize(self.get_database())
-		var target_prefab_meta: Object = prefab_metas[target_prefab_id]
-		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
-		var prefab_name = gameobject_renames[target_prefab_id ^ target_prefab_meta.prefab_main_gameobject_id]
-		ret[prefab_name] = target_prefab_meta.remap_prefab_gameobject_names_inner(prefab_metas, target_prefab_id, pgntfac, target_prefab_meta.prefab_main_gameobject_id, new_map)
+	## This one applies to both prefabs and non-prefabs
+	#for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
+	#	var target_prefab_meta: Object = lookup_meta_by_guid(self.prefab_id_to_guid.get(target_prefab_id))
+	#	var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
+	#	var prefab_name = gameobject_renames[target_prefab_id ^ target_prefab_meta.prefab_main_gameobject_id]
+	#	ret[prefab_name] = target_prefab_meta.remap_prefab_gameobject_names_inner(target_prefab_id ^ prefab_id, pgntfac, target_prefab_meta.prefab_main_gameobject_id, new_map)
 	# Note: overwrites of name should respect m_RootOrder (we may need to store m_RootOrder here too)
-	new_map[prefab_id ^ self.prefab_main_gameobject_id] = ret
+	new_map[my_id] = ret
 	return prefab_main_gameobject_id
 
-func remap_prefab_gameobject_names_update(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary, new_map: Dictionary):
+func remap_prefab_gameobject_names_update(prefab_id: int, original_map: Dictionary, new_map: Dictionary):
+	print("Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	for key in original_map:
 		if not new_map.has(key):
 			print("REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
-			remap_prefab_gameobject_names_inner(prefab_metas, prefab_id, original_map, key, new_map)
+			remap_prefab_gameobject_names_inner(prefab_id, original_map, key, new_map)
 			print("REMAP OUT %s" % [str(new_map)])
+	print("Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	return new_map
 
-func remap_prefab_gameobject_names(prefab_metas: Dictionary, prefab_id: int, original_map: Dictionary) -> Dictionary:
+func remap_prefab_gameobject_names(prefab_id: int, original_map: Dictionary) -> Dictionary:
 	var new_map: Dictionary = {}.duplicate()
-	remap_prefab_gameobject_names_update(prefab_metas, prefab_id, original_map, new_map)
+	remap_prefab_gameobject_names_update(prefab_id, original_map, new_map)
 	return new_map
 
 # Expected to be called in topological order
 func calculate_prefab_nodepaths(database: Resource):
 	#if not is_toplevel:
-	var prefab_metas = {}
 	for prefab_fileid in self.prefab_id_to_guid:
 		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(database, self.prefab_id_to_guid.get(prefab_fileid))
 		if target_prefab_meta == null:
@@ -170,13 +174,12 @@ func calculate_prefab_nodepaths(database: Resource):
 			continue
 		if target_prefab_meta.get_database() == null:
 			target_prefab_meta.initialize(self.get_database())
-		prefab_metas[prefab_fileid] = target_prefab_meta
 		self.remap_prefab_fileids(prefab_fileid, target_prefab_meta)
 
 	if self.prefab_id_to_guid.is_empty():
 		self.prefab_gameobject_name_to_fileid_and_children = {}
 	else:
-		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(prefab_metas, 0, self.gameobject_name_to_fileid_and_children)
+		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(0, self.gameobject_name_to_fileid_and_children)
 
 func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 	# xor is the actual operation used for a prefabbed fileid in a prefab instance.
@@ -274,7 +277,7 @@ func lookup_meta_by_guid(target_guid: String) -> Resource: # returns asset_meta 
 		found_meta.initialize(self.get_database())
 	return found_meta
 
-func lookup_meta(unityref: Array) -> Resource: # returns asset_meta type
+func lookup_meta(unityref: Array) -> Resource: # returns asset_meta type	
 	if unityref.is_empty() or len(unityref) != 4:
 		push_error("UnityRef in wrong format: " + str(unityref))
 		return null

@@ -242,11 +242,11 @@ func _editor_filesystem_scan_tick():
 	dres.remove(generate_sentinel_png_filename() + ".import")
 	dres.remove(generate_sentinel_png_filename())
 
-	#if not retry_tex:
-	#	retry_tex = true
-	#	print("Writing " + str(generate_sentinel_png_filename()))
-	#	asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
-	#	return
+	if not retry_tex:
+		retry_tex = true
+		print("Writing " + str(generate_sentinel_png_filename()))
+		asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+		return
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()

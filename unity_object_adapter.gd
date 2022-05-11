@@ -3,6 +3,7 @@ extends RefCounted
 
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
 const monoscript: GDScript = preload("./monoscript.gd")
+const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -449,7 +450,7 @@ class UnityMesh extends UnityObject:
 	func get_extra_resources() -> Dictionary:
 		if binds.is_empty():
 			return {}
-		return {-self.fileID: ".mesh.skin.tres"}
+		return {-self.fileID: ".skin.tres"}
 
 	func dict_to_matrix(b: Dictionary) -> Transform3D:
 		return Transform3D.FLIP_X.affine_inverse() * Transform3D(
@@ -644,7 +645,7 @@ class UnityMesh extends UnityObject:
 		return ".mesh.res"
 
 	func get_vertex_data() -> RefCounted:
-		return aligned_byte_buffer.new(keys.get("m_VertexData", {}).get("_typelessdata", ""))
+		return aligned_byte_buffer.new(keys.get("m_VertexData", ""))
 
 	func get_index_data() -> RefCounted:
 		return aligned_byte_buffer.new(keys.get("m_IndexBuffer", ""))
@@ -2931,6 +2932,8 @@ class UnityPrefabInstance extends UnityGameObject:
 	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
 		# called from toplevel (scene, inherited prefab?)
 		var ret_data: Array = self.instantiate_prefab_node(xstate, new_parent)
+		if len(ret_data) < 4:
+			return null
 		return ret_data[3] # godot node.
 
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
@@ -2999,8 +3002,8 @@ class UnityPrefabInstance extends UnityGameObject:
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
 		var gntfac = target_prefab_meta.gameobject_name_to_fileid_and_children
 		#state.prefab_state.prefab_gameobject_name_map[self.fileID ^ self.meta.prefab_main_gameobject_id] =
-		target_prefab_meta.remap_prefab_gameobject_names_update({source_prefab: target_prefab_meta}, self.fileID, gntfac, ps.prefab_gameobject_name_map)
-		target_prefab_meta.remap_prefab_gameobject_names_update({source_prefab: target_prefab_meta}, self.fileID, pgntfac, ps.prefab_gameobject_name_map)
+		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, gntfac, ps.prefab_gameobject_name_map)
+		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, pgntfac, ps.prefab_gameobject_name_map)
 		meta.remap_prefab_fileids(self.fileID, target_prefab_meta)
 
 		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
@@ -3073,7 +3076,7 @@ class UnityPrefabInstance extends UnityGameObject:
 					existing_node.get_parent().add_child(animtree, true)
 					animtree.anim_player = animtree.get_path_to(existing_node)
 					animtree.active = true
-					animtree.set_script(get_script().get_base_dir() + "/runtime/anim_tree.gd")
+					animtree.set_script(anim_tree_runtime)
 					# Weird special case, likely to break.
 					# The original file was a .glb and doesn't have an AnimationTree node.
 					# We add one and try to pretend it's ours.
@@ -3431,7 +3434,6 @@ class UnityTransform extends UnityComponent:
 		return null
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
-		print("Node " + str(node.name) + " uprops " + str(uprops))
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_LocalPosition.x"):
 			outdict["position:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
@@ -3893,7 +3895,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			outdict["_mesh"] = new_mesh # property track?
 			var skin_ref: Array = mesh_ref
 			skin_ref = [null, -skin_ref[1], skin_ref[2], skin_ref[3]]
-			var new_skin: Mesh = meta.get_godot_resource(skin_ref)
+			var new_skin: Skin = meta.get_godot_resource(skin_ref)
 			outdict["skin"] = new_skin # property track?
 
 			# TODO: blend shapes
@@ -4462,7 +4464,7 @@ class UnityAnimator extends UnityBehaviour:
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = true
-		animtree.set_script(get_script().get_base_dir() + "/runtime/anim_tree.gd")
+		animtree.set_script(anim_tree_runtime)
 		state.prefab_state.animator_node_to_object[animtree] = self
 		# TODO: Add AnimationTree as well.
 		assign_controller(animplayer, animtree, keys["m_Controller"])
@@ -4471,7 +4473,7 @@ class UnityAnimator extends UnityBehaviour:
 	func setup_post_children(node: Node):
 		var animtree: AnimationTree = node
 		var animplayer: AnimationPlayer = animtree.get_node(animtree.anim_player)
-		var anim_controller_meta: Resource = meta.lookup_meta(keys["m_Controller"], true)
+		var anim_controller_meta: Resource = meta.lookup_meta(keys["m_Controller"])
 		var virtual_unity_object: UnityRuntimeAnimatorController = meta.lookup_or_instantiate(keys["m_Controller"], "RuntimeAnimatorController")
 		if virtual_unity_object == null:
 			return # couldn't find meta. this means it probably won't work.

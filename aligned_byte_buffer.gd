@@ -54,15 +54,34 @@ func clear_views():
 	_int32_buf = PackedInt32Array()
 	_int16_buf = PackedInt32Array()
 
-func set_buffer_from_hex(source_buffer):
+func set_buffer(source_buffer: PackedByteArray):
+	clear_views()
+	_buffer_words = len(source_buffer) / 4
+	_buffer = FLOAT_PREFIX.duplicate()
+	_buffer.append_array(source_buffer)
+
+func set_buffer_from_hex(source_buffer: String):
 	clear_views()
 	_buffer_words = len(source_buffer) / 8
 	_buffer = hex_decode(source_buffer, FLOAT_PREFIX)
 
-func _init(source_buffer=PackedByteArray()):
+func _init(source_buffer: Variant=PackedByteArray()):
 	clear_views()
-	if source_buffer != PackedByteArray():
-		set_buffer_from_hex(source_buffer)
+	if typeof(source_buffer) == TYPE_DICTIONARY:
+		if source_buffer.has("_typelessdata"):
+			source_buffer = source_buffer["_typelessdata"]
+		elif source_buffer.has("m_DataSize"):
+			source_buffer = source_buffer["m_DataSize"]
+		else:
+			print(source_buffer.keys())
+	if typeof(source_buffer) == TYPE_PACKED_BYTE_ARRAY:
+		if not source_buffer.is_empty():
+			set_buffer(source_buffer)
+	elif typeof(source_buffer) == TYPE_STRING:
+		if not source_buffer.is_empty():
+			set_buffer_from_hex(source_buffer)
+	else:
+		push_error("Unrecognized buffer type in aligned_byte_buffer._init: " + str(typeof(source_buffer)))
 
 func _replace_prefix(buffer_and_prefix):
 	var prefix = buffer_and_prefix[1]

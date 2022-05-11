@@ -296,9 +296,11 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		for camera_obj in node_state.find_objects_of_type("Camera"):
 			#if not (camera.get_parent() is Viewport) and camera.visible:
 			var go: RefCounted = node_state.get_gameobject(camera_obj)
+			var camera: Camera3D = null
 			if camera_obj.enabled and go.enabled:
 				# This is a main camera
-				var camera: Camera3D = node_state.get_godot_node(camera_obj)
+				camera = node_state.get_godot_node(camera_obj)
+			if camera != null:
 				main_camera = camera
 				if camera.environment != null:
 					env.background_mode = camera.environment.background_mode
