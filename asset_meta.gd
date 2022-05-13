@@ -150,13 +150,13 @@ func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionar
 	return prefab_main_gameobject_id
 
 func remap_prefab_gameobject_names_update(prefab_id: int, original_map: Dictionary, new_map: Dictionary):
-	print("Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
+	#print("Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	for key in original_map:
 		if not new_map.has(key):
-			print("REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
+			#print("REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
 			remap_prefab_gameobject_names_inner(prefab_id, original_map, key, new_map)
-			print("REMAP OUT %s" % [str(new_map)])
-	print("Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
+			#print("REMAP OUT %s" % [str(new_map)])
+	#print("Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	return new_map
 
 func remap_prefab_gameobject_names(prefab_id: int, original_map: Dictionary) -> Dictionary:

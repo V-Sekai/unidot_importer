@@ -36,7 +36,7 @@ func start_thread():
 	print("Starting thread")
 	var thread: Thread = Thread.new()
 	# Third argument is optional userdata, it can be any variable.
-	thread.start(self._thread_function, "Wafflecopter")
+	thread.start(self._thread_function, "THR" + str(thread_count))
 	threads.push_back(thread)
 	return thread
 
@@ -53,9 +53,9 @@ func tell_all_threads_to_stop():
 func stop_all_threads_and_wait():
 	tell_all_threads_to_stop()
 	#### FIXME: CAUSES GODOT TO CRASH??
-	#for thread in threads:
-	#	thread.wait_to_finish()
-	#thread_queue = queue_lib.BlockingQueue.new()
+	for thread in threads:
+		thread.wait_to_finish()
+	thread_queue = queue_lib.BlockingQueue.new()
 	threads = [].duplicate()
 
 func push_work_obj(tw: ThreadWork):
@@ -76,22 +76,24 @@ func push_asset(asset: Object, tmpdir: String, extra: Variant=null):
 func _run_single_item_delayed(tw: ThreadWork):
 	self.call_deferred("_run_single_item", tw)
 
-func _run_single_item(tw: ThreadWork):
+func _run_single_item(tw: ThreadWork, thread_subdir: String):
 	asset_processing_started.emit(tw)
-	tw.output_path = asset_adapter.preprocess_asset(tw.asset, tw.tmpdir)
+	tw.output_path = asset_adapter.preprocess_asset(tw.asset, tw.tmpdir, thread_subdir)
+	# It has not yet been added to the database, so do not use rename()
+	tw.asset.parsed_meta.path = tw.output_path
 	asset_processing_finished.emit(tw)
 
 # Run here and exit.
 # The argument is the userdata passed from start().
 # If no argument was passed, this one still needs to
 # be here and it will be null.
-func _thread_function(userdata):
+func _thread_function(thread_subdir: String):
 	# Print the userdata ("Wafflecopter")
-	print("I'm a thread! Userdata is: ", userdata)
+	print("I'm a thread! Userdata is: ", thread_subdir)
 	while true:
 		var tw = thread_queue.pop()
 		if tw == ShutdownSentinel:
 			print("I was told to shutdown")
 			break
-		_run_single_item(tw)
+		_run_single_item(tw, thread_subdir)
 

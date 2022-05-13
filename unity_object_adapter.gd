@@ -2969,7 +2969,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			# node->set_scene_inherited_state(sdata->get_state()) is not exposed to GDScript. Let's HACK!!!
 			var stub_filename = "res://_temp_scene.tscn"
 			var fres = File.new()
-			fres.open(stub_filename, File.WRITE)
+			fres.open(stub_filename, File.WRITE_READ)
 			print("Writing stub scene to " + stub_filename)
 			var to_write: String = ('[gd_scene load_steps=2 format=2]\n\n' +
 				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
