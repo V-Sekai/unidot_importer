@@ -25,6 +25,8 @@ const tarfile: GDScript = preload("./tarfile.gd")
 class UnityPackageAsset extends RefCounted:
 	var asset_tar_header: RefCounted
 	var metadata_tar_header: RefCounted
+	var data_md5: PackedByteArray
+	var existing_data_md5: PackedByteArray
 	var pathname: String
 	var orig_pathname: String
 	var icon: Texture
@@ -33,7 +35,6 @@ class UnityPackageAsset extends RefCounted:
 	var parsed_asset: RefCounted
 	var parsed_resource: Resource # For specific assets which do work in the thread.
 	var packagefile: Resource # outer class
-
 
 var paths: Array = [].duplicate()
 var path_to_pkgasset: Dictionary = {}.duplicate()

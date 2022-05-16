@@ -239,7 +239,7 @@ func do_import_step():
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
-		#editor_filesystem.scan()
+		editor_filesystem.scan()
 		on_import_fully_completed()
 		return
 
@@ -342,7 +342,17 @@ func _asset_failed(tw: Object):
 		_done_preprocessing_assets()
 
 func start_godot_import(tw: Object):
-	asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
+	var asset_modified: bool = asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
+	var import_modified: bool = asset_adapter.write_godot_import(tw.asset)
+	
+	print("Wrote file " + tw.output_path + " asset modified:" + str(asset_modified) + " import modified:" + str(import_modified))
+	if not asset_modified and not import_modified:
+		print("We can skip this file!")
+		var ti: TreeItem = tw.extra
+		if ti.get_button_count(0) > 0:
+			ti.erase_button(0, 0)
+		ti.set_custom_color(0, Color("#22bb66"))
+		return
 
 	var meta_data: PackedByteArray = tw.asset.metadata_tar_header.get_data()
 	var metafil = File.new()
@@ -447,10 +457,11 @@ func _do_import_step_tick():
 		import_step_timer.queue_free()
 		import_step_timer = null
 		print("All done")
-		asset_database.in_package_import = true
+		asset_database.in_package_import = false
 		asset_database.save()
 		print("Saved database")
-		#editor_filesystem.scan()
+		var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+		editor_filesystem.scan()
 		call_deferred(&"on_import_fully_completed")
 	print("TICK RETURN ======= " + str(import_step_tick_count))
 	import_step_reentrant = false
@@ -509,12 +520,11 @@ func _preprocess_wait_tick():
 		preprocess_timer.timeout.disconnect(self._preprocess_wait_tick)
 		preprocess_timer.queue_free()
 		preprocess_timer = null
-		asset_adapter.write_sentinel_png("res://_sentinel_file.png")
 		var cfile = ConfigFile.new()
 		cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
-		cfile.set_value("remap", "type", "CompressedTexture2D")
 		cfile.set_value("remap", "importer", "keep")
 		cfile.save("res://_sentinel_file.png.import")
+		asset_adapter.write_sentinel_png("res://_sentinel_file.png")
 		editor_filesystem.sources_changed.connect(self._scan_sources_complete, CONNECT_DEFERRED)
 		editor_filesystem.scan_sources()
 

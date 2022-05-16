@@ -60,10 +60,55 @@ class AssetHandler:
 	var ASSET_TYPE_UNKNOWN = 6
 
 	var editor_interface: EditorInterface = null
+
+	class ConfigFileCompare extends ConfigFile:
+		var modified: bool = false
+
+		func set_value_compare(section: String, key: String, value: Variant) -> bool:
+			var ret: bool = false
+			if not self.has_section_key(section, key):
+				print("Added new section:" + section + " key:" + key + " : " + str(value))
+				ret = true
+			else:
+				var existing_val = self.get_value(section, key)
+				if typeof(existing_val) != typeof(value):
+					print("Modified type section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value))
+					ret = true
+				elif existing_val != value:
+					print("Modified section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value))
+					ret = true
+			modified = modified or ret
+			if ret:
+				self.set_value(section, key, value)
+			return ret
+
+		func was_modified() -> bool:
+			return modified
 	
 	func set_editor_interface(ei: EditorInterface) -> AssetHandler:
 		editor_interface = ei
 		return self
+
+	func calc_existing_md5(fname: String) -> PackedByteArray:
+		var dres: Directory = Directory.new()
+		dres.open("res://")
+		if not dres.file_exists(fname):
+			return PackedByteArray()
+		var fres: File = File.new()
+		if fres.open(fname, File.READ) != OK:
+			return PackedByteArray()
+		var flen: int = fres.get_length()
+		var buf = fres.get_buffer(flen)
+		fres.close()
+		if len(buf) != flen:
+			return PackedByteArray()
+		return calc_md5(buf)
+
+	func calc_md5(pba: PackedByteArray) -> PackedByteArray:
+		var md5 = HashingContext.new()
+		md5.start(HashingContext.HASH_MD5)
+		md5.update(pba)
+		return md5.finish()
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		var path: String = pkgasset.pathname
@@ -71,9 +116,12 @@ class AssetHandler:
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, path, data_buf)
 		if len(output_path) == 0:
 			var outfile: File = File.new()
-			var err = outfile.open(tmpdir + "/" + path, File.WRITE_READ)
-			outfile.store_buffer(data_buf)
-			outfile.close()
+			pkgasset.existing_data_md5 = calc_existing_md5(path)
+			pkgasset.data_md5 = calc_md5(data_buf)
+			if pkgasset.existing_data_md5 != pkgasset.data_md5:
+				var err = outfile.open(tmpdir + "/" + path, File.WRITE_READ)
+				outfile.store_buffer(data_buf)
+				outfile.close()
 			output_path = pkgasset.pathname
 		print("Updating file at " + output_path)
 		return output_path
@@ -81,11 +129,14 @@ class AssetHandler:
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		return false
 
-	func write_godot_asset(pkgasset: Object, temp_path: String):
-		var dres = Directory.new()
-		dres.open("res://")
-		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		dres.rename(temp_path, pkgasset.pathname)
+	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
+		if pkgasset.existing_data_md5 != pkgasset.data_md5:
+			var dres = Directory.new()
+			dres.open("res://")
+			print("Renaming " + temp_path + " to " + pkgasset.pathname)
+			dres.rename(temp_path, pkgasset.pathname)
+			return true
+		return false
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return ASSET_TYPE_UNKNOWN
@@ -132,11 +183,21 @@ class ImageHandler extends AssetHandler:
 			var ret = OS.execute(addon_path, [
 				temp_output_path.get_basename() + ".tif", temp_output_path], stdout)
 			d.remove(temp_output_path.get_basename() + ".tif")
+			var res_file: File = File.new()
+			res_file.open(temp_output_path, File.READ)
+			pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
+			res_file.close()
+			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
+			if pkgasset.existing_data_md5 == pkgasset.data_md5:
+				d.remove(temp_output_path)
 		else:
-			var outfile: File = File.new()
-			var err = outfile.open(temp_output_path, File.WRITE_READ)
-			outfile.store_buffer(data_buf)
-			outfile.close()
+			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
+			pkgasset.data_md5 = calc_md5(data_buf)
+			if pkgasset.existing_data_md5 != pkgasset.data_md5:
+				var outfile: File = File.new()
+				var err = outfile.open(temp_output_path, File.WRITE_READ)
+				outfile.store_buffer(data_buf)
+				outfile.close()
 		return full_output_path
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -144,16 +205,19 @@ class ImageHandler extends AssetHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFile.new()
+		var cfile = ConfigFileCompare.new()
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			print("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
 			cfile.set_value("remap", "type", "CompressedTexture2D")
-		var importer_type = "texture"
 		if force_keep:
-			importer_type = "keep"
+			cfile.set_value("remap", "importer", "keep")
 			cfile.erase_section_key("remap", "type")
-		cfile.set_value("remap", "importer", importer_type)
+			cfile.save("res://" + pkgasset.pathname + ".import")
+			return true
+
+		cfile.set_value_compare("remap", "type", "CompressedTexture2D")
+		cfile.set_value_compare("remap", "importer", "texture")
 		var chosen_platform = {}
 		for platform in importer.keys.get("platformSettings", []):
 			if platform.get("buildTarget", "") == "DefaultTexturePlatform":
@@ -168,34 +232,25 @@ class ImageHandler extends AssetHandler:
 			max_texture_size = 0
 		#cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
 		# TODO: If low quality (use_tc==2) then we may want to disable bptc on this file
-		cfile.set_value("params", "compress/mode", 2 if use_tc > 0 else 0)
-		cfile.set_value("params", "compress/bptc_ldr", 1 if use_tc == 2 else 0)
-		cfile.set_value("params", "compress/lossy_quality", tc_level / 100.0)
+		cfile.set_value_compare("params", "compress/mode", 2 if use_tc > 0 else 0)
+		cfile.set_value_compare("params", "compress/bptc_ldr", 1 if use_tc == 2 else 0)
+		cfile.set_value_compare("params", "compress/lossy_quality", tc_level / 100.0)
 		var is_normal: int = importer.keys.get("bumpmap", {}).get("convertToNormalMap", 0)
 		if is_normal == 0:
 			# Detect/Enabled/Disabled
 			# Detect may crash Godot later on.
 			is_normal = 2
-		cfile.set_value("params", "compress/normal_map", is_normal)
-		cfile.set_value("params", "detect_3d/compress_to", 0) # 0 = Disable (avoid crash)
+		cfile.set_value_compare("params", "compress/normal_map", is_normal)
+		cfile.set_value_compare("params", "detect_3d/compress_to", 0) # 0 = Disable (avoid crash)
 		# Roughness mode: Detect/Disable/Red/Green/etc.
 		# 1 = avoids crash later on.
 		# TODO: We may want an import setting to invert a channel for roughness use.
-		cfile.set_value("params", "roughness/mode", 1)
-		cfile.set_value("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
-		cfile.set_value("params", "process/size_limit", max_texture_size)
-		cfile.set_value("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
+		cfile.set_value_compare("params", "roughness/mode", 1)
+		cfile.set_value_compare("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
+		cfile.set_value_compare("params", "process/size_limit", max_texture_size)
+		cfile.set_value_compare("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
 		cfile.save("res://" + pkgasset.pathname + ".import")
-		return true
-
-	func write_godot_asset(pkgasset: Object, temp_path: String):
-		# super.write_godot_asset(pkgasset, temp_path)
-		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
-		var dres = Directory.new()
-		dres.open("res://")
-		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		dres.rename(temp_path, pkgasset.pathname)
-		write_godot_import(pkgasset, false)
+		return cfile.was_modified()
 
 
 class AudioHandler extends AssetHandler:
@@ -213,23 +268,25 @@ class AudioHandler extends AssetHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFile.new()
+		var cfile = ConfigFileCompare.new()
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			print("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
-			cfile.set_value("remap", "type", self.resource_type)
-		var importer_type = self.importer
 		if force_keep:
-			importer_type = "keep"
+			cfile.set_value("remap", "importer", "keep")
 			cfile.erase_section_key("remap", "type")
-		cfile.set_value("remap", "importer", importer_type)
+			cfile.save("res://" + pkgasset.pathname + ".import")
+			return true
+
+		cfile.set_value_compare("remap", "type", self.resource_type)
+		cfile.set_value_compare("remap", "importer", self.importer)
 		# TODO "params":
 		# (MP3/OGG): loop=true, loop_offset=0
 		# (WAV): edit/loop_mode=0, edit/loop_begin=0, edit/loop_end=-1
 		# (WAV): compress/mode=0
 		# (WAV): force/8_bit, force/mono, force/max_rate, force/max_rate_hz
 		cfile.save("res://" + pkgasset.pathname + ".import")
-		return true
+		return cfile.was_modified()
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_TEXTURE
@@ -286,10 +343,10 @@ class YamlHandler extends AssetHandler:
 			return self.ASSET_TYPE_PREFAB
 		return self.ASSET_TYPE_YAML
 
-	func write_godot_asset(pkgasset: Object, temp_path: String):
+	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.parsed_asset == null:
 			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
-			return
+			return false
 		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
 
@@ -331,6 +388,7 @@ class YamlHandler extends AssetHandler:
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
 			rpa.take_over_path(pkgasset.pathname + ".raw.tres")
 			ResourceSaver.save(pkgasset.pathname + ".raw.tres", rpa)
+		return true
 
 class SceneHandler extends YamlHandler:
 
@@ -339,12 +397,14 @@ class SceneHandler extends YamlHandler:
 		var new_pathname: String = pkgasset.pathname.get_basename() + (".prefab.tscn" if is_prefab else ".tscn")
 		return new_pathname
 
-	func write_godot_asset(pkgasset, temp_path):
+	func write_godot_asset(pkgasset, temp_path) -> bool:
 		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
 			packed_scene.take_over_path(pkgasset.pathname)
 			ResourceSaver.save(pkgasset.pathname, packed_scene)
+			return true
+		return false
 
 class BaseModelHandler extends AssetHandler:
 	var stub_file: PackedByteArray = PackedByteArray([])
@@ -354,6 +414,31 @@ class BaseModelHandler extends AssetHandler:
 		return ret
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
+		var already_rewrote_file = false
+		if str(pkgasset.pathname).to_lower().ends_with(".dae"):
+			var buffer_as_ascii: String = data_buf.get_string_from_utf8() # may contain unicode
+			var pos: int = buffer_as_ascii.find("up_axis")
+			if pos != -1:
+				pos = buffer_as_ascii.find(">", pos)
+				if pos != -1:
+					var next_pos: int = buffer_as_ascii.find("<", pos)
+					var up_axis = buffer_as_ascii.substr(pos + 1, next_pos - pos -1).strip_edges()
+					pkgasset.parsed_meta.internal_data["up_axis"] = up_axis
+					if up_axis != "Y_UP":
+						var outfile: File = File.new()
+						outfile.open(tmpdir + "/" + pkgasset.pathname, File.WRITE_READ)
+						outfile.store_buffer(data_buf.slice(0, pos + 1))
+						outfile.store_string("Y_UP")
+						outfile.store_buffer(data_buf.slice(next_pos))
+						outfile.flush()
+						var fpos = outfile.get_position()
+						outfile.seek(0)
+						pkgasset.data_md5 = calc_md5(outfile.get_buffer(fpos))
+						outfile.close()
+						pkgasset.existing_data_md5 = calc_existing_md5(pkgasset.pathname)
+						already_rewrote_file = true
+		if already_rewrote_file:
+			return pkgasset.pathname
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -361,24 +446,25 @@ class BaseModelHandler extends AssetHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFile.new()
+		var cfile = ConfigFileCompare.new()
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			print("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
 			cfile.set_value("remap", "importer_version", 1)
-		var importer_type = "scene"
 		if force_keep:
-			importer_type = "keep"
-		cfile.set_value("remap", "importer", importer_type)
-		if force_keep:
+			cfile.set_value("remap", "importer", "keep")
+			cfile.erase_section_key("remap", "type")
 			cfile.set_value("params", "import_script/path", "")
-		else:
-			cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
+			cfile.save("res://" + pkgasset.pathname + ".import")
+			return true
+
+		cfile.set_value_compare("remap", "importer", "scene")
+		cfile.set_value_compare("params", "import_script/path", post_import_material_remap_script.resource_path)
 		# I think these are the default settings now?? The option no longer exists???
 		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value("params", "animation/fps", 30)
-		cfile.set_value("params", "animation/import", importer.animation_import)
+		cfile.set_value_compare("params", "animation/fps", 30)
+		cfile.set_value_compare("params", "animation/import", importer.animation_import)
 		#var anim_clips: Array = importer.get_animation_clips()
 		## animation/clips don't seem to work at least in 4.0.... why even bother?
 		## We should use an import script I guess.
@@ -395,53 +481,43 @@ class BaseModelHandler extends AssetHandler:
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
-		cfile.set_value("params", "meshes/light_baking", importer.meshes_light_baking)
-		cfile.set_value("params", "meshes/ensure_tangents", importer.ensure_tangents)
-		cfile.set_value("params", "meshes/create_shadow_meshes", false) # Until visual artifacts with shadow meshes get fixed
-		cfile.set_value("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
-		cfile.set_value("params", "nodes/root_name", "Root Scene")
+		cfile.set_value_compare("params", "meshes/light_baking", importer.meshes_light_baking)
+		cfile.set_value_compare("params", "meshes/ensure_tangents", importer.ensure_tangents)
+		cfile.set_value_compare("params", "meshes/create_shadow_meshes", false) # Until visual artifacts with shadow meshes get fixed
+		cfile.set_value_compare("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
+		cfile.set_value_compare("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO
 		
 		# ??? animation/optimizer setting seems to be missing?
+		var subresources: Dictionary = cfile.get_value("params", "_subresources", {})
+		if not subresources.has("nodes"):
+			subresources["nodes"] = {}
+		if not subresources["nodes"].has("PATH:AnimationPlayer"):
+			subresources["nodes"]["PATH:AnimationPlayer"] = {}
+		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
-		cfile.set_value("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
-		cfile.set_value("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
-		cfile.set_value("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
+		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
+		anim_player_settings["optimizer/max_linear_error"] = optim_setting.get("max_linear_error", 0.0)
+		anim_player_settings["optimizer/max_angular_error"] = optim_setting.get("max_angular_error", 0.0)
+		cfile.set_value_compare("params", "_subresources", subresources)
+		#cfile.set_value_compare("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
+		#cfile.set_value_compare("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
+		#cfile.set_value_compare("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
 		cfile.save("res://" + pkgasset.pathname + ".import")
-		return true
+		return cfile.was_modified()
 
-	func write_godot_asset(pkgasset: Object, temp_path: String):
+	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		# super.write_godot_asset(pkgasset, temp_path)
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
-		var dres = Directory.new()
-		dres.open("res://")
-		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		var already_rewrote_file = false
-		if str(pkgasset.pathname).to_lower().ends_with(".dae"):
-			var raw_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
-			var buffer_as_ascii: String = raw_file.get_string_from_utf8() # may contain unicode
-			var pos: int = buffer_as_ascii.find("up_axis")
-			if pos != -1:
-				pos = buffer_as_ascii.find(">", pos)
-				if pos != -1:
-					var next_pos: int = buffer_as_ascii.find("<", pos)
-					var up_axis = buffer_as_ascii.substr(pos + 1, next_pos - pos -1).strip_edges()
-					pkgasset.parsed_meta.internal_data["up_axis"] = up_axis
-					if up_axis != "Y_UP":
-						var outfile: File = File.new()
-						outfile.open(pkgasset.pathname, File.WRITE_READ)
-						outfile.store_buffer(raw_file.slice(0, pos + 1))
-						outfile.store_string("Y_UP")
-						outfile.store_buffer(raw_file.slice(next_pos))
-						outfile.flush()
-						outfile.close()
-						already_rewrote_file = true
-		if not already_rewrote_file:
+		if pkgasset.existing_data_md5 != pkgasset.data_md5:
+			var dres = Directory.new()
+			dres.open("res://")
+			print("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
-		if temp_path.ends_with(".gltf"):
-			dres.rename(temp_path.get_basename() + ".bin", pkgasset.pathname.get_basename() + ".bin")
-
-		write_godot_import(pkgasset, false)
+			if temp_path.ends_with(".gltf"):
+				dres.rename(temp_path.get_basename() + ".bin", pkgasset.pathname.get_basename() + ".bin")
+			return true
+		return false
 
 class FbxHandler extends BaseModelHandler:
 
@@ -813,11 +889,11 @@ class FbxHandler extends BaseModelHandler:
 		jsonres.parse(data)
 		var json: Dictionary = jsonres.get_data()
 		var bindata: PackedByteArray
+		f = File.new()
+		f.open(bin_output_path, File.READ)
+		bindata = f.get_buffer(f.get_length())
+		f.close()
 		if SHOULD_CONVERT_TO_GLB:
-			f = File.new()
-			f.open(bin_output_path, File.READ)
-			bindata = f.get_buffer(f.get_length())
-			f.close()
 			json["buffers"][0].erase("uri")
 		else:
 			json["buffers"][0]["uri"] = bin_output_path.get_file()
@@ -882,27 +958,41 @@ class FbxHandler extends BaseModelHandler:
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
+		var full_output: PackedByteArray = out_json_data
 		if SHOULD_CONVERT_TO_GLB:
 			var out_json_data_length: int = out_json_data.size()
 			var bindata_length: int = bindata.size()
+			var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+			full_output = PackedByteArray()
+			spb.data_array = full_output
+			spb.big_endian = false
+			spb.put_32(0x46546C67)
+			spb.put_32(2)
+			spb.put_32(20 + out_json_data_length + 8 + bindata_length + 4)
+			spb.put_32(out_json_data_length)
+			spb.put_32(0x4E4F534A)
+			spb.put_data(out_json_data)
+			spb.put_32(bindata_length)
+			spb.put_32(0x4E4942)
+			spb.put_data(bindata)
+			spb.put_32(0)
+
+		pkgasset.data_md5 = calc_md5(full_output)
+		if not SHOULD_CONVERT_TO_GLB:
+			pkgasset.data_md5.append_array(calc_md5(bindata))
+		pkgasset.existing_data_md5 = calc_existing_md5(return_output_path)
+		if not SHOULD_CONVERT_TO_GLB:
+			pkgasset.existing_data_md5.append_array(calc_existing_md5(return_output_path.get_basename() + ".bin"))
+		if pkgasset.existing_data_md5 != pkgasset.data_md5:
 			f = File.new()
 			f.open(output_path, File.WRITE_READ)
-			f.store_32(0x46546C67)
-			f.store_32(2)
-			f.store_32(20 + out_json_data_length + 8 + bindata_length + 4)
-			f.store_32(out_json_data_length)
-			f.store_32(0x4E4F534A)
-			f.store_buffer(out_json_data)
-			f.store_32(bindata_length)
-			f.store_32(0x4E4942)
-			f.store_buffer(bindata)
-			f.store_32(0)
+			f.store_buffer(full_output)
 			f.close()
 		else:
-			f = File.new()
-			f.open(output_path, File.WRITE_READ)
-			f.store_buffer(out_json_data)
-			f.close()
+			d.remove(gltf_output_path)
+			if not SHOULD_CONVERT_TO_GLB:
+				d.remove(bin_output_path)
+
 		return return_output_path
 
 class DisabledHandler extends AssetHandler:
@@ -912,8 +1002,8 @@ class DisabledHandler extends AssetHandler:
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		return "asset_not_supported"
 
-	func write_godot_asset(pkgasset: Object, temp_path: String):
-		pass
+	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
+		return false
 
 var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
 var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
@@ -999,8 +1089,8 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 		var ret_output_path = asset_handler.write_and_preprocess_asset(pkgasset, tmpdir, thread_subdir)
 		if ret_output_path != "":
 			pkgasset.pathname = ret_output_path
-			if asset_handler.write_godot_import(pkgasset, true):
-				if not dres.file_exists(pkgasset.pathname):
+			if not dres.file_exists(pkgasset.pathname):
+				if asset_handler.write_godot_import(pkgasset, true):
 					# Make an empty file so it will be found by a scan!
 					var f: File = File.new()
 					f.open(pkgasset.pathname, File.WRITE_READ)
@@ -1009,7 +1099,12 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 	return ""
 
 # pkgasset: unitypackagefile.UnityPackageAsset type
-func write_godot_asset(pkgasset: Object, temp_path: String):
+func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
-	asset_handler.write_godot_asset(pkgasset, temp_path)
+	return asset_handler.write_godot_asset(pkgasset, temp_path)
+
+func write_godot_import(pkgasset: Object) -> bool:
+	var path = pkgasset.orig_pathname
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	return asset_handler.write_godot_import(pkgasset, false)
