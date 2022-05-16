@@ -1933,7 +1933,24 @@ class UnityAnimationClip extends UnityMotion:
 						is_inf(prev_slope.z) || is_inf(next_slope.z))
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
-				anim.track_insert_key(rottrack, ts, value)
+				# NOTE: value is assumed to be YXZ in Godot terms, but it has 6 different modes in Unity.
+				var godot_euler_mode = Basis.EULER_ORDER_YXZ
+				match track["curve"].get("m_RotationOrder", 2):
+					0: # XYZ
+						godot_euler_mode = Basis.EULER_ORDER_ZYX
+					1: # XZY
+						godot_euler_mode = Basis.EULER_ORDER_YZX
+					2: # YZX
+						godot_euler_mode = Basis.EULER_ORDER_XZY
+					3: # YXZ
+						godot_euler_mode = Basis.EULER_ORDER_ZXY
+					4: # ZXY
+						godot_euler_mode = Basis.EULER_ORDER_YXZ
+					5: # ZYX
+						godot_euler_mode = Basis.EULER_ORDER_XYZ
+				# This is more complicated than this...
+				# The keys need to be baked out and sampled using this mode.
+				anim.rotation_track_insert_key(rottrack, ts, Basis.from_euler(value, godot_euler_mode))
 
 		for track in keys["m_RotationCurves"]:
 			var path: String = track.get("path", "")
@@ -3874,6 +3891,9 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 			var edited: bool = false
 			for idx in range(len(bones)):
 				var bone_transform: UnityTransform = meta.lookup(bones[idx])
+				if bone_transform == null:
+					push_warning("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx))
+					continue
 				if ret.skin.get_bind_bone(idx) != bone_transform.skeleton_bone_index:
 					edited = true
 					break
@@ -3881,6 +3901,9 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 				ret.skin = ret.skin.duplicate()
 				for idx in range(len(bones)):
 					var bone_transform: UnityTransform = meta.lookup(bones[idx])
+					if bone_transform == null:
+						push_warning("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx))
+						continue
 					ret.skin.set_bind_bone(idx, bone_transform.skeleton_bone_index)
 					ret.skin.set_bind_name(idx, gdskel.get_bone_name(bone_transform.skeleton_bone_index))
 		# TODO: duplicate skin and assign the correct bone names to match self.bones array
