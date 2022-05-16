@@ -66,20 +66,17 @@ class AssetHandler:
 		return self
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
-		var path: String = tmpdir + "/" + pkgasset.pathname
+		var path: String = pkgasset.pathname
 		var data_buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, path, data_buf)
 		if len(output_path) == 0:
 			var outfile: File = File.new()
-			var err = outfile.open(path, File.WRITE_READ)
+			var err = outfile.open(tmpdir + "/" + path, File.WRITE_READ)
 			outfile.store_buffer(data_buf)
 			outfile.close()
-			output_path = path
+			output_path = pkgasset.pathname
 		print("Updating file at " + output_path)
 		return output_path
-
-	func write_godot_stub(pkgasset: Object) -> bool:
-		return false
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		return false
@@ -88,7 +85,6 @@ class AssetHandler:
 		var dres = Directory.new()
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		pkgasset.parsed_meta.rename(pkgasset.pathname)
 		dres.rename(temp_path, pkgasset.pathname)
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -110,7 +106,7 @@ class ImageHandler extends AssetHandler:
 		var is_tiff: bool = ((data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00) or 
 				(data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A))
 		var is_png: bool = (data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47) or is_tiff
-		var full_output_path: String = path
+		var full_output_path: String = pkgasset.pathname
 		if not is_png and path.get_extension().to_lower() == "png":
 			print("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".jpg"
@@ -118,9 +114,10 @@ class ImageHandler extends AssetHandler:
 			print("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".png"
 		print("PREPROCESS_IMAGE " + str(is_tiff) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
+		var temp_output_path: String = tmpdir + "/" + full_output_path
 		if is_tiff:
 			var outfile: File = File.new()
-			var err = outfile.open(full_output_path + ".tif", File.WRITE_READ)
+			var err = outfile.open(temp_output_path.get_basename() + ".tif", File.WRITE_READ)
 			outfile.store_buffer(data_buf)
 			outfile.close()
 			var stdout: Array = [].duplicate()
@@ -133,11 +130,11 @@ class ImageHandler extends AssetHandler:
 					return ""
 				addon_path = addon_path.substr(6)
 			var ret = OS.execute(addon_path, [
-				full_output_path + ".tif", full_output_path], stdout)
-			d.remove(full_output_path + ".tif")
+				temp_output_path.get_basename() + ".tif", temp_output_path], stdout)
+			d.remove(temp_output_path.get_basename() + ".tif")
 		else:
 			var outfile: File = File.new()
-			var err = outfile.open(full_output_path, File.WRITE_READ)
+			var err = outfile.open(temp_output_path, File.WRITE_READ)
 			outfile.store_buffer(data_buf)
 			outfile.close()
 		return full_output_path
@@ -197,7 +194,6 @@ class ImageHandler extends AssetHandler:
 		var dres = Directory.new()
 		dres.open("res://")
 		print("Renaming " + temp_path + " to " + pkgasset.pathname)
-		pkgasset.parsed_meta.rename(pkgasset.pathname)
 		dres.rename(temp_path, pkgasset.pathname)
 		write_godot_import(pkgasset, false)
 
@@ -242,10 +238,10 @@ class YamlHandler extends AssetHandler:
 	const tarfile: GDScript = preload("./tarfile.gd")
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
-		var path: String = tmpdir + "/" + pkgasset.pathname
+		var temp_path: String = tmpdir + "/" + pkgasset.pathname
 		var outfile: File = File.new()
-		var err = outfile.open(path, File.WRITE_READ)
-		print("Open " + path + " => " + str(err))
+		var err = outfile.open(temp_path, File.WRITE_READ)
+		print("Open " + temp_path + " => " + str(err))
 		var buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		outfile.store_buffer(buf)
 		outfile.close()
@@ -257,14 +253,27 @@ class YamlHandler extends AssetHandler:
 			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
 		if pkgasset.parsed_asset == null:
 			push_error("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
-		print("Done with " + path + "/" + pkgasset.guid)
-		return path
+		print("Done with " + temp_path + "/" + pkgasset.guid)
+		return preprocess_asset(pkgasset, tmpdir, thread_subdir, pkgasset.pathname, buf)
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
-		return ""
+		if pkgasset.parsed_asset == null:
+			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
+			return ""
+		var main_asset: RefCounted = null
+		var godot_resource: Resource = null
+
+		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
+			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
+		else:
+			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+		var new_pathname: String = pkgasset.pathname
+		if main_asset != null:
+			new_pathname = pkgasset.pathname.get_basename() + main_asset.get_godot_extension() # ".mat.tres"
+		return new_pathname
 
 	func get_asset_type(pkgasset: Object) -> int:
-		var extn: String = pkgasset.pathname.get_extension()
+		var extn: String = pkgasset.orig_pathname.get_extension().to_lower()
 		if extn == "unity":
 			return self.ASSET_TYPE_SCENE
 		if extn == "prefab":
@@ -288,13 +297,6 @@ class YamlHandler extends AssetHandler:
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		else:
 			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
-		var new_pathname: String = pkgasset.pathname.get_basename()
-		if main_asset != null:
-			new_pathname += main_asset.get_godot_extension() # ".mat.tres"
-		else:
-			new_pathname += ".raw.tres"
-		pkgasset.pathname = new_pathname
-		pkgasset.parsed_meta.rename(new_pathname)
 
 		var extra_resources: Dictionary = {}
 		if main_asset != null:
@@ -304,8 +306,8 @@ class YamlHandler extends AssetHandler:
 			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
 			print("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(pkgasset.pathname.get_basename() + file_ext))
 			if created_res != null:
-				new_pathname = "res://" + pkgasset.pathname.get_basename() + file_ext # ".skin.tres"
-				created_res.resource_name = pkgasset.pathname.get_basename().get_file()
+				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext # ".skin.tres"
+				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
 				created_res.take_over_path(new_pathname)
 				ResourceSaver.save(new_pathname, created_res)
 				#created_res = load(new_pathname)
@@ -327,18 +329,21 @@ class YamlHandler extends AssetHandler:
 				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
-			rpa.take_over_path(pkgasset.pathname)
-			ResourceSaver.save(pkgasset.pathname, rpa)
+			rpa.take_over_path(pkgasset.pathname + ".raw.tres")
+			ResourceSaver.save(pkgasset.pathname + ".raw.tres", rpa)
 
 class SceneHandler extends YamlHandler:
 
-	func write_godot_asset(pkgasset, temp_path):
-		var is_prefab = pkgasset.pathname.get_extension() != "unity"
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
+		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var new_pathname: String = pkgasset.pathname.get_basename() + (".prefab.tscn" if is_prefab else ".tscn")
-		pkgasset.pathname = new_pathname
-		pkgasset.parsed_meta.rename(new_pathname)
+		return new_pathname
+
+	func write_godot_asset(pkgasset, temp_path):
+		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
+			packed_scene.take_over_path(pkgasset.pathname)
 			ResourceSaver.save(pkgasset.pathname, packed_scene)
 
 class BaseModelHandler extends AssetHandler:
@@ -353,22 +358,6 @@ class BaseModelHandler extends AssetHandler:
 
 	func get_asset_type(pkgasset: Object) -> int:
 		return self.ASSET_TYPE_MODEL
-
-	func write_godot_stub(pkgasset: Object) -> bool:
-		var dres = Directory.new()
-		var fres = File.new()
-		dres.open("res://")
-		# Note: even after one import has successfully completed, materials and texture files may have moved since the last import.
-		# Godot's EditorFileSystem does not expose a reimport() function, so overwriting with a stub file doubles as a hacky workaround.
-		#if not dres.file_exists(pkgasset.pathname):
-		fres.open("res://" + pkgasset.pathname, File.WRITE_READ)
-		print("Writing stub model to " + pkgasset.pathname)
-		fres.store_buffer(stub_file)
-		fres.close()
-		write_godot_import(pkgasset, false)
-		print("Renaming model file from " + str(pkgasset.parsed_meta.path) + " to " + pkgasset.pathname)
-		pkgasset.parsed_meta.rename(pkgasset.pathname)
-		return true
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
@@ -697,13 +686,17 @@ class FbxHandler extends BaseModelHandler:
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		var full_tmpdir: String = tmpdir + "/" + thread_subdir
-		var path: String = full_tmpdir + "/" + "input.fbx"
-		var outfile: File = File.new()
-		var err = outfile.open(path, File.WRITE_READ)
-		print("Open " + path + " => " + str(err))
+		var input_path: String = thread_subdir + "/" + "input.fbx"
+		var temp_input_path: String = tmpdir + "/" + input_path
 		var importer = pkgasset.parsed_meta.importer
 
 		var fbx_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
+
+		var debug_outfile: File = File.new()
+		if debug_outfile.open(tmpdir + "/" + pkgasset.pathname, File.WRITE_READ) == OK:
+			debug_outfile.store_buffer(fbx_file)
+			debug_outfile.close()
+
 		var is_binary: bool = _is_fbx_binary(fbx_file)
 		var texture_name_list: PackedStringArray = PackedStringArray()
 		if is_binary:
@@ -713,6 +706,9 @@ class FbxHandler extends BaseModelHandler:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8() # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.useFileScale, importer.globalScale)
+		var outfile: File = File.new()
+		var err = outfile.open(temp_input_path, File.WRITE_READ)
+		print("Open " + temp_input_path + " => " + str(err))
 		outfile.store_buffer(fbx_file)
 		# outfile.flush()
 		outfile.close()
@@ -740,10 +736,10 @@ class FbxHandler extends BaseModelHandler:
 				#print("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
 				if pkgasset.packagefile.path_to_pkgasset.has(candidate_fn) or d.file_exists(candidate_fn):
 					unique_texture_map[fn] = candidate_texture_dict[candidate_fn]
-		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, path, fbx_file, unique_texture_map)
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, unique_texture_map)
 		#if len(output_path) == 0:
 		#	output_path = path
-		d.remove(path) # delete "input.fbx"
+		d.remove(temp_input_path) # delete "input.fbx"
 		for fn in unique_texture_map.keys():
 			d.remove(texture_dirname + "/" + fn)
 		print("Updating file at " + output_path)
@@ -780,6 +776,7 @@ class FbxHandler extends BaseModelHandler:
 		var gltf_output_path: String = full_output_path.get_basename() + ".gltf"
 		var bin_output_path: String = full_output_path.get_basename() + ".bin"
 		var output_path: String = gltf_output_path
+		var return_output_path: String = pkgasset.pathname.get_basename() + ".gltf"
 		var tmp_gltf_output_path: String = tmpdir + "/" + thread_subdir + "/" + gltf_output_path.get_file()
 		var tmp_bin_output_path: String = tmpdir + "/" + thread_subdir + "/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
@@ -801,7 +798,7 @@ class FbxHandler extends BaseModelHandler:
 			"--fbx-temp-dir", tmpdir + "/" + thread_subdir,
 			"--normalize-weights", "1",
 			"--anim-framerate", "bake30",
-			"-i", path,
+			"-i", tmpdir + "/" + path,
 			"-o", tmp_gltf_output_path], stdout)
 		print("FBX2glTF returned " + str(ret) + " -----")
 		print(str(stdout))
@@ -906,7 +903,7 @@ class FbxHandler extends BaseModelHandler:
 			f.open(output_path, File.WRITE_READ)
 			f.store_buffer(out_json_data)
 			f.close()
-		return output_path
+		return return_output_path
 
 class DisabledHandler extends AssetHandler:
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
@@ -976,16 +973,17 @@ func create_temp_dir() -> String:
 	return tmpdir
 
 func get_asset_type(pkgasset: Object) -> int:
-	var path = pkgasset.pathname
+	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
-	return asset_handler.get_asset_type(pkgasset)
+	var typ: int = asset_handler.get_asset_type(pkgasset)
+	return typ
 
 func uses_godot_importer(pkgasset: Object) -> bool:
 	var asset_type = get_asset_type(pkgasset)
 	return asset_type == ASSET_TYPE_TEXTURE or asset_type == ASSET_TYPE_MODEL
 
 func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
-	var path = pkgasset.pathname
+	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 	var dres = Directory.new()
 	dres.open("res://")
@@ -1000,7 +998,7 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 	if pkgasset.asset_tar_header != null:
 		var ret_output_path = asset_handler.write_and_preprocess_asset(pkgasset, tmpdir, thread_subdir)
 		if ret_output_path != "":
-			pkgasset.pathname = pkgasset.pathname.get_basename() + "." + ret_output_path.get_extension()
+			pkgasset.pathname = ret_output_path
 			if asset_handler.write_godot_import(pkgasset, true):
 				if not dres.file_exists(pkgasset.pathname):
 					# Make an empty file so it will be found by a scan!
@@ -1011,12 +1009,7 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 	return ""
 
 # pkgasset: unitypackagefile.UnityPackageAsset type
-func write_godot_stub(pkgasset: Object) -> bool:
-	var path = pkgasset.pathname
-	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
-	return asset_handler.write_godot_stub(pkgasset)
-
 func write_godot_asset(pkgasset: Object, temp_path: String):
-	var path = pkgasset.pathname
+	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 	asset_handler.write_godot_asset(pkgasset, temp_path)

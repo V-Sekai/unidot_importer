@@ -2969,16 +2969,19 @@ class UnityPrefabInstance extends UnityGameObject:
 			# node->set_scene_inherited_state(sdata->get_state()) is not exposed to GDScript. Let's HACK!!!
 			var stub_filename = "res://_temp_scene.tscn"
 			var fres = File.new()
+			var dres = Directory.new()
+			dres.open("res://")
 			fres.open(stub_filename, File.WRITE_READ)
 			print("Writing stub scene to " + stub_filename)
 			var to_write: String = ('[gd_scene load_steps=2 format=2]\n\n' +
 				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
-				'[node name="" instance=ExtResource( 1 )]\n')
+				'[node name=' + var2str(str(toplevel_rename)) + ' instance=ExtResource( 1 )]\n')
 			fres.store_string(to_write)
 			print(to_write)
 			fres.close()
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
 			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+			dres.remove(stub_filename)
 			instanced_scene.name = StringName(toplevel_rename)
 			state.add_child(instanced_scene, new_parent, self)
 		else:
@@ -4668,8 +4671,8 @@ class UnityDefaultImporter extends UnityAssetImporter:
 	# Will depend on filetype or file extension?
 	# Check file extension from `meta.path`???
 	func get_main_object_id() -> int:
-		match meta.path.get_extension():
-			"unity":
+		match meta.path.get_extension().to_lower():
+			"tscn", "unity":
 				# Scene file.
 				# 1: OcclusionCullingSettings (29),
 				# 2: RenderSettings (104),

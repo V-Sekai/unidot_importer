@@ -8,6 +8,7 @@ const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const ASSET_DATABASE_PATH: String = "res://unity_asset_database.tres"
 
 var object_adapter = object_adapter_class.new()
+var in_package_import: bool = false
 
 @export var guid_to_path: Dictionary = {}
 @export var path_to_meta: Dictionary = {}
@@ -35,6 +36,18 @@ func save():
 func insert_meta(meta: Resource): # asset_meta
 	if meta.get_database_int() == null:
 		meta.initialize(self)
+	if guid_to_path.has(meta.guid):
+		var old_path = guid_to_path[meta.guid]
+		if old_path != meta.path:
+			push_warning("Desync between old_meta.path and guid_to_path for " + str(meta.guid) + " / " + str(meta.path) + " at " + str(old_path))
+			guid_to_path.erase(meta.guid)
+			path_to_meta.erase(old_path)
+	if path_to_meta.has(meta.path):
+		var old_meta = path_to_meta[meta.path]
+		if old_meta.guid != meta.guid:
+			push_warning("Desync between old_meta.path and guid_to_path for " + str(meta.guid) + " / " + str(meta.path) + " with " + str(old_meta.guid))
+			guid_to_path.erase(old_meta.guid)
+			path_to_meta.erase(meta.path)
 	guid_to_path[meta.guid] = meta.path
 	path_to_meta[meta.path] = meta
 

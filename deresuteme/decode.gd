@@ -106,6 +106,7 @@ const baseStrings: Dictionary = {
 	997: "Vector3f",
 	1006: "Vector4f",
 	1042: "Gradient",
+	1051: "Type",
 	1093: "m_CorrespondingSourceObject",
 	1121: "m_PrefabInstance",
 	1138: "m_PrefabAsset",
@@ -354,7 +355,7 @@ class Def extends RefCounted:
 				"SInt16", "short":
 					ret = s.get_16()
 					s.skip(self.size - 2)
-				"SInt32", "int", "long":
+				"SInt32", "int", "long", "Type":
 					ret = s.get_32()
 					s.skip(self.size - 4)
 				"SInt64", "int64", "long long":

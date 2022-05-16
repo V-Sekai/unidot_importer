@@ -310,6 +310,7 @@ func do_import_step():
 	for tw in asset_work:
 		asset_work_currently_scanning.push_back(tw)
 		if asset_adapter.uses_godot_importer(tw.asset):
+			print("asset " + str(tw.asset) + " uses godot import")
 			files_to_reimport.append("res://" + tw.asset.pathname)
 		var ti: TreeItem = tw.extra
 		if ti.get_button_count(0) <= 0:
@@ -341,7 +342,7 @@ func _asset_failed(tw: Object):
 		_done_preprocessing_assets()
 
 func start_godot_import(tw: Object):
-	asset_adapter.write_godot_asset(tw.asset, tw.output_path)
+	asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
 
 	var meta_data: PackedByteArray = tw.asset.metadata_tar_header.get_data()
 	var metafil = File.new()
@@ -366,22 +367,29 @@ func _asset_processing_finished(tw: Object):
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	print("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
+	print("Finished processing meta path " + str(tw.asset.parsed_meta.path) + " guid " + str(tw.asset.parsed_meta.guid) + " opath " + str(tw.output_path))
 	asset_database.insert_meta(tw.asset.parsed_meta)
 	if tw.asset.asset_tar_header != null:
 		var extn = tw.output_path.get_extension()
 		var asset_type = asset_adapter.get_asset_type(tw.asset)
 		asset_all.push_back(tw)
 		if asset_type == asset_adapter.ASSET_TYPE_TEXTURE or asset_type == asset_adapter.ASSET_TYPE_ANIM:
+			print("Asset " + str(tw.output_path) + " is texture/anim")
 			asset_textures.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_MODEL:
+			print("Asset " + str(tw.output_path) + " is model")
 			asset_models.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_YAML:
+			print("Asset " + str(tw.output_path) + " is yaml")
 			asset_materials_and_other.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_PREFAB:
+			print("Asset " + str(tw.output_path) + " is prefab")
 			asset_prefabs.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_SCENE:
+			print("Asset " + str(tw.output_path) + " is scene")
 			asset_scenes.push_back(tw)
 		else: # asset_type == asset_adapter.ASSET_TYPE_UNKNOWN:
+			print("Asset " + str(tw.output_path) + " is other")
 			asset_materials_and_other.push_back(tw)
 		# start_godot_import_stub(tw) # We now write it directly in the preprocess function.
 	if _currently_preprocessing_assets == 0:
@@ -439,6 +447,7 @@ func _do_import_step_tick():
 		import_step_timer.queue_free()
 		import_step_timer = null
 		print("All done")
+		asset_database.in_package_import = true
 		asset_database.save()
 		print("Saved database")
 		#editor_filesystem.scan()
@@ -520,6 +529,7 @@ func _asset_tree_window_confirmed():
 		return
 	tree_dialog_state = STATE_PREPROCESSING
 	asset_database = asset_database_class.new().get_singleton()
+	asset_database.in_package_import = true
 	print("Asset database object returned " + str(asset_database))
 	import_worker.start_threads(8) # Don't DISABLE_THREADING
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())

@@ -257,8 +257,10 @@ class ParseState:
 		if p_type == "AnimationClip":
 			gltf_type = "animations"
 		metaobj.insert_resource(fileId_object, p_resource)
+		print("Register " + str(metaobj.guid) + ":" + str(fileId_object) + ": " + str(p_type) + " '" + str(p_name) + "' " + str(p_resource))
 		if p_aux_resource != null:
 			metaobj.insert_resource(-fileId_object, p_aux_resource) # Used for skin object.
+			print("Register aux " + str(metaobj.guid) + ":" + str(-fileId_object) + ": '" + str(p_name) + "' " + str(p_aux_resource))
 		return fileId_object
 
 	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary):
@@ -731,6 +733,8 @@ func _post_import(p_scene: Node) -> Object:
 	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
 	var f: File
 	if metaobj == null:
+		push_warning("Asset database missing entry for " + str(source_file_path))
+		assert(not asset_database.in_package_import)
 		f = File.new()
 		if f.open(source_file_path + ".meta", File.READ) != OK:
 			metaobj = asset_database.create_dummy_meta(rel_path)
@@ -864,20 +868,20 @@ func _post_import(p_scene: Node) -> Object:
 	if ps.mesh_is_toplevel:
 		print("Mesh is toplevel for " + str(source_file_path))
 		new_toplevel = ps.fold_transforms_into_mesh(ps.toplevel_node)
-	# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
-	# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
-	# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
-	var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
-	if up_axis.to_upper() == "X_UP":
-		new_toplevel.transform = Transform3D(Basis.from_euler(Vector3(0, 0, PI/-2.0)), Vector3.ZERO) * new_toplevel.transform
-	if up_axis.to_upper() == "Z_UP":
-		new_toplevel.transform = Transform3D(Basis.from_euler(Vector3(PI/-2.0, 0, 0)), Vector3.ZERO) * new_toplevel.transform
 	#else:
 	# new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
 	if new_toplevel != null:
 		ps.toplevel_node.transform = new_toplevel.transform
 		new_toplevel.transform = Transform3D.IDENTITY
 		ps.toplevel_node = new_toplevel
+	# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
+	# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
+	# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
+	var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
+	if up_axis.to_upper() == "X_UP":
+		ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(0, 0, PI/-2.0)), Vector3.ZERO) * ps.toplevel_node.transform
+	if up_axis.to_upper() == "Z_UP":
+		ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(PI/-2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform
 
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
@@ -886,12 +890,16 @@ func _post_import(p_scene: Node) -> Object:
 	ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
 	if ps.use_scene_root and new_toplevel == null:
+		var new_found_roots = 0
+		var new_root_go_id = 0
 		for child in ps.all_name_map[root_go_id]:
 			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
-				root_go_id = ps.all_name_map[root_go_id][child]
-				print(ps.all_name_map[root_go_id])
-				assert(root_go_id == ps.all_name_map[root_go_id][1])
-				break
+				new_found_roots += 1
+				new_root_go_id = ps.all_name_map[root_go_id][child]
+		if new_found_roots == 1:
+			root_go_id = new_root_go_id
+			print(ps.all_name_map[root_go_id])
+			assert(root_go_id == ps.all_name_map[root_go_id][1])
 
 	var path = "//RootNode/root"
 
@@ -913,7 +921,8 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map
 
-	asset_database.save()
+	if not asset_database.in_package_import:
+		asset_database.save()
 
 	return p_scene
 

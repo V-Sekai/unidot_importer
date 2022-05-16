@@ -242,8 +242,8 @@ func override_resource(fileID: int, name: String, godot_resource: Resource):
 func insert_resource(fileID: int, godot_resource: Resource):
 	godot_resources[fileID] = str(godot_resource.resource_path)
 
-func rename(new_path: String):
-	get_database().rename_meta(self, new_path)
+#func rename(new_path: String):
+#	get_database().rename_meta(self, new_path)
 
 func get_main_object_name():
 	return path.get_file().get_basename().get_basename() # .prefab.tscn
@@ -413,7 +413,7 @@ func get_godot_resource(unityref: Array, silent: bool=false) -> Resource:
 			return ret
 	if found_meta.parsed == null:
 		if not silent:
-			push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
+			push_error("Failed to find Resource at " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + "! from " + path + " (" + guid + ")")
 		return null
 	if not silent:
 		push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")")

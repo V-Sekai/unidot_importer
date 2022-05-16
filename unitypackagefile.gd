@@ -26,6 +26,7 @@ class UnityPackageAsset extends RefCounted:
 	var asset_tar_header: RefCounted
 	var metadata_tar_header: RefCounted
 	var pathname: String
+	var orig_pathname: String
 	var icon: Texture
 	var guid: String
 	var parsed_meta: Resource # Type: asset_database.gd:AssetMeta / Assigned by unity_asset_adapter.preprocess_asset()
@@ -105,6 +106,7 @@ func external_tar_with_filename(source_file: String):
 		var header = ExtractedTarFile.new(this_filename)
 		if fnparts[1] == 'pathname':
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
+			pkgasset.orig_pathname = pkgasset.pathname
 			var path = pkgasset.pathname
 			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
 				#if path != "Assets":
@@ -172,6 +174,7 @@ func init_with_filename(source_file: String):
 		if fnparts[1] == 'pathname':
 			# Some pathnames have newline followed by "00". no idea why
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
+			pkgasset.orig_pathname = pkgasset.pathname
 			var path = pkgasset.pathname
 			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
 				#if path != "Assets":

@@ -81,6 +81,7 @@ func _run_single_item(tw: ThreadWork, thread_subdir: String):
 	tw.output_path = asset_adapter.preprocess_asset(tw.asset, tw.tmpdir, thread_subdir)
 	# It has not yet been added to the database, so do not use rename()
 	tw.asset.parsed_meta.path = tw.output_path
+	tw.asset.pathname = tw.output_path
 	asset_processing_finished.emit(tw)
 
 # Run here and exit.
