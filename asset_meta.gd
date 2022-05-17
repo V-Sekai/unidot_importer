@@ -242,6 +242,12 @@ func override_resource(fileID: int, name: String, godot_resource: Resource):
 func insert_resource(fileID: int, godot_resource: Resource):
 	godot_resources[fileID] = str(godot_resource.resource_path)
 
+# Another version, passing in the path directly.
+func insert_resource_path(fileID: int, godot_resource_path: String):
+	godot_resources[fileID] = str(godot_resource_path)
+
+# Rename is commented out only because it is not currently used,
+# it can cause races with multithreading.
 #func rename(new_path: String):
 #	get_database().rename_meta(self, new_path)
 

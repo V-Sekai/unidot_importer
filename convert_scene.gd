@@ -150,6 +150,14 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				scene_contents.remove_child(dirlight)
 				dirlight = null
 			var sky_material: Variant = pkgasset.parsed_meta.get_godot_resource(asset.keys.get("m_SkyboxMaterial"))
+			if sky_material == null:
+				# Just use a default skybox for now...
+				sky_material = ProceduralSkyMaterial.new()
+				sky_material.sky_top_color = Color(0.454902, 0.678431, 0.87451, 1)
+				sky_material.sky_horizon_color = Color(0.894118, 0.952941, 1, 1)
+				sky_material.sky_curve = 0.0731028
+				sky_material.ground_bottom_color = Color(0.454902, 0.470588, 0.490196, 1)
+				sky_material.ground_horizon_color = Color(1, 1, 1, 1)
 			var ambient_mode: int = asset.keys.get("m_AmbientMode", 0)
 			if sky_material != null:
 				env.background_mode = Environment.BG_SKY

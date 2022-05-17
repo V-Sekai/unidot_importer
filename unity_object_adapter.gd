@@ -803,6 +803,10 @@ class UnityMaterial extends UnityObject:
 			ret.metallic_texture = get_texture(texProperties, "_MetallicGlossMap")
 			ret.metallic = get_float(floatProperties, "_Metallic", 0.0)
 			ret.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+			if typeof(ret.get("roughness_invert_channel")) == TYPE_BOOL:
+				ret.roughness_texture = ret.metallic_texture
+				ret.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_ALPHA
+				ret.set("roughness_invert_channel", true) # Experimental patch
 		# TODO: Glossiness: invert color channels??
 		ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
 		if kws.get("_ALPHATEST_ON"):
@@ -4617,6 +4621,10 @@ class UnityModelImporter extends UnityAssetImporter:
 		get:
 			return keys.get("internalIDToNameTable", [])
 
+	var preserveHierarchy: bool:
+		get:
+			return keys.get("meshes").get("preserveHierarchy") != 0
+
 	# 0: No compression; 1: keyframe reduction; 2: keyframe reduction and compress
 	# 3: all of the above and choose best curve for runtime memory.
 	func animation_optimizer_settings() -> Dictionary:
@@ -4675,7 +4683,10 @@ class UnityTrueTypeFontImporter extends UnityAssetImporter:
 
 class UnityNativeFormatImporter extends UnityAssetImporter:
 	func get_main_object_id() -> int:
-		return keys.get("mainObjectFileID", 0)
+		var ret: int = keys.get("mainObjectFileID", 0)
+		if ret == -1:
+			return 0
+		return ret
 
 class UnityPrefabImporter extends UnityAssetImporter:
 	func get_main_object_id() -> int:

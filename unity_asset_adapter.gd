@@ -212,7 +212,8 @@ class ImageHandler extends AssetHandler:
 			cfile.set_value("remap", "type", "CompressedTexture2D")
 		if force_keep:
 			cfile.set_value("remap", "importer", "keep")
-			cfile.erase_section_key("remap", "type")
+			if cfile.has_section_key("remap", "type"):
+				cfile.erase_section_key("remap", "type")
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
@@ -274,7 +275,8 @@ class AudioHandler extends AssetHandler:
 			cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
 		if force_keep:
 			cfile.set_value("remap", "importer", "keep")
-			cfile.erase_section_key("remap", "type")
+			if cfile.has_section_key("remap", "type"):
+				cfile.erase_section_key("remap", "type")
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
@@ -453,7 +455,8 @@ class BaseModelHandler extends AssetHandler:
 			cfile.set_value("remap", "importer_version", 1)
 		if force_keep:
 			cfile.set_value("remap", "importer", "keep")
-			cfile.erase_section_key("remap", "type")
+			if cfile.has_section_key("remap", "type"):
+				cfile.erase_section_key("remap", "type")
 			cfile.set_value("params", "import_script/path", "")
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
@@ -484,7 +487,7 @@ class BaseModelHandler extends AssetHandler:
 		cfile.set_value_compare("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value_compare("params", "meshes/ensure_tangents", importer.ensure_tangents)
 		cfile.set_value_compare("params", "meshes/create_shadow_meshes", false) # Until visual artifacts with shadow meshes get fixed
-		cfile.set_value_compare("params", "nodes/root_scale", 1.0) # pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
+		cfile.set_value_compare("params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value_compare("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO
 		
@@ -845,6 +848,66 @@ class FbxHandler extends BaseModelHandler:
 	func sanitize_anim_name(anim_name: String) -> String:
 		return sanitize_unique_name(anim_name).replace("[", "").replace(",", "")
 
+	func gltf_to_transform3d(node: Dictionary) -> Transform3D:
+		if node.has("matrix"):
+			var mat: Array = node.get("matrix", [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1])
+			var basis: Basis = Basis(
+				Vector3(mat[0], mat[1], mat[2]),
+				Vector3(mat[4], mat[5], mat[6]),
+				Vector3(mat[8], mat[9], mat[10]))
+			var origin = Vector3(mat[12], mat[13], mat[14])
+			return Transform3D(basis, origin)
+		var tra: Array = node.get("translation", [0,0,0])
+		var rot: Array = node.get("rotation", [0,0,0,1])
+		var sca: Array = node.get("scale", [1,1,1])
+		var basis: Basis = Basis(Quaternion(rot[0], rot[1], rot[2], rot[3]))
+		basis = basis.scaled(Vector3(sca[0], sca[1], sca[2]))
+		return Transform3D(basis, Vector3(tra[0], tra[1], tra[2]))
+
+	func gltf_transform3d_into_json(json_node: Dictionary, xform: Transform3D) -> void:
+		# To test scale folding:
+		#json["nodes"][json["scenes"][json.get("scene", 0)]["nodes"][0]]["translation"] = [0.125,0.25,0.5]
+		#json["nodes"][json["scenes"][json.get("scene", 0)]["nodes"][0]]["rotation"] = [0.707,0.0,0.707,0.0]
+		#json["nodes"][json["scenes"][json.get("scene", 0)]["nodes"][0]]["scale"] = [1.0,2.0,0.5]
+		if json_node.has("matrix"):
+			json_node.erase("matrix")
+		json_node["translation"] = [xform.origin.x, xform.origin.y, xform.origin.z]
+		var quat = xform.basis.get_rotation_quaternion()
+		json_node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+		var scale = xform.basis.get_scale()
+		json_node["scale"] = [scale.x, scale.y, scale.z]
+
+	func gltf_remove_node(json: Dictionary, node_idx: int):
+		json["nodes"].remove_at(node_idx) # remove_at index
+		for node in json["nodes"]:
+			var children: Array = node.get("children", [])
+			children.erase(node_idx) # erase by value
+			for i in range(len(children)):
+				if children[i] > node_idx:
+					children[i] -= 1
+		for sk in json.get("skins", []):
+			var joints: Array = sk.get("joints", [])
+			for i in range(len(joints)):
+				if joints[i] > node_idx:
+					joints[i] -= 1
+			if sk.get("skeleton", -1) > node_idx:
+				sk["skeleton"] -= 1
+		for scene in json["scenes"]:
+			var nodes: Array = scene.get("nodes", [])
+			nodes.erase(node_idx) # erase by value
+			for i in range(len(nodes)):
+				if nodes[i] > node_idx:
+					nodes[i] -= 1
+		for anim in json.get("animations", []):
+			var channels: Array = anim.get("channels", [])
+			for channel_idx in range(len(channels) -1, -1 ,-1):
+				var channel: Dictionary = channels[channel_idx]
+				if channel.get("target", {}).get("node", -1) == node_idx:
+					channels.remove_at(channel_idx)
+			for channel in channels:
+				if channel.get("target", {}).get("node", -1) > node_idx:
+					channel["target"]["node"] -= 1
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary={}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		print("I am an FBX " + str(path))
@@ -889,6 +952,31 @@ class FbxHandler extends BaseModelHandler:
 		jsonres.parse(data)
 		var json: Dictionary = jsonres.get_data()
 		var bindata: PackedByteArray
+
+		# Optional step:
+		### Remove RootNode and migrate root nodes into the scene.
+		var default_scene: Dictionary = json["scenes"][json.get("scene", 0)]
+		# Godot prepends the scene name to the name of meshes, for some reason...
+		# "Root Scene" is hardcoded in post_import_unity_model.gd so we use it here.
+		default_scene["name"] = "Root Scene"
+		# default_scene["name"] = pkgasset.pathname.get_file().get_basename()
+		if len(default_scene["nodes"]) == 1: # Disabled for now.
+			var root_node_idx: int = default_scene["nodes"][0]
+			var root_node: Dictionary = json["nodes"][root_node_idx]
+			if root_node.get("name", "") == "RootNode" and not root_node.get("children", []).is_empty():
+				if (root_node.get("mesh", -1) == -1 and root_node.get("skin", -1) == -1 and
+						root_node.get("extensions", []).is_empty() and root_node.get("camera", -1) == -1):
+					var root_xform = gltf_to_transform3d(root_node)
+					if root_xform.is_equal_approx(Transform3D.IDENTITY):
+						var root_children: Array = root_node["children"]
+						default_scene["nodes"] = []
+						root_node.erase("children")
+						for child_idx in root_children:
+							default_scene["nodes"].append(child_idx)
+							var child_node: Dictionary = json["nodes"][child_idx]
+							if not root_xform.is_equal_approx(Transform3D.IDENTITY):
+								gltf_transform3d_into_json(child_node, root_xform * gltf_to_transform3d(child_node))
+						gltf_remove_node(json, root_node_idx)
 		f = File.new()
 		f.open(bin_output_path, File.READ)
 		bindata = f.get_buffer(f.get_length())

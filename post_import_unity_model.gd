@@ -27,6 +27,7 @@ class ParseState:
 	var metaobj: Resource
 	var source_file_path: String
 	var use_new_names: bool = false
+	var preserve_hierarchy: bool = false
 
 	var skinned_parent_to_node: Dictionary = {}.duplicate()
 	var godot_sanitized_to_orig_remap: Dictionary = {}.duplicate()
@@ -57,8 +58,7 @@ class ParseState:
 	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
 	var is_dae: bool = false
-	var use_scene_root: bool = true
-	var mesh_is_toplevel: bool = false
+	var node_is_toplevel: bool = false
 	var extractLegacyMaterials: bool = false
 	var importMaterials: bool = true
 	var materialSearch: int = 1
@@ -151,48 +151,32 @@ class ParseState:
 	func sanitize_filename(sanitized_name: String) -> String:
 		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace("\"", "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
 
-	func count_meshes(node: Node) -> int:
-		var result: int = 0
-		if node is VisualInstance3D:
-			result += 1
-		for child in node.get_children():
-			result += count_meshes(child)
-		return result
-
-	func fold_transforms_into_mesh(node: Node3D, p_transform: Transform3D = Transform3D.IDENTITY) -> Node3D:
-		var transform: Transform3D = p_transform * node.transform
-		if node is VisualInstance3D:
-			node.transform = transform
-			return node
-		node.transform = Transform3D.IDENTITY
-		var result: Node3D = null
-		for child in node.get_children():
-			if child is Node3D:
-				var ret: Node3D = fold_transforms_into_mesh(child, transform)
-				if ret != null:
-					result = ret
-		return result
-
-	func fold_root_transforms_into_root(node: Node3D) -> Node3D:
-		var is_foldable: bool = node.get_child_count() == 1
+	func fold_root_transforms_into_only_child(root_node: Node3D) -> Node3D:
+		var is_foldable: bool = root_node.get_child_count() == 1
 		var wanted_child: int = 0
-		if node.get_child_count() == 2 and node.get_child(0) is AnimationPlayer:
+		if root_node.get_child_count() == 2 and root_node.get_child(0) is AnimationPlayer:
 			wanted_child = 1
 			is_foldable = true
-		elif node.get_child_count() == 2 and node.get_child(1) is AnimationPlayer:
+		elif root_node.get_child_count() == 2 and root_node.get_child(1) is AnimationPlayer:
 			is_foldable = true
-		if is_foldable and node.get_child(wanted_child) is Node3D:
-			var child_node: Node3D = node.get_child(wanted_child)
-			if child_node.get_child_count() == 1 and child_node.get_child(0) is Node3D:
+		if not is_foldable:
+			return null
+		var child_node = root_node.get_child(wanted_child)
+		if child_node is Node3D:
+			if child_node.name != &"RootNode":
+				child_node.transform = root_node.transform * child_node.transform
+				root_node.transform = Transform3D.IDENTITY
+				return child_node
+			elif child_node.get_child_count() == 1 and child_node.get_child(0) is Node3D:
 				var grandchild_node: Node3D = child_node.get_child(0)
-				grandchild_node.transform = node.transform * child_node.transform * grandchild_node.transform
-				node.transform = Transform3D.IDENTITY
+				grandchild_node.transform = root_node.transform * child_node.transform * grandchild_node.transform
+				root_node.transform = Transform3D.IDENTITY
 				child_node.transform = Transform3D.IDENTITY
 				return grandchild_node
 			else:
-				child_node.transform = node.transform * child_node.transform
-				node.transform = Transform3D.IDENTITY
-				return child_node
+				root_node.transform = root_node.transform * child_node.transform
+				child_node.transform = Transform3D.IDENTITY
+				return null
 		return null
 
 	func register_component(node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int=0, p_bone_idx: int=-1):
@@ -724,6 +708,15 @@ class ParseState:
 
 func _post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
+	var godot_import_config: ConfigFile = ConfigFile.new()
+	if godot_import_config.load(source_file_path + ".import") != OK:
+		push_error("Running _post_import script for " + str(source_file_path) + " but cannot load .import")
+	var godot_root_scale: float = godot_import_config.get_value("params", "nodes/root_scale", 1.0)
+	if not (godot_root_scale > 0):
+		push_error("Invalid root_scale: " + str(godot_root_scale))
+		godot_root_scale = 1.0
+	if p_scene is Node3D:
+		p_scene.scale /= godot_root_scale
 	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
@@ -756,11 +749,16 @@ func _post_import(p_scene: Node) -> Object:
 	ps.HACK_outer_scope_generate_object_hash = generate_object_hash
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
-	ps.scale_correction_factor = metaobj.internal_data.get("scale_correction_factor", 1.0)
+	if metaobj.internal_data.has("scale_correction_factor"):
+		var scf: float = metaobj.internal_data.get("scale_correction_factor")
+		if godot_root_scale != scf:
+			push_warning("Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf))
+	ps.scale_correction_factor = godot_root_scale # metaobj.internal_data.get("scale_correction_factor", 1.0)
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
 	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
+	ps.preserve_hierarchy = metaobj.importer.preserveHierarchy
 	ps.default_material = default_material
 	ps.is_obj = source_file_path.ends_with(".obj")
 	ps.is_dae = source_file_path.ends_with(".dae")
@@ -768,8 +766,6 @@ func _post_import(p_scene: Node) -> Object:
 	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 	ps.external_objects_by_type_name = external_objects
-	var mesh_count: int = ps.count_meshes(p_scene)
-
 
 	var skinned_name_to_node = ps.build_skinned_name_to_node_map(ps.scene, {}.duplicate())
 	var skinned_parents: Variant = metaobj.internal_data.get("skinned_parents", null)
@@ -832,17 +828,6 @@ func _post_import(p_scene: Node) -> Object:
 				# Not sure why, but Unity uses //RootNode
 				# Maybe it indicates that the node will be hidden???
 				obj_name = ""
-				ps.use_scene_root = true
-				if type == "GameObject":
-					metaobj.prefab_main_gameobject_id = fileId
-				if type == "Transform":
-					metaobj.prefab_main_transform_id = fileId
-				#if ps.is_obj or ps.is_dae:
-				#else:
-				#	obj_name = obj_name.substr(2)
-				if type == "MeshRenderer" or type == "MeshFilter" or type == "SkinnedMeshRenderer" and mesh_count == 1:
-					print("Found empty obj " + str(og_obj_name) + " tpye " + type)
-					ps.mesh_is_toplevel = true
 			if not ps.objtype_to_name_to_id.has(type):
 				ps.objtype_to_name_to_id[type] = {}.duplicate()
 				used_names_by_type[type] = {}.duplicate()
@@ -864,16 +849,7 @@ func _post_import(p_scene: Node) -> Object:
 	#print("objtype name by id: "+ str(ps.objtype_to_name_to_id))
 	ps.toplevel_node = p_scene
 	p_scene.name = source_file_path.get_file().get_basename()
-	var new_toplevel: Node3D = null
-	if ps.mesh_is_toplevel:
-		print("Mesh is toplevel for " + str(source_file_path))
-		new_toplevel = ps.fold_transforms_into_mesh(ps.toplevel_node)
-	#else:
-	# new_toplevel = ps.fold_root_transforms_into_root(ps.toplevel_node)
-	if new_toplevel != null:
-		ps.toplevel_node.transform = new_toplevel.transform
-		new_toplevel.transform = Transform3D.IDENTITY
-		ps.toplevel_node = new_toplevel
+
 	# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
 	# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
 	# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
@@ -889,7 +865,15 @@ func _post_import(p_scene: Node) -> Object:
 	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false)
 	ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
-	if ps.use_scene_root and new_toplevel == null:
+
+	var new_toplevel: Node3D = null
+	if not ps.preserve_hierarchy:
+		new_toplevel = ps.fold_root_transforms_into_only_child(ps.toplevel_node)
+	if new_toplevel != null:
+		print("Node is toplevel for " + str(source_file_path))
+		ps.toplevel_node.transform = new_toplevel.transform
+		new_toplevel.transform = Transform3D.IDENTITY
+		ps.toplevel_node = new_toplevel
 		var new_found_roots = 0
 		var new_root_go_id = 0
 		for child in ps.all_name_map[root_go_id]:
@@ -905,10 +889,9 @@ func _post_import(p_scene: Node) -> Object:
 
 	# GameObject references always point to the toplevel node:
 	metaobj.prefab_main_gameobject_id = root_go_id
-	#print(ps.all_name_map[root_go_id])
 	metaobj.prefab_main_transform_id = ps.all_name_map[root_go_id][4]
-	ps.fileid_to_nodepath[metaobj.prefab_main_gameobject_id] = NodePath(".")
-	ps.fileid_to_nodepath[metaobj.prefab_main_transform_id] = NodePath(".")
+	ps.fileid_to_nodepath[metaobj.prefab_main_gameobject_id] = NodePath(".") # Prefab name always toplevel.
+	# ps.fileid_to_nodepath[metaobj.prefab_main_transform_id] = NodePath(".")
 
 	metaobj.type_to_fileids = ps.type_to_fileids
 	metaobj.fileid_to_nodepath = ps.fileid_to_nodepath
@@ -916,8 +899,6 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.fileid_to_utype = ps.fileid_to_utype
 	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
 
-	metaobj.prefab_main_gameobject_id = root_go_id
-	metaobj.prefab_main_transform_id = ps.all_name_map[root_go_id][4]
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map
 
