@@ -1110,7 +1110,9 @@ var file_handlers: Dictionary = {
 	"png": image_handler,
 	"bmp": image_handler,
 	"tga": image_handler,
-	"exr": image_handler,
+	# Disabling for convenience...
+	# EXR have very slow import times, and neither reflection probes nor lightmaps currently get used.
+	# "exr": image_handler,
 	"hdr": image_handler,
 	"dds": image_handler,
 	"tif": image_handler,
