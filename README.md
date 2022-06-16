@@ -4,7 +4,7 @@ Unidot Importer is a Unity compatibility layer and `.unitypackage` importer for 
 
 ## Engine patches
 
-Please use the `unidot_fixes` branch of https://github.com/lyuma/godot to run this addon (currently based on Godot Engine Git hash `bb4c464` + `fire/bc7e_rdo`).
+Please use the latest Godot 4.0 alpha builds ( `master` branch of https://github.com/godotengine/godot ) to run this addon.
 
 ## Features
 
@@ -12,7 +12,8 @@ Please use the `unidot_fixes` branch of https://github.com/lyuma/godot to run th
 - Supports both binary and text YAML encoding
 - Implementation of an asset database for unity assets by GUID
 - `.unitypackage` importer and translation shim.
-- The Godot FBX importer is not complete. We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF.
+- preliminary animation and animation tree porting.
+- We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF. please download the FBX2glTF exe
 
 Note that scripts and shaders will need to be ported by hand. However, it will be possible to map from the unity scripts/shaders to Godot equivalents after porting.
 
