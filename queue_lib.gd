@@ -186,7 +186,7 @@ class BlockingQueue extends LockedQueue:
 		#	unlock()
 		return pop_front()
 
-func _thread_function(bq: BlockingQueue):
+func _thread_function(bq: BlockingQueue, some_int: int):
 	assert(bq.pop()==1)
 	assert(bq.pop()==2)
 	assert(bq.pop()==3)
@@ -239,7 +239,7 @@ func run_test():
 	var bq: BlockingQueue = BlockingQueue.new()
 	var t: Thread = Thread.new()
 	bq.push(1)
-	t.start(self._thread_function, bq)
+	t.start(self._thread_function.bind(bq))
 	OS.delay_msec(100)
 	bq.push(2)
 	bq.push(3)

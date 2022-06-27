@@ -36,7 +36,7 @@ func start_thread():
 	print("Starting thread")
 	var thread: Thread = Thread.new()
 	# Third argument is optional userdata, it can be any variable.
-	thread.start(self._thread_function, "THR" + str(thread_count))
+	thread.start(self._thread_function.bind("THR" + str(thread_count)))
 	threads.push_back(thread)
 	return thread
 
@@ -88,7 +88,7 @@ func _run_single_item(tw: ThreadWork, thread_subdir: String):
 # The argument is the userdata passed from start().
 # If no argument was passed, this one still needs to
 # be here and it will be null.
-func _thread_function(thread_subdir: String):
+func _thread_function(thread_subdir: String, arg: int):
 	# Print the userdata ("Wafflecopter")
 	print("I'm a thread! Userdata is: ", thread_subdir)
 	while true:

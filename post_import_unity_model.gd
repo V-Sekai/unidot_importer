@@ -758,7 +758,9 @@ func _post_import(p_scene: Node) -> Object:
 	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
-	ps.preserve_hierarchy = metaobj.importer.preserveHierarchy
+	ps.preserve_hierarchy = false
+	if typeof(metaobj.importer.get("preserveHierarchy")) != TYPE_NIL:
+		ps.preserve_hierarchy = metaobj.importer.preserveHierarchy
 	ps.default_material = default_material
 	ps.is_obj = source_file_path.ends_with(".obj")
 	ps.is_dae = source_file_path.ends_with(".dae")
