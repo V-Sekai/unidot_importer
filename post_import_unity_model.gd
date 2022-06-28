@@ -949,6 +949,8 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 	# xxHash Library - Copyright (c) 2012-2021 Yann Collet (BSD 2-clause)
 
 	var b: PackedByteArray = buffer
+	var len_buffer: int = len(buffer)
+	buffer.resize((len(buffer) + 7) & (~7))
 	var b32: PackedInt32Array = buffer.to_int32_array()
 	var b64: PackedInt64Array = buffer.to_int64_array()
 
@@ -985,15 +987,15 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 			acc = acc ^ accN[i]
 			acc = acc * PRIME64_1 + PRIME64_4
 
-	acc = acc + len(buffer)
-	var limit = len(buffer) - 8
+	acc = acc + len_buffer
+	var limit = len_buffer - 8
 	while offset <= limit:
 		var k1: int = b64[offset/8] * PRIME64_2
 		acc ^= ((k1 << 31) | unsrs(k1, 33)) * PRIME64_1
 		acc = ((acc << 27) | unsrs(acc, 37)) * PRIME64_1 + PRIME64_4
 		offset += 8
 
-	limit = len(buffer) - 4
+	limit = len_buffer - 4
 	if offset <= limit:
 		acc = acc ^ (b32[offset/4] * PRIME64_1)
 		acc = ((acc << 23) | unsrs(acc, 41)) * PRIME64_2 + PRIME64_3
