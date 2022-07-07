@@ -19,6 +19,9 @@ const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 
 var object_adapter = object_adapter_class.new()
 
+var debug_guid: String = ""
+var debug_path: String = ""
+
 var indentation_level: int = 0
 var current_obj: Object = null
 var current_obj_type: String = ""
@@ -336,10 +339,12 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 
-		if (line_plain.begins_with("- ") or line_plain == "data:") and obj_key_match != null:
+		if line_plain.begins_with("- ") and obj_key_match != null: #(line_plain.begins_with("- ") or line_plain == "data:") and obj_key_match != null:
 			current_indent_tree.push_back(indentation_level)
 			indentation_level = new_indentation_level + 2
 			var new_obj = {}.duplicate()
+			if typeof(current_obj_tree.back()) != TYPE_ARRAY:
+				push_error("Invalid obj tree type @" + str(debug_guid) + ":" + str(debug_path) + ":" + str(line_number))
 			current_obj_tree.back().push_back(new_obj)
 			current_obj_tree.push_back(new_obj)
 		if obj_key_match != null:

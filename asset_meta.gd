@@ -525,6 +525,8 @@ func parse_asset(file: Object) -> ParsedAsset:
 	var parsed = ParsedAsset.new()
 
 	var yaml_parser = yaml_parser_class.new()
+	yaml_parser.debug_guid = guid
+	yaml_parser.debug_path = path
 	var i = 0
 
 	# var recycle_ids: Dictionary = {}
