@@ -74,7 +74,7 @@ func push_asset(asset: Object, tmpdir: String, extra: Variant=null):
 		self.push_work_obj(tw)
 
 func _run_single_item_delayed(tw: ThreadWork):
-	self.call_deferred("_run_single_item", tw)
+	self.call_deferred("_run_single_item", tw, "NOTHR")
 
 func _run_single_item(tw: ThreadWork, thread_subdir: String):
 	asset_processing_started.emit(tw)
@@ -88,7 +88,7 @@ func _run_single_item(tw: ThreadWork, thread_subdir: String):
 # The argument is the userdata passed from start().
 # If no argument was passed, this one still needs to
 # be here and it will be null.
-func _thread_function(thread_subdir: String, arg: int):
+func _thread_function(thread_subdir: String):
 	# Print the userdata ("Wafflecopter")
 	print("I'm a thread! Userdata is: ", thread_subdir)
 	while true:

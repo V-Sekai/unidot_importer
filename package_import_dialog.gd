@@ -8,6 +8,8 @@ const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
+# Set THREAD_COUNT to 0 to run single-threaded.
+const THREAD_COUNT = 10
 const DISABLE_TEXTURES = false
 
 const STATE_DIALOG_SHOWING = 0
@@ -572,7 +574,7 @@ func _asset_tree_window_confirmed():
 	asset_database = asset_database_class.new().get_singleton()
 	asset_database.in_package_import = true
 	print("Asset database object returned " + str(asset_database))
-	import_worker.start_threads(8) # Don't DISABLE_THREADING
+	import_worker.start_threads(THREAD_COUNT) # Don't DISABLE_THREADING
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())
 	if preprocess_timer != null:
 		preprocess_timer.queue_free()
