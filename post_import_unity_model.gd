@@ -974,11 +974,11 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 	# Parts based on https://github.com/Cyan4973/xxHash
 	# xxHash Library - Copyright (c) 2012-2021 Yann Collet (BSD 2-clause)
 
-	var b: PackedByteArray = buffer
+	var b: PackedByteArray = buffer.slice(0)
 	var len_buffer: int = len(buffer)
-	buffer.resize((len(buffer) + 7) & (~7))
-	var b32: PackedInt32Array = buffer.to_int32_array()
-	var b64: PackedInt64Array = buffer.to_int64_array()
+	b.resize((len_buffer + 7) & (~7))
+	var b32: PackedInt32Array = b.to_int32_array()
+	var b64: PackedInt64Array = b.to_int64_array()
 
 	const PRIME64_1 = -7046029288634856825
 	const PRIME64_2 = -4417276706812531889
@@ -988,14 +988,14 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 	var acc: int = (seed + PRIME64_5)
 	var offset: int = 0
 
-	if len(b) >= 32:
+	if len_buffer >= 32:
 		var accN: PackedInt64Array = PackedInt64Array([
 			seed + PRIME64_1 + PRIME64_2,
 			seed + PRIME64_2,
 			seed + 0,
 			seed - PRIME64_1,
 		]).duplicate()
-		var limit: int = len(b) - 32
+		var limit: int = len_buffer - 32
 		var lane: int = 0
 		offset = 0
 		while (offset & 0xffffffe0) <= limit:
@@ -1027,7 +1027,7 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 		acc = ((acc << 23) | unsrs(acc, 41)) * PRIME64_2 + PRIME64_3
 		offset += 4
 
-	while offset < len(b):
+	while offset < len_buffer:
 		var lane: int = b[offset]
 		acc = acc ^ (lane * PRIME64_5)
 		acc = ((acc << 11) | unsrs(acc, 53)) * PRIME64_1
