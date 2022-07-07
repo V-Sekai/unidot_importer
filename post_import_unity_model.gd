@@ -58,6 +58,7 @@ class ParseState:
 	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
 	var is_dae: bool = false
+	var default_obj_mesh_name: String = "default"
 	var node_is_toplevel: bool = false
 	var extractLegacyMaterials: bool = false
 	var importMaterials: bool = true
@@ -311,7 +312,7 @@ class ParseState:
 		if node is MeshInstance3D:
 			if is_obj and node.mesh != null:
 				#node_name = "default"
-				node.name = "default" # Does this make sense?? For compatibility?
+				node.name = default_obj_mesh_name # Does this make sense?? For compatibility?
 		if node is Node3D:
 			node.position *= scale_correction_factor
 
@@ -443,7 +444,7 @@ class ParseState:
 		if godot_mesh_name.begins_with("Root Scene_"):
 			godot_mesh_name = godot_mesh_name.substr(11)
 		if is_obj:
-			godot_mesh_name = "default"
+			godot_mesh_name = default_obj_mesh_name
 		var mesh_name: String = get_orig_name("meshes", godot_mesh_name)
 		if saved_meshes_by_name.has(mesh_name):
 			mesh = saved_meshes_by_name.get(mesh_name)
@@ -462,7 +463,7 @@ class ParseState:
 				if mat_name == "DefaultMaterial":
 					mat_name = "No Name"
 				if is_obj:
-					mat_name = "default"
+					mat_name = default_obj_mesh_name + "Mat" # unity seems to use this rule
 				if saved_materials_by_name.has(mat_name):
 					mat = saved_materials_by_name.get(mat_name)
 					if mat != null:
@@ -784,6 +785,28 @@ func _post_import(p_scene: Node) -> Object:
 			skinned_parent_to_node[par] = node_list
 	ps.skinned_parent_to_node = skinned_parent_to_node
 
+	ps.default_obj_mesh_name = "default"
+	if ps.is_obj:
+		var objf: File = File.new()
+		if objf.open(source_file_path, File.READ) == OK:
+			var textstr = objf.get_as_text()
+			objf.close()
+			# Find the name of the first mesh (first g before first f).
+			# Note: Godot does not support splitting .obj into multiple meshes
+			# So we will only use the name of the first mesh for now.
+			var fidx = textstr.find("\nf ")
+			var gidx = textstr.rfind("\ng ", fidx)
+			if gidx == -1:
+				if textstr.begins_with("g "):
+					gidx = 2
+			else:
+				gidx += 3
+			var gendidx = textstr.find("\n", gidx)
+			if gendidx != -1 and gidx != -1:
+				ps.default_obj_mesh_name = textstr.substr(gidx, gendidx - gidx).strip_edges()
+		if ps.default_obj_mesh_name.is_empty():
+			ps.default_obj_mesh_name = "default"
+
 	var internalIdMapping: Array = []
 	ps.use_new_names = false
 	if metaobj.importer != null and typeof(metaobj.importer.keys.get("internalIDToNameTable")) != TYPE_NIL:
@@ -830,6 +853,8 @@ func _post_import(p_scene: Node) -> Object:
 				# Not sure why, but Unity uses //RootNode
 				# Maybe it indicates that the node will be hidden???
 				obj_name = ""
+			elif ps.is_obj:
+				obj_name = ps.default_obj_mesh_name # Technically wrong in Unity 2019+. Should read the last "g objName" line before "f"
 			if not ps.objtype_to_name_to_id.has(type):
 				ps.objtype_to_name_to_id[type] = {}.duplicate()
 				used_names_by_type[type] = {}.duplicate()
@@ -852,14 +877,15 @@ func _post_import(p_scene: Node) -> Object:
 	ps.toplevel_node = p_scene
 	p_scene.name = source_file_path.get_file().get_basename()
 
-	# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
-	# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
-	# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
-	var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
-	if up_axis.to_upper() == "X_UP":
-		ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(0, 0, PI/-2.0)), Vector3.ZERO) * ps.toplevel_node.transform
-	if up_axis.to_upper() == "Z_UP":
-		ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(PI/-2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform
+	if ps.is_dae:
+		# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
+		# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
+		# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
+		var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
+		if up_axis.to_upper() == "X_UP":
+			ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(0, 0, PI/-2.0)), Vector3.ZERO) * ps.toplevel_node.transform
+		if up_axis.to_upper() == "Z_UP":
+			ps.toplevel_node.transform = Transform3D(Basis.from_euler(Vector3(PI/-2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform
 
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
