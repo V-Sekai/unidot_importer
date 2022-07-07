@@ -302,8 +302,8 @@ class Skelley extends RefCounted:
 			idx += 1
 		if not contains_stripped_bones:
 			var dedupe_dict = {}.duplicate()
-			for idx in range(godot_skeleton.get_bone_count()):
-				dedupe_dict[godot_skeleton.get_bone_name(idx)] = null
+			for bone_i in range(godot_skeleton.get_bone_count()):
+				dedupe_dict[godot_skeleton.get_bone_name(bone_i)] = null
 			for bone in bones:
 				if not dedupe_dict.has(bone.name):
 					dedupe_dict[bone.name] = bone

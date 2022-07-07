@@ -502,7 +502,7 @@ func decode_guids() -> void:
 	while i < count:
 		s.get_u8()
 		var guid: String = ""
-		for i in range(16):
+		for j in range(16):
 			var guidchr: int = s.get_u8()
 			guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
 		referenced_reftypes.push_back(s.get_u32())
