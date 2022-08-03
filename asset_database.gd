@@ -31,7 +31,7 @@ func get_singleton() -> Object:
 	return asset_database
 
 func save():
-	ResourceSaver.save(ASSET_DATABASE_PATH, self)
+	ResourceSaver.save(self, ASSET_DATABASE_PATH)
 
 func insert_meta(meta: Resource): # asset_meta
 	if meta.get_database_int() == null:

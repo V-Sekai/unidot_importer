@@ -1801,7 +1801,7 @@ class UnityAnimationClip extends UnityMotion:
 			clip.track_set_path(track_idx, new_path)
 		clip.set_meta("resolved_to_default_paths", new_resolved_to_default)
 		if clip.resource_path != StringName():
-			ResourceSaver.save(clip.resource_path, clip)
+			ResourceSaver.save(clip, clip.resource_path)
 
 	# NOTE: This function is dead code (unused).
 	# The idea is if there are multiple "solutions" to adapting animation clips, this could allow storing both
@@ -2013,10 +2013,10 @@ class UnityAnimationClip extends UnityMotion:
 				res_path = meta.path.get_basename() + (".%d.tres" % [self.fileID])
 			res_path = "res://" + res_path
 			anim.take_over_path(res_path)
-			ResourceSaver.save(res_path, anim)
+			ResourceSaver.save(anim, res_path)
 			meta.insert_resource(self.fileID, anim)
 		else:
-			ResourceSaver.save(anim.resource_path, anim)
+			ResourceSaver.save(anim, anim.resource_path)
 		return anim
 
 class UnityTexture extends UnityObject:
