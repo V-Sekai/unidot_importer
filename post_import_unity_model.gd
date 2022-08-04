@@ -421,7 +421,7 @@ class ParseState:
 						adjust_animation(anim)
 						var respath: String = get_resource_path(godot_anim_name, ".tres")
 						anim.take_over_path(respath)
-						ResourceSaver.save(respath, anim)
+						ResourceSaver.save(anim, respath)
 						anim = load(respath)
 				if anim != null:
 					anim_lib.remove_animation(godot_anim_name)
@@ -527,7 +527,7 @@ class ParseState:
 						if mat.normal_texture != null:
 							print("    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
 						mat.take_over_path(respath)
-						ResourceSaver.save(respath, mat)
+						ResourceSaver.save(mat, respath)
 						mat = load(respath)
 						print("Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
 						if mat.albedo_texture != null:
@@ -555,14 +555,14 @@ class ParseState:
 						adjust_mesh_scale(mesh)
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
 						mesh.take_over_path(respath)
-						ResourceSaver.save(respath, mesh)
+						ResourceSaver.save(mesh, respath)
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
 						adjust_skin_scale(skin)
 						var respath: String = get_resource_path(godot_mesh_name, ".skin.tres")
 						skin.take_over_path(respath)
-						ResourceSaver.save(respath, skin)
+						ResourceSaver.save(skin, respath)
 						skin = load(respath)
 				if mesh != null:
 					node.mesh = mesh

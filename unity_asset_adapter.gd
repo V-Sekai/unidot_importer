@@ -368,7 +368,7 @@ class YamlHandler extends AssetHandler:
 				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext # ".skin.tres"
 				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
 				created_res.take_over_path(new_pathname)
-				ResourceSaver.save(new_pathname, created_res)
+				ResourceSaver.save(created_res, new_pathname)
 				#created_res = load(new_pathname)
 				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
 
@@ -378,7 +378,7 @@ class YamlHandler extends AssetHandler:
 		if godot_resource != null:
 			# Save main resource at end, so that it can reference extra resources.
 			godot_resource.take_over_path(pkgasset.pathname)
-			ResourceSaver.save(pkgasset.pathname, godot_resource)
+			ResourceSaver.save(godot_resource, pkgasset.pathname)
 		else:
 			var rpa = raw_parsed_asset.new()
 			rpa.path = pkgasset.pathname
@@ -389,7 +389,7 @@ class YamlHandler extends AssetHandler:
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
 			rpa.take_over_path(pkgasset.pathname + ".raw.tres")
-			ResourceSaver.save(pkgasset.pathname + ".raw.tres", rpa)
+			ResourceSaver.save(rpa, pkgasset.pathname + ".raw.tres")
 		return true
 
 class SceneHandler extends YamlHandler:
@@ -404,7 +404,7 @@ class SceneHandler extends YamlHandler:
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
 			packed_scene.take_over_path(pkgasset.pathname)
-			ResourceSaver.save(pkgasset.pathname, packed_scene)
+			ResourceSaver.save(packed_scene, pkgasset.pathname)
 			return true
 		return false
 
