@@ -2589,22 +2589,22 @@ shader_type spatial;
 				var layer_mat: StandardMaterial3D = resolve_godot_resource(terrain_layer)
 				if layer_mat == null:
 					continue
-				mat.set_shader_param("albedo%d" % [i], layer_mat.albedo_texture)
+				mat.set_shader_uniform("albedo%d" % [i], layer_mat.albedo_texture)
 				var normal_scale = 0.0
 				if layer_mat.normal_enabled:
-					mat.set_shader_param("normal%d" % [i], layer_mat.normal_texture)
+					mat.set_shader_uniform("normal%d" % [i], layer_mat.normal_texture)
 					normal_scale = layer_mat.normal_scale
 				var roughness = layer_mat.roughness
 				var metallic = layer_mat.metallic
 				var uv1_scale: Vector2 = Vector2(layer_mat.uv1_scale.x, layer_mat.uv1_scale.y) * Vector2(scale.x, scale.z) * resolution
 				var uv1_offset = layer_mat.uv1_offset
-				mat.set_shader_param("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
-				mat.set_shader_param("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
+				mat.set_shader_uniform("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
+				mat.set_shader_uniform("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
 				i += 1
 			i = 0
 			for splat_texture_obj in alpha_textures:
 				var splat_texture: Texture2D = resolve_godot_resource(splat_texture_obj)
-				mat.set_shader_param("splat%d" % [i], splat_texture)
+				mat.set_shader_uniform("splat%d" % [i], splat_texture)
 				i += 1
 			mat.resource_name = self.keys.get("m_Name", meta.resource_name) + "_material"
 			terrain_mat = mat
