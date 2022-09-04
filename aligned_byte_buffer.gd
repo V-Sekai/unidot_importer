@@ -32,8 +32,8 @@ var HEX_LOOKUP_TABLE: PackedByteArray = PackedByteArray([
 	0,10,11,12, 13,14,15,0, 0,0,0,0, 0,0,0,0,
 	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
 
-var FLOAT_PREFIX: PackedByteArray = var2bytes([PackedByteArray(), PackedFloat32Array()])
-var INT32_PREFIX: PackedByteArray = var2bytes([PackedByteArray(), PackedInt32Array()])
+var FLOAT_PREFIX: PackedByteArray = var_to_bytes([PackedByteArray(), PackedFloat32Array()])
+var INT32_PREFIX: PackedByteArray = var_to_bytes([PackedByteArray(), PackedInt32Array()])
 
 func hex_decode(s: String, prefix: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 	var offset: int = len(prefix)
@@ -94,7 +94,7 @@ func _replace_prefix(buffer_and_prefix):
 
 func _decode_view_with_prefix(buffer_and_prefix) -> Variant:
 	_replace_prefix(buffer_and_prefix)
-	return bytes2var(buffer_and_prefix[0])[1]
+	return bytes_to_var(buffer_and_prefix[0])[1]
 
 func _validate_word_alignment(offset, stride) -> bool:
 	if ((stride & 3) == 0) and (stride > 0) and ((offset & 3) == 0):
@@ -300,7 +300,7 @@ static func format_byte_width(format: int) -> int:
 
 func formatted_float_uint8_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedByteArray:
 	var float_array: PackedFloat32Array = formatted_float_subarray(format, offset, length, stride, cluster)
-	var encoded_array: PackedByteArray = var2bytes([PackedByteArray(), float_array])
+	var encoded_array: PackedByteArray = var_to_bytes([PackedByteArray(), float_array])
 	return encoded_array.slice(len(FLOAT_PREFIX), len(encoded_array))
 
 func formatted_float_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedFloat32Array:

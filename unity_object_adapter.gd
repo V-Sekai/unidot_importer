@@ -2589,22 +2589,22 @@ shader_type spatial;
 				var layer_mat: StandardMaterial3D = resolve_godot_resource(terrain_layer)
 				if layer_mat == null:
 					continue
-				mat.set_shader_uniform("albedo%d" % [i], layer_mat.albedo_texture)
+				mat.set_shader_parameter("albedo%d" % [i], layer_mat.albedo_texture)
 				var normal_scale = 0.0
 				if layer_mat.normal_enabled:
-					mat.set_shader_uniform("normal%d" % [i], layer_mat.normal_texture)
+					mat.set_shader_parameter("normal%d" % [i], layer_mat.normal_texture)
 					normal_scale = layer_mat.normal_scale
 				var roughness = layer_mat.roughness
 				var metallic = layer_mat.metallic
 				var uv1_scale: Vector2 = Vector2(layer_mat.uv1_scale.x, layer_mat.uv1_scale.y) * Vector2(scale.x, scale.z) * resolution
 				var uv1_offset = layer_mat.uv1_offset
-				mat.set_shader_uniform("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
-				mat.set_shader_uniform("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
+				mat.set_shader_parameter("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
+				mat.set_shader_parameter("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
 				i += 1
 			i = 0
 			for splat_texture_obj in alpha_textures:
 				var splat_texture: Texture2D = resolve_godot_resource(splat_texture_obj)
-				mat.set_shader_uniform("splat%d" % [i], splat_texture)
+				mat.set_shader_parameter("splat%d" % [i], splat_texture)
 				i += 1
 			mat.resource_name = self.keys.get("m_Name", meta.resource_name) + "_material"
 			terrain_mat = mat
@@ -2996,7 +2996,7 @@ class UnityPrefabInstance extends UnityGameObject:
 			print("Writing stub scene to " + stub_filename)
 			var to_write: String = ('[gd_scene load_steps=2 format=2]\n\n' +
 				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
-				'[node name=' + var2str(str(toplevel_rename)) + ' instance=ExtResource( 1 )]\n')
+				'[node name=' + var_to_str(str(toplevel_rename)) + ' instance=ExtResource( 1 )]\n')
 			fres.store_string(to_write)
 			print(to_write)
 			fres.close()
@@ -3741,7 +3741,7 @@ class UnityRigidbody extends UnityComponent:
 			var kinematic: CharacterBody3D = CharacterBody3D.new()
 			new_node = kinematic
 		else:
-			var rigid: RigidDynamicBody3D = RigidDynamicBody3D.new()
+			var rigid: RigidBody3D = RigidBody3D.new()
 			new_node = rigid
 
 		new_node.name = name # Not type: This replaces the usual transform node.
@@ -3968,8 +3968,8 @@ class UnityCloth extends UnityBehaviour:
 		else:
 			return ret
 
-	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftDynamicBody3D:
-		var new_node: SoftDynamicBody3D = SoftDynamicBody3D.new()
+	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
+		var new_node: SoftBody3D = SoftBody3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, smr)
 		state.add_fileID(new_node, self)
