@@ -174,7 +174,7 @@ class ImageHandler extends AssetHandler:
 			var stdout: Array = [].duplicate()
 			var d = Directory.new()
 			d.open("res://")
-			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("convert.exe")
+			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
 			if addon_path.begins_with("res://"):
 				if not d.file_exists(addon_path):
 					push_warning("Not converting tiff to png because convert.exe is not present.")
@@ -923,7 +923,7 @@ class FbxHandler extends BaseModelHandler:
 		var stdout: Array = [].duplicate()
 		var d = Directory.new()
 		d.open("res://")
-		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().plus_file("FBX2glTF.exe")
+		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("FBX2glTF.exe")
 		if addon_path.begins_with("res://"):
 			if not d.file_exists(addon_path):
 				push_warning("Not converting fbx to glb because FBX2glTF.exe is not present.")

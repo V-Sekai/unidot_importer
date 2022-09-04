@@ -141,7 +141,8 @@ func preload_builtin_assets():
 	#mesh = ArrayMesh.new()
 	#mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, plane.surface_get_arrays(0), [], {})
 	unity_builtin.override_resource(10209, "Plane", plane)
-	var quad: QuadMesh = QuadMesh.new()
+	var quad: PlaneMesh = PlaneMesh.new()
+	quad.orientation = PlaneMesh.FACE_Z
 	quad.size = Vector2(-1.0, 1.0)
 	var quad_mesh: ArrayMesh = ArrayMesh.new()
 	var quad_arrays: Array = quad.surface_get_arrays(0)
