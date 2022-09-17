@@ -142,7 +142,7 @@ func _selected_package(p_path: String) -> void:
 				ti.set_checked(0, true)
 				ti.set_selectable(0, true)
 			if i == len(path_names) - 1:
-				ti.set_tooltip(0, path)
+				ti.set_tooltip_text(0, path)
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.DARK_BLUE)
 			var icon: Texture = pkg.path_to_pkgasset[path].icon
@@ -168,7 +168,7 @@ func show_importer() -> void:
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
 	file_dialog.file_selected.connect(self._selected_package)
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(file_dialog, true)
+	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
 	_show_importer_common()
 
 func _show_importer_common() -> void:
@@ -198,7 +198,7 @@ func _show_importer_common() -> void:
 	force_reimport_models_checkbox.size_flags_stretch_ratio = 0.0
 	vbox.add_child(force_reimport_models_checkbox)
 	n.add_sibling(vbox)
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(main_dialog, true)
+	EditorPlugin.new().get_editor_interface().get_base_control().add_child(main_dialog, true)
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
@@ -459,7 +459,7 @@ func _asset_processing_started(tw: Object):
 func _preprocess_recursively(ti: TreeItem) -> int:
 	var ret: int = 0
 	if ti.is_checked(0):
-		var path = ti.get_tooltip(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
+		var path = ti.get_tooltip_text(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
 		if path != "":
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:
@@ -543,7 +543,7 @@ func _scan_sources_complete(useless: Variant=null):
 	import_step_timer.wait_time = 0.1
 	import_step_timer.autostart = true
 	import_step_timer.process_mode = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(import_step_timer, true)
+	EditorPlugin.new().get_editor_interface().get_base_control().add_child(import_step_timer, true)
 	import_step_timer.timeout.connect(self._do_import_step_tick)
 
 func _preprocess_wait_tick():
@@ -582,7 +582,7 @@ func _asset_tree_window_confirmed():
 	preprocess_timer.wait_time = 0.1
 	preprocess_timer.autostart = true
 	preprocess_timer.process_mode = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_editor_main_control().add_child(preprocess_timer, true)
+	EditorPlugin.new().get_editor_interface().get_base_control().add_child(preprocess_timer, true)
 	preprocess_timer.timeout.connect(self._preprocess_wait_tick)
 	if num_processing == 0:
 		print("No assets to process!")
