@@ -9,7 +9,7 @@ const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
-const THREAD_COUNT = 10
+const THREAD_COUNT = 0 # 10
 const DISABLE_TEXTURES = false
 
 const STATE_DIALOG_SHOWING = 0
@@ -379,10 +379,10 @@ func _asset_failed(tw: Object):
 
 func start_godot_import(tw: Object):
 	#var meta_data: PackedByteArray = tw.asset.metadata_tar_header.get_data()
-	#var metafil = File.new()
-	#metafil.open("res://" + tmpdir + "/" + tw.asset.pathname + ".meta", File.WRITE_READ)
+	#var metafil = FileAccess.open("res://" + tmpdir + "/" + tw.asset.pathname + ".meta", FileAccess.WRITE_READ)
 	#metafil.store_buffer(meta_data)
-	#metafil.close()
+	#metafil.flush()
+	#metafil = null
 	var asset_modified: bool = asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
 	var import_modified: bool = asset_adapter.write_godot_import(tw.asset)
 	print("Wrote file " + tw.output_path + " asset modified:" + str(asset_modified) + " import modified:" + str(import_modified))

@@ -44,10 +44,12 @@ var STUB_DAE_FILE: PackedByteArray = ("""
 """).to_ascii_buffer() # vscode syntax hack: "#"
 
 func write_sentinel_png(sentinel_filename: String):
-	var f: File = File.new()
-	f.open("res://" + sentinel_filename, File.WRITE_READ)
+	print(sentinel_filename)
+	var f: FileAccess = FileAccess.open(sentinel_filename, FileAccess.WRITE)
+	print(f)
 	f.store_buffer(STUB_PNG_FILE)
-	f.close()
+	f.flush()
+	f = null
 
 class AssetHandler:
 	# WORKAROUND GDScript 4.0 BUG
@@ -60,6 +62,10 @@ class AssetHandler:
 	var ASSET_TYPE_UNKNOWN = 6
 
 	var editor_interface: EditorInterface = null
+	func _init():
+		var ep = EditorPlugin.new()
+		editor_interface = ep.get_editor_interface()
+		ep.queue_free()
 
 	class ConfigFileCompare extends ConfigFile:
 		var modified: bool = false
@@ -84,22 +90,17 @@ class AssetHandler:
 
 		func was_modified() -> bool:
 			return modified
-	
-	func set_editor_interface(ei: EditorInterface) -> AssetHandler:
-		editor_interface = ei
-		return self
 
 	func calc_existing_md5(fname: String) -> PackedByteArray:
-		var dres: Directory = Directory.new()
-		dres.open("res://")
+		var dres: DirAccess = DirAccess.open("res://")
 		if not dres.file_exists(fname):
 			return PackedByteArray()
-		var fres: File = File.new()
-		if fres.open(fname, File.READ) != OK:
+		var fres: FileAccess = FileAccess.open(fname, FileAccess.READ)
+		if fres == null:
 			return PackedByteArray()
 		var flen: int = fres.get_length()
 		var buf = fres.get_buffer(flen)
-		fres.close()
+		fres = null
 		if len(buf) != flen:
 			return PackedByteArray()
 		return calc_md5(buf)
@@ -115,13 +116,13 @@ class AssetHandler:
 		var data_buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, path, data_buf)
 		if len(output_path) == 0:
-			var outfile: File = File.new()
 			pkgasset.existing_data_md5 = calc_existing_md5(path)
 			pkgasset.data_md5 = calc_md5(data_buf)
 			if pkgasset.existing_data_md5 != pkgasset.data_md5:
-				var err = outfile.open(tmpdir + "/" + path, File.WRITE_READ)
+				var outfile: FileAccess = FileAccess.open(tmpdir + "/" + path, FileAccess.WRITE_READ)
 				outfile.store_buffer(data_buf)
-				outfile.close()
+				outfile.flush()
+				outfile = null
 			output_path = pkgasset.pathname
 		print("Updating file at " + output_path)
 		return output_path
@@ -131,8 +132,7 @@ class AssetHandler:
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
-			var dres = Directory.new()
-			dres.open("res://")
+			var dres = DirAccess.open("res://")
 			print("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
 			return true
@@ -167,13 +167,12 @@ class ImageHandler extends AssetHandler:
 		print("PREPROCESS_IMAGE " + str(is_tiff) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
 		var temp_output_path: String = tmpdir + "/" + full_output_path
 		if is_tiff:
-			var outfile: File = File.new()
-			var err = outfile.open(temp_output_path.get_basename() + ".tif", File.WRITE_READ)
+			var outfile: FileAccess = FileAccess.open(temp_output_path.get_basename() + ".tif", FileAccess.WRITE_READ)
 			outfile.store_buffer(data_buf)
-			outfile.close()
+			outfile.flush()
+			outfile = null
 			var stdout: Array = [].duplicate()
-			var d = Directory.new()
-			d.open("res://")
+			var d = DirAccess.open("res://")
 			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
 			if addon_path.begins_with("res://"):
 				if not d.file_exists(addon_path):
@@ -183,10 +182,9 @@ class ImageHandler extends AssetHandler:
 			var ret = OS.execute(addon_path, [
 				temp_output_path.get_basename() + ".tif", temp_output_path], stdout)
 			d.remove(temp_output_path.get_basename() + ".tif")
-			var res_file: File = File.new()
-			res_file.open(temp_output_path, File.READ)
+			var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
 			pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
-			res_file.close()
+			res_file = null
 			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
 			if pkgasset.existing_data_md5 == pkgasset.data_md5:
 				d.remove(temp_output_path)
@@ -194,10 +192,10 @@ class ImageHandler extends AssetHandler:
 			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
 			pkgasset.data_md5 = calc_md5(data_buf)
 			if pkgasset.existing_data_md5 != pkgasset.data_md5:
-				var outfile: File = File.new()
-				var err = outfile.open(temp_output_path, File.WRITE_READ)
+				var outfile: FileAccess = FileAccess.open(temp_output_path, FileAccess.WRITE_READ)
 				outfile.store_buffer(data_buf)
-				outfile.close()
+				outfile.flush()
+				outfile = null
 		return full_output_path
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -298,12 +296,11 @@ class YamlHandler extends AssetHandler:
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		var temp_path: String = tmpdir + "/" + pkgasset.pathname
-		var outfile: File = File.new()
-		var err = outfile.open(temp_path, File.WRITE_READ)
-		print("Open " + temp_path + " => " + str(err))
+		var outfile: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE_READ)
 		var buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		outfile.store_buffer(buf)
-		outfile.close()
+		outfile.flush()
+		outfile = null
 		if buf[8] == 0 and buf[9] == 0:
 			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_binary_asset(buf)
 		else:
@@ -427,8 +424,7 @@ class BaseModelHandler extends AssetHandler:
 					var up_axis = buffer_as_ascii.substr(pos + 1, next_pos - pos -1).strip_edges()
 					pkgasset.parsed_meta.internal_data["up_axis"] = up_axis
 					if up_axis != "Y_UP":
-						var outfile: File = File.new()
-						outfile.open(tmpdir + "/" + pkgasset.pathname, File.WRITE_READ)
+						var outfile: FileAccess = FileAccess.open(tmpdir + "/" + pkgasset.pathname, FileAccess.WRITE_READ)
 						outfile.store_buffer(data_buf.slice(0, pos + 1))
 						outfile.store_string("Y_UP")
 						outfile.store_buffer(data_buf.slice(next_pos))
@@ -436,7 +432,7 @@ class BaseModelHandler extends AssetHandler:
 						var fpos = outfile.get_position()
 						outfile.seek(0)
 						pkgasset.data_md5 = calc_md5(outfile.get_buffer(fpos))
-						outfile.close()
+						outfile = null
 						pkgasset.existing_data_md5 = calc_existing_md5(pkgasset.pathname)
 						already_rewrote_file = true
 		if already_rewrote_file:
@@ -513,8 +509,7 @@ class BaseModelHandler extends AssetHandler:
 		# super.write_godot_asset(pkgasset, temp_path)
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
-			var dres = Directory.new()
-			dres.open("res://")
+			var dres = DirAccess.open("res://")
 			print("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
 			if temp_path.ends_with(".gltf"):
@@ -771,10 +766,11 @@ class FbxHandler extends BaseModelHandler:
 
 		var fbx_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
 
-		var debug_outfile: File = File.new()
-		if debug_outfile.open(tmpdir + "/" + pkgasset.pathname, File.WRITE_READ) == OK:
+		var debug_outfile: FileAccess = FileAccess.open(tmpdir + "/" + pkgasset.pathname, FileAccess.WRITE_READ)
+		if debug_outfile:
 			debug_outfile.store_buffer(fbx_file)
-			debug_outfile.close()
+			debug_outfile.flush()
+			debug_outfile = null
 
 		var is_binary: bool = _is_fbx_binary(fbx_file)
 		var texture_name_list: PackedStringArray = PackedStringArray()
@@ -785,12 +781,10 @@ class FbxHandler extends BaseModelHandler:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8() # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.useFileScale, importer.globalScale)
-		var outfile: File = File.new()
-		var err = outfile.open(temp_input_path, File.WRITE_READ)
-		print("Open " + temp_input_path + " => " + str(err))
+		var outfile: FileAccess = FileAccess.open(temp_input_path, FileAccess.WRITE_READ)
 		outfile.store_buffer(fbx_file)
-		# outfile.flush()
-		outfile.close()
+		outfile.flush()
+		outfile = null
 		var unique_texture_map: Dictionary = {}
 		var texture_dirname = full_tmpdir
 		var output_dirname = pkgasset.pathname.get_base_dir()
@@ -802,14 +796,12 @@ class FbxHandler extends BaseModelHandler:
 				replaced_extension = "jpg"
 			unique_texture_map[fn_filename.get_basename() + "." + replaced_extension] = fn_filename
 		print("Referenced textures: " + str(unique_texture_map.keys()))
-		var d = Directory.new()
-		d.open("res://")
+		var d = DirAccess.open("res://")
 		for fn in unique_texture_map.keys():
 			if not d.file_exists(texture_dirname + "/" + fn):
 				print("Creating dummy texture: " + str(texture_dirname + "/" + fn))
-				var tmpf = File.new()
-				tmpf.open(texture_dirname + "/" + fn, File.WRITE_READ)
-				tmpf.close()
+				var tmpf = FileAccess.open(texture_dirname + "/" + fn, FileAccess.WRITE_READ)
+				tmpf = null
 			var candidate_texture_dict = _get_parent_textures_paths(output_dirname + "/" + unique_texture_map[fn])
 			for candidate_fn in candidate_texture_dict:
 				#print("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
@@ -921,14 +913,14 @@ class FbxHandler extends BaseModelHandler:
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = full_output_path.get_basename() + ".glb"
 		var stdout: Array = [].duplicate()
-		var d = Directory.new()
-		d.open("res://")
-		var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("FBX2glTF.exe")
-		if addon_path.begins_with("res://"):
+		var d = DirAccess.open("res://")
+		var addon_path: String = editor_interface.get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
+		if addon_path.get_file() != "":
 			if not d.file_exists(addon_path):
 				push_warning("Not converting fbx to glb because FBX2glTF.exe is not present.")
 				return ""
-			addon_path = addon_path.substr(6)
+			if addon_path.begins_with("res://"):
+				addon_path = addon_path.substr(6)
 		# --long-indices auto
 		# --compute-normals never|broken|missing|always
 		# --blend-shape-normals --blend-shape-tangents
@@ -944,10 +936,9 @@ class FbxHandler extends BaseModelHandler:
 		print("-----------------------------")
 		d.rename(tmp_bin_output_path, bin_output_path)
 		d.rename(tmp_gltf_output_path, gltf_output_path)
-		var f: File = File.new()
-		f.open(gltf_output_path, File.READ)
+		var f: FileAccess = FileAccess.open(gltf_output_path, FileAccess.READ)
 		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
-		f.close()
+		f = null
 		var jsonres = JSON.new()
 		jsonres.parse(data)
 		var json: Dictionary = jsonres.get_data()
@@ -977,10 +968,9 @@ class FbxHandler extends BaseModelHandler:
 							if not root_xform.is_equal_approx(Transform3D.IDENTITY):
 								gltf_transform3d_into_json(child_node, root_xform * gltf_to_transform3d(child_node))
 						gltf_remove_node(json, root_node_idx)
-		f = File.new()
-		f.open(bin_output_path, File.READ)
+		f = FileAccess.open(bin_output_path, FileAccess.READ)
 		bindata = f.get_buffer(f.get_length())
-		f.close()
+		f = null
 		if SHOULD_CONVERT_TO_GLB:
 			json["buffers"][0].erase("uri")
 		else:
@@ -1072,10 +1062,10 @@ class FbxHandler extends BaseModelHandler:
 		if not SHOULD_CONVERT_TO_GLB:
 			pkgasset.existing_data_md5.append_array(calc_existing_md5(return_output_path.get_basename() + ".bin"))
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
-			f = File.new()
-			f.open(output_path, File.WRITE_READ)
+			f = FileAccess.open(output_path, FileAccess.WRITE_READ)
 			f.store_buffer(full_output)
-			f.close()
+			f.flush()
+			f = null
 		else:
 			d.remove(gltf_output_path)
 			if not SHOULD_CONVERT_TO_GLB:
@@ -1144,12 +1134,11 @@ var file_handlers: Dictionary = {
 
 func create_temp_dir() -> String:
 	var tmpdir = "temp_unityimp"
-	var dres = Directory.new()
-	dres.open("res://")
+	var dres = DirAccess.open("res://")
 	dres.make_dir_recursive(tmpdir)
-	var f = File.new()
-	f.open(tmpdir + "/.gdignore", File.WRITE_READ)
-	f.close()
+	var f = FileAccess.open(tmpdir + "/.gdignore", FileAccess.WRITE_READ)
+	f.flush()
+	f = null
 	return tmpdir
 
 func get_asset_type(pkgasset: Object) -> int:
@@ -1165,8 +1154,7 @@ func uses_godot_importer(pkgasset: Object) -> bool:
 func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
-	var dres = Directory.new()
-	dres.open("res://")
+	var dres = DirAccess.open("res://")
 	dres.make_dir_recursive(path.get_base_dir())
 	dres.make_dir_recursive(tmpdir + "/" + path.get_base_dir())
 	dres.make_dir_recursive(tmpdir + "/" + thread_subdir)
@@ -1182,9 +1170,8 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 			if not dres.file_exists(pkgasset.pathname):
 				if asset_handler.write_godot_import(pkgasset, true):
 					# Make an empty file so it will be found by a scan!
-					var f: File = File.new()
-					f.open(pkgasset.pathname, File.WRITE_READ)
-					f.close()
+					var f: FileAccess = FileAccess.open(pkgasset.pathname, FileAccess.WRITE_READ)
+					f = null
 		return ret_output_path
 	return ""
 

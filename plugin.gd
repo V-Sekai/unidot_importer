@@ -32,14 +32,15 @@ func recursive_print_scene():
 	recursive_print(get_tree().edited_scene_root)
 
 func _enter_tree():
+	print("run enter tree")
 	add_tool_menu_item("Import Unity Package...",self.show_importer)
 	add_tool_menu_item("Reimport large unity package...",self.show_reimport)
 	add_tool_menu_item("Queue Test...",self.queue_test)
 	add_tool_menu_item("Print scene nodes with owner...",self.recursive_print_scene)
 
 func _exit_tree():
+	print("run exit tree")
 	remove_tool_menu_item("Print scene nodes with owner...")
 	remove_tool_menu_item("Import Unity Package...")
 	remove_tool_menu_item("Reimport large unity package...")
 	remove_tool_menu_item("Queue Test...")
-

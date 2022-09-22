@@ -589,10 +589,10 @@ class UnityMesh extends UnityObject:
 			#vertexCount: 38371
 			surface_arrays[ArrayMesh.ARRAY_INDEX] = surface_index_buf
 			var primitive_format: int = get_primitive_format(submesh)
-			#var f= File.new()
-			#f.open("temp.temp", File.WRITE)
+			#var f= FileAccess.open("temp.temp", FileAccess.WRITE)
 			#f.store_string(str(surface_arrays))
-			#f.close()
+			#f.flush()
+			#f = null
 			for i in range(ArrayMesh.ARRAY_MAX):
 				print("Array " + str(i) + ": length=" + (str(len(surface_arrays[i])) if typeof(surface_arrays[i]) != TYPE_NIL else "NULL"))
 			print("here are some flags " + str(compress_flags))
@@ -2989,17 +2989,16 @@ class UnityPrefabInstance extends UnityGameObject:
 			# FIXME: This may be unstable across Godot versions, if .tscn format ever changes.
 			# node->set_scene_inherited_state(sdata->get_state()) is not exposed to GDScript. Let's HACK!!!
 			var stub_filename = "res://_temp_scene.tscn"
-			var fres = File.new()
-			var dres = Directory.new()
-			dres.open("res://")
-			fres.open(stub_filename, File.WRITE_READ)
+			var dres = DirAccess.open("res://")
+			var fres = FileAccess.open(stub_filename, FileAccess.WRITE_READ)
 			print("Writing stub scene to " + stub_filename)
 			var to_write: String = ('[gd_scene load_steps=2 format=2]\n\n' +
 				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
 				'[node name=' + var_to_str(str(toplevel_rename)) + ' instance=ExtResource( 1 )]\n')
 			fres.store_string(to_write)
 			print(to_write)
-			fres.close()
+			fres.flush()
+			fres = null
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
 			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			dres.remove(stub_filename)
@@ -4543,15 +4542,12 @@ class UnityAssetImporter extends UnityObject:
 				eo[type_key][key] = val
 		return eo
 
-
-class UnityModelImporter extends UnityAssetImporter:
-
 	var addCollider: bool:
 		get:
-			return keys.get("meshes").get("addCollider") == 1
+			return keys.get("meshes", {}).get("addCollider") == 1
 
 	func get_animation_clips() -> Array:
-		var unityClips = keys.get("animations").get("clipAnimations", [])
+		var unityClips = keys.get("animations", {}).get("clipAnimations", [])
 		var outClips = [].duplicate()
 		for unityClip in unityClips:
 			var clip = {}.duplicate()
@@ -4586,20 +4582,20 @@ class UnityModelImporter extends UnityAssetImporter:
 			# Godot uses: Disabled,Static,StaticLightmaps,Dynamic
 			# 1 = Static (defauylt setting)
 			# 2 = StaticLightmaps
-			return keys.get("meshes").get("generateSecondaryUV", 0) + 1
+			return keys.get("meshes", {}).get("generateSecondaryUV", 0) + 1
 
 	# The following parameters have special meaning when importing FBX files and do not map one-to-one with godot importer.
 	var useFileScale: bool:
 		get:
-			return keys.get("meshes").get("useFileScale", 0) == 1
+			return keys.get("meshes", {}).get("useFileScale", 0) == 1
 
 	var extractLegacyMaterials: bool:
 		get:
-			return keys.get("materials").get("materialLocation", 0) == 0
+			return keys.get("materials", {}).get("materialLocation", 0) == 0
 
 	var globalScale: float:
 		get:
-			return keys.get("meshes").get("globalScale", 1)
+			return keys.get("meshes", {}).get("globalScale", 1)
 
 	var ensure_tangents: bool:
 		get:
@@ -4636,6 +4632,7 @@ class UnityModelImporter extends UnityAssetImporter:
 			"max_angular_error": rotErrorHalfRevs, # Godot defaults this value to 
 		}
 
+class UnityModelImporter extends UnityAssetImporter:
 	func get_main_object_id() -> int:
 		return 100100000 # a model is a type of Prefab
 

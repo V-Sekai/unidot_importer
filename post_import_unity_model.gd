@@ -308,7 +308,7 @@ class ParseState:
 		return fileId_go
 
 	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool):
-		#print("Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
+		print("Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 		if node is MeshInstance3D:
 			if is_obj and node.mesh != null:
 				#node_name = "default"
@@ -331,6 +331,7 @@ class ParseState:
 			process_animation_player(node)
 		elif node is MeshInstance3D:
 			if node.skin != null and not skinned_parent_to_node.is_empty() and not from_skinned_parent:
+				print("Already recursed " + str(node.name))
 				return 0 # We already recursed into this skinned mesh.
 			if from_skinned_parent or node.get_blend_shape_count() > 0: # has_obj_id("SkinnedMeshRenderer", node_name):
 				register_component(node, p_path, "SkinnedMeshRenderer", fileId_go)
@@ -374,7 +375,11 @@ class ParseState:
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
-		for child in skinned_parent_to_node.get(node.name, {}):
+		var key = node.name
+		if node.get_parent() == null or (len(p_path) == 2 and str(p_path[1]) == "root"):
+			key = ""
+		for child in skinned_parent_to_node.get(key, {}):
+			print("Skinned parent " + str(node.name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			p_path.push_back(orig_child_name)
@@ -383,6 +388,7 @@ class ParseState:
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
 		for child in skinned_parent_to_node.get(orig_node_name, {}):
+			print("Skinned oring parent " + str(orig_node_name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			p_path.push_back(orig_child_name)
@@ -432,6 +438,7 @@ class ParseState:
 			i += 1
 
 	func process_mesh_instance(node: MeshInstance3D):
+		print("Process mesh instance: " + str(node.name))
 		if node.skin == null and node.skeleton != NodePath():
 			push_error("A Skeleton exists for MeshRenderer " + str(node.name))
 		if node.skin != null and node.skeleton == NodePath():
@@ -493,8 +500,7 @@ class ParseState:
 							legacy_material_name = source_file_path.get_file().get_basename() + "-" + godot_mat_name
 
 						print("Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
-						var d = Directory.new()
-						d.open("res://")
+						var d = DirAccess.open("res://")
 						mat = null
 						if materialSearch == 0:
 							# only current dir
@@ -725,16 +731,16 @@ func _post_import(p_scene: Node) -> Object:
 	default_material = asset_database.default_material_reference
 
 	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
-	var f: File
+	var f: FileAccess
 	if metaobj == null:
 		push_warning("Asset database missing entry for " + str(source_file_path))
 		assert(not asset_database.in_package_import)
-		f = File.new()
-		if f.open(source_file_path + ".meta", File.READ) != OK:
-			metaobj = asset_database.create_dummy_meta(rel_path)
-		else:
+		f = FileAccess.open(source_file_path + ".meta", FileAccess.READ)
+		if f:
 			metaobj = asset_database.parse_meta(f, rel_path)
-			f.close()
+			f = null
+		else:
+			metaobj = asset_database.create_dummy_meta(rel_path)
 		asset_database.insert_meta(metaobj)
 	metaobj.initialize(asset_database)
 	print(str(metaobj.importer))
@@ -773,12 +779,15 @@ func _post_import(p_scene: Node) -> Object:
 	var skinned_name_to_node = ps.build_skinned_name_to_node_map(ps.scene, {}.duplicate())
 	var skinned_parents: Variant = metaobj.internal_data.get("skinned_parents", null)
 	var skinned_parent_to_node = {}.duplicate()
-	#print(skinned_name_to_node)
+	print ("Now skinning")
+	print(skinned_name_to_node)
+	print(skinned_parents)
 	if typeof(skinned_parents) == TYPE_DICTIONARY:
 		for par in skinned_parents:
 			var node_list = []
 			for skinned_name in skinned_parents[par]:
 				if skinned_name_to_node.has(skinned_name):
+					print("Do skinned " + str(skinned_name) + " to " + str(skinned_name_to_node[skinned_name]))
 					node_list.append(skinned_name_to_node[skinned_name])
 				else:
 					print("Missing skinned " + str(skinned_name) + " parent " + str(par))
@@ -787,10 +796,10 @@ func _post_import(p_scene: Node) -> Object:
 
 	ps.default_obj_mesh_name = "default"
 	if ps.is_obj:
-		var objf: File = File.new()
-		if objf.open(source_file_path, File.READ) == OK:
+		var objf: FileAccess = FileAccess.open(source_file_path, FileAccess.READ)
+		if objf:
 			var textstr = objf.get_as_text()
-			objf.close()
+			objf = null
 			# Find the name of the first mesh (first g before first f).
 			# Note: Godot does not support splitting .obj into multiple meshes
 			# So we will only use the name of the first mesh for now.

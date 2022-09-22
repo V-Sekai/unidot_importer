@@ -8,16 +8,14 @@ class ExtractedTarFile:
 		fn = filename
 
 	func get_data() -> PackedByteArray:
-		var f = File.new()
-		f.open(fn, File.READ)
+		var f = FileAccess.open(fn, FileAccess.READ)
 		return f.get_buffer(f.get_length())
 
 	func get_string() -> String:
 		return get_data().get_string_from_utf8()
 
 	func get_stringfile() -> Object:
-		var f = File.new()
-		f.open(fn, File.READ)
+		var f = FileAccess.open(fn, FileAccess.READ)
 		return f
 
 const tarfile: GDScript = preload("./tarfile.gd")
@@ -43,8 +41,7 @@ var guid_to_pkgasset: Dictionary = {}.duplicate()
 func external_tar_with_filename(source_file: String):
 	var stdout = [].duplicate()
 	var tmpdir = "temp_unityimp"
-	var d: Directory = Directory.new()
-	d.open("res://" + tmpdir)
+	var d: DirAccess = DirAccess.open("res://" + tmpdir)
 	d.make_dir("TAR_TEMP")
 	var full_tmpdir: String = tmpdir + "/TAR_TEMP"
 	var tar_args: Array = [
@@ -54,8 +51,7 @@ func external_tar_with_filename(source_file: String):
 	print("Running tar with " + str(tar_args))
 	var out_lines: Array = [].duplicate()
 	if source_file.is_empty():
-		var dirlist: Directory = Directory.new()
-		dirlist.open("res://" + full_tmpdir)
+		var dirlist: DirAccess = DirAccess.open("res://" + full_tmpdir)
 		dirlist.list_dir_begin()
 		while true:
 			var fn: String = dirlist.get_next()
@@ -137,8 +133,8 @@ func init_with_filename(source_file: String):
 	if source_file.is_empty():
 		return external_tar_with_filename("")
 
-	var file = File.new()
-	if file.open(source_file, File.READ) != OK:
+	var file = FileAccess.open(source_file, FileAccess.READ)
+	if not file:
 		return null
 
 	var flen: int = file.get_length() # NOTE: 32-bit only
