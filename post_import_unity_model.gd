@@ -718,12 +718,14 @@ func _post_import(p_scene: Node) -> Object:
 	var godot_import_config: ConfigFile = ConfigFile.new()
 	if godot_import_config.load(source_file_path + ".import") != OK:
 		push_error("Running _post_import script for " + str(source_file_path) + " but cannot load .import")
+	var apply_root_scale: bool = godot_import_config.get_value("params", "nodes/apply_root_scale", false)
 	var godot_root_scale: float = godot_import_config.get_value("params", "nodes/root_scale", 1.0)
 	if not (godot_root_scale > 0):
 		push_error("Invalid root_scale: " + str(godot_root_scale))
 		godot_root_scale = 1.0
 	if p_scene is Node3D:
-		p_scene.scale /= godot_root_scale
+		if not apply_root_scale:
+			p_scene.scale /= godot_root_scale
 	#print ("todo post import replace " + str(source_file_path))
 	var rel_path = source_file_path.replace("res://", "")
 	print("Parsing meta at " + source_file_path)
@@ -761,6 +763,8 @@ func _post_import(p_scene: Node) -> Object:
 		if godot_root_scale != scf:
 			push_warning("Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf))
 	ps.scale_correction_factor = godot_root_scale # metaobj.internal_data.get("scale_correction_factor", 1.0)
+	if apply_root_scale:
+		ps.scale_correction_factor = 1.0
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
 	ps.importMaterials = metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
