@@ -1938,20 +1938,20 @@ class UnityAnimationClip extends UnityMotion:
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				# NOTE: value is assumed to be YXZ in Godot terms, but it has 6 different modes in Unity.
-				var godot_euler_mode = Basis.EULER_ORDER_YXZ
+				var godot_euler_mode : int = EULER_ORDER_YXZ
 				match track["curve"].get("m_RotationOrder", 2):
 					0: # XYZ
-						godot_euler_mode = Basis.EULER_ORDER_ZYX
+						godot_euler_mode = EULER_ORDER_ZYX
 					1: # XZY
-						godot_euler_mode = Basis.EULER_ORDER_YZX
+						godot_euler_mode = EULER_ORDER_YZX
 					2: # YZX
-						godot_euler_mode = Basis.EULER_ORDER_XZY
+						godot_euler_mode = EULER_ORDER_XZY
 					3: # YXZ
-						godot_euler_mode = Basis.EULER_ORDER_ZXY
+						godot_euler_mode = EULER_ORDER_ZXY
 					4: # ZXY
-						godot_euler_mode = Basis.EULER_ORDER_YXZ
+						godot_euler_mode = EULER_ORDER_YXZ
 					5: # ZYX
-						godot_euler_mode = Basis.EULER_ORDER_XYZ
+						godot_euler_mode = EULER_ORDER_XYZ
 				# This is more complicated than this...
 				# The keys need to be baked out and sampled using this mode.
 				anim.rotation_track_insert_key(rottrack, ts, Basis.from_euler(value, godot_euler_mode))
