@@ -12,7 +12,7 @@ const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 #		return _to_string()
 #	func _to_string() -> String:
 #		var ret: String = "[UNITY REF {fileID: " + str(fileID)
-#		if guid != "":
+#		if not guid.is_empty():
 #			ret += ", guid: " + str(guid)
 #		ret += "}]"
 #		return ret

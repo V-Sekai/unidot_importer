@@ -135,7 +135,7 @@ class ParseState:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
 		var retlist: Array = []
 		var basedir: String = source_file_path.get_base_dir()
-		while basedir != "res://" and basedir != "/" and basedir != "" and basedir != ".":
+		while basedir != "res://" and basedir != "/" and not basedir.is_empty() and basedir != ".":
 			retlist.append(get_materials_path_base(material_name, basedir))
 			basedir = basedir.get_base_dir()
 		retlist.append(get_materials_path_base(material_name, "res://"))

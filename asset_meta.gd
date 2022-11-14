@@ -271,7 +271,7 @@ func initialize(database: Resource):
 static func lookup_meta_by_guid_noinit(database: Resource, target_guid: String) -> RefCounted: # returns asset_meta type
 	var found_path: String = database.guid_to_path.get(target_guid, "")
 	var found_meta: Resource = null
-	if found_path != "":
+	if not found_path.is_empty():
 		found_meta = database.path_to_meta.get(found_path, null)
 	return found_meta
 
@@ -594,4 +594,4 @@ func init_with_file(file: Object, path: String):
 			self.main_object_id = self.importer.main_object_id
 		if file.get_error() == ERR_FILE_EOF:
 			break
-	assert(self.guid != "")
+	assert(not self.guid.is_empty())

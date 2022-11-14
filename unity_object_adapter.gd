@@ -1411,9 +1411,9 @@ class UnityAnimatorState extends UnityAnimatorRelated:
 		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
 		var speed: float = keys.get("m_Speed", 1)
 		var cycle_off: float = keys.get("m_CycleOffset", 0)
-		var speed_param_active: int = keys.get("m_SpeedParameterActive", 0) and keys.get("m_SpeedParameter", "") != ""
-		var time_param_active: int = keys.get("m_TimeParameterActive", 0) and keys.get("m_TimeParameter", "") != ""
-		var cycle_param_active: int = keys.get("m_CycleParameterActive", 0) and keys.get("m_CycleParameter", "") != ""
+		var speed_param_active: int = keys.get("m_SpeedParameterActive", 0) and not keys.get("m_SpeedParameter", "").is_empty()
+		var time_param_active: int = keys.get("m_TimeParameterActive", 0) and not keys.get("m_TimeParameter", "").is_empty()
+		var cycle_param_active: int = keys.get("m_CycleParameterActive", 0) and not keys.get("m_CycleParameter", "").is_empty()
 		var ret = motion_node
 		# not sure we support cycle offset?
 		if speed != 1 or speed_param_active == 1 or time_param_active == 1:
@@ -1665,7 +1665,7 @@ class UnityAnimationClip extends UnityMotion:
 			nodepath = NodePath(str(nodepath) + extra_path)
 		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(current_fileID,
 				animator.meta.fileid_to_skeleton_bone.get(current_fileID, ""))
-		if skeleton_bone != "" and (typeof(unicomp) == TYPE_INT or unicomp == 4):
+		if not skeleton_bone.is_empty() and (typeof(unicomp) == TYPE_INT or unicomp == 4):
 			return NodePath(str(nodepath) + ":" + skeleton_bone)
 		return nodepath
 
@@ -3232,7 +3232,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				push_error("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
 				continue
 			print("Found gameobject: " + str(target_parent_obj.name))
-			if target_skel_bone != "" or target_parent_obj is BoneAttachment3D:
+			if not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D:
 				var godot_skeleton: Node3D = target_parent_obj
 				if target_parent_obj is BoneAttachment3D:
 					attachment = target_parent_obj
@@ -3295,7 +3295,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
 				state.add_fileID(attachment, transform_asset)
 				already_has_attachment = true
-			elif !already_has_attachment and (target_skel_bone != "" or target_parent_obj is BoneAttachment3D): # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
+			elif !already_has_attachment and (not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D): # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
 				var godot_skeleton: Node3D = target_parent_obj
 				if target_parent_obj is BoneAttachment3D:
 					attachment = target_parent_obj
@@ -4536,7 +4536,7 @@ class UnityAssetImporter extends UnityObject:
 			var type_key: String = type_str.split(":")[-1]
 			var key: Variant = srcAssetIdent.get("first", {}).get("name","") # FIXME: Returns null sometimes????
 			var val: Array = srcAssetIdent.get("second", [null,0,"",null]) # UnityRef
-			if typeof(key) != TYPE_NIL and key != "" and type_str.begins_with("UnityEngine"):
+			if typeof(key) != TYPE_NIL and not key.is_empty() and type_str.begins_with("UnityEngine"):
 				if not eo.has(type_key):
 					eo[type_key] = {}.duplicate()
 				eo[type_key][key] = val

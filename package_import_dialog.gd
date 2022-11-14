@@ -460,7 +460,7 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 	var ret: int = 0
 	if ti.is_checked(0):
 		var path = ti.get_tooltip_text(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
-		if path != "":
+		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:
 				push_error("Path " + str(path) + " has null asset!")

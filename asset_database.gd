@@ -70,7 +70,7 @@ func get_meta_at_path(path: String) -> Resource: # asset_meta
 
 func get_meta_by_guid(guid: String) -> Resource: # asset_meta
 	var path = guid_to_path.get(guid, "")
-	if path != "":
+	if not str(path).is_empty():
 		return get_meta_at_path(path)
 	return null
 

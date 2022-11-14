@@ -589,7 +589,7 @@ func decode_data(obj_headers: Array) -> Array:
 			if read_variant.has(var_name):
 				var source_prefab_guid: Variant = read_variant.get(var_name)[2]
 				#print(" Possible Ref " + str(var_name) + " to " + str(source_prefab_guid))
-				if typeof(source_prefab_guid) == TYPE_STRING and source_prefab_guid != "":
+				if typeof(source_prefab_guid) == TYPE_STRING and not source_prefab_guid.is_empty():
 					meta.prefab_dependency_guids[source_prefab_guid] = 1
 		for source_prefab_guid in self.s.reference_prefab_guid_storage:
 			meta.prefab_dependency_guids[source_prefab_guid] = 1

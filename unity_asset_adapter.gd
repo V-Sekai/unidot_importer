@@ -747,7 +747,7 @@ class FbxHandler extends BaseModelHandler:
 		var basedir: String = source_file_path.get_base_dir()
 		var texfn: String = source_file_path.get_file()
 		var relpath: String = ""
-		while basedir != "res://" and basedir != "/" and basedir != "" and basedir != ".":
+		while basedir != "res://" and basedir != "/" and not basedir.is_empty()and basedir != ".":
 			retlist[basedir + "/" + texfn] = relpath + texfn
 			retlist[basedir + "/textures/" + texfn] = relpath + "textures/" + texfn
 			retlist[basedir + "/Textures/" + texfn] = relpath + "Textures/" + texfn
@@ -916,7 +916,7 @@ class FbxHandler extends BaseModelHandler:
 		var stdout: Array = [].duplicate()
 		var d = DirAccess.open("res://")
 		var addon_path: String = editor_interface.get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
-		if addon_path.get_file() != "":
+		if not addon_path.get_file().is_empty():
 			if not d.file_exists(addon_path):
 				push_warning("Not converting fbx to glb because FBX2glTF.exe is not present.")
 				return ""
@@ -1166,7 +1166,7 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 		print("Parsing " + path + ": " + str(pkgasset.parsed_meta))
 	if pkgasset.asset_tar_header != null:
 		var ret_output_path = asset_handler.write_and_preprocess_asset(pkgasset, tmpdir, thread_subdir)
-		if ret_output_path != "":
+		if not ret_output_path.is_empty():
 			pkgasset.pathname = ret_output_path
 			if not dres.file_exists(pkgasset.pathname):
 				if asset_handler.write_godot_import(pkgasset, true):
