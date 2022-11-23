@@ -4398,14 +4398,14 @@ class UnityTerrain extends UnityBehaviour:
 		return outdict
 
 class UnityMonoBehaviour extends UnityBehaviour:
-	var script: Array:
+	var monoscript: Array:
 		get:
 			return keys.get("m_Script", [null,0,null,null])
 
 	# No need yet to override create_godot_node...
 	func create_godot_resource() -> Resource:
-		if script[1] == 11500000:
-			if script[2] == "8e6292b2c06870d4495f009f912b9600":
+		if monoscript[1] == 11500000:
+			if monoscript[2] == "8e6292b2c06870d4495f009f912b9600":
 				return create_post_processing_profile()
 		return null
 
@@ -4413,7 +4413,7 @@ class UnityMonoBehaviour extends UnityBehaviour:
 		var env: Environment = Environment.new()
 		for setting in keys.get("settings"):
 			var sobj = meta.lookup(setting)
-			match str(sobj.script[2]):
+			match str(sobj.monoscript[2]):
 				"adb84e30e02715445aeb9959894e3b4d": # Tonemap
 					env.set_meta("glow", sobj.keys)
 				"48a79b01ea5641d4aa6daa2e23605641": # Glow
