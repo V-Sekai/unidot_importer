@@ -9,7 +9,7 @@ const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
-const THREAD_COUNT = 0 # 10
+const THREAD_COUNT = 0  # 10
 const DISABLE_TEXTURES = false
 
 const STATE_DIALOG_SHOWING = 0
@@ -24,12 +24,12 @@ const STATE_DONE_IMPORT = 7
 var import_worker = import_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
 
-var main_dialog : AcceptDialog = null
-var file_dialog : FileDialog = null
+var main_dialog: AcceptDialog = null
+var file_dialog: FileDialog = null
 var main_dialog_tree: Tree = null
 
-var spinner_icon : AnimatedTexture = null
-var spinner_icon1 : Texture = null
+var spinner_icon: AnimatedTexture = null
+var spinner_icon1: Texture = null
 var fail_icon: Texture = null
 
 var checkbox_off_unicode: String = "\u2610"
@@ -56,7 +56,8 @@ var asset_models: Array = [].duplicate()
 var asset_prefabs: Array = [].duplicate()
 var asset_scenes: Array = [].duplicate()
 
-var pkg: Object = null # Type unitypackagefile, set in _selected_package
+var pkg: Object = null  # Type unitypackagefile, set in _selected_package
+
 
 func _resource_reimported(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
@@ -66,6 +67,7 @@ func _resource_reimported(resources: PackedStringArray):
 		print(res)
 	print("=================================")
 
+
 func _resource_reloaded(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
 		return
@@ -73,6 +75,7 @@ func _resource_reloaded(resources: PackedStringArray):
 	for res in resources:
 		print(res)
 	print("=====================================")
+
 
 func _init():
 	import_worker.asset_failed.connect(self._asset_failed, CONNECT_DEFERRED)
@@ -83,6 +86,7 @@ func _init():
 	editor_filesystem.resources_reimported.connect(self._resource_reimported)
 	editor_filesystem.resources_reload.connect(self._resource_reloaded)
 
+
 func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	if ti.is_selectable(0):
 		ti.set_checked(0, is_checked)
@@ -92,13 +96,15 @@ func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 	for chld in ti.get_children():
 		_check_recursively(chld, is_checked)
 
+
 func _cell_selected() -> void:
 	var ti: TreeItem = main_dialog_tree.get_selected()
 	var col: int = main_dialog_tree.get_selected_column()
 	ti.deselect(col)
-	if ti != null: # and col == 1:
+	if ti != null:  # and col == 1:
 		var new_checked: bool = !ti.is_checked(0)
 		_check_recursively(ti, new_checked)
+
 
 func _selected_package(p_path: String) -> void:
 	asset_work_waiting_write = [].duplicate()
@@ -111,7 +117,7 @@ func _selected_package(p_path: String) -> void:
 	asset_prefabs = [].duplicate()
 	asset_scenes = [].duplicate()
 	pkg = unitypackagefile.new().init_with_filename(p_path)
-	var tree_names = ['Assets']
+	var tree_names = ["Assets"]
 	var ti: TreeItem = main_dialog_tree.create_item()
 	ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 	ti.set_text(0, "Assets")
@@ -119,7 +125,7 @@ func _selected_package(p_path: String) -> void:
 	ti.set_icon_max_width(0, 24)
 	var tree_items = [ti]
 	for path in pkg.paths:
-		var path_names: Array = path.split('/')
+		var path_names: Array = path.split("/")
 		var i: int = len(tree_names) - 1
 		while i >= 0 and (i >= len(path_names) or path_names[i] != tree_names[i]):
 			#print("i=" + str(i) + "/" + str(len(path_names)) + "/" + str(tree_names[i]))
@@ -146,7 +152,7 @@ func _selected_package(p_path: String) -> void:
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.DARK_BLUE)
 			var icon: Texture = pkg.path_to_pkgasset[path].icon
-			if (icon != null):
+			if icon != null:
 				ti.set_icon(0, icon)
 				# ti.add_button(0, spinner_icon1, -1, true)
 			ti.set_text(0, path_names[i])
@@ -155,10 +161,12 @@ func _selected_package(p_path: String) -> void:
 		file_dialog.queue_free()
 		file_dialog = null
 
+
 func show_reimport() -> void:
 	file_dialog = null
 	_show_importer_common()
 	self._selected_package("")
+
 
 func show_importer() -> void:
 	file_dialog = FileDialog.new()
@@ -170,6 +178,7 @@ func show_importer() -> void:
 	file_dialog.file_selected.connect(self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
 	_show_importer_common()
+
 
 func _show_importer_common() -> void:
 	main_dialog = AcceptDialog.new()
@@ -220,21 +229,25 @@ func _show_importer_common() -> void:
 			spinner_icon.set_frame_texture(i, progress_icon)
 	spinner_icon.frames = 8
 
+
 func _notification(what):
 	match what:
 		NOTIFICATION_PREDELETE:
 			if file_dialog:
 				file_dialog.queue_free()
 				file_dialog = null
-				
+
 			if main_dialog:
 				main_dialog.queue_free()
 				main_dialog = null
 
+
 func generate_sentinel_png_filename():
 	return "_unityimp_temp" + str(tree_dialog_state) + ("_retry" if retry_tex else "") + ".png"
 
+
 var _delay_tick: int = 0
+
 
 func on_import_fully_completed():
 	import_finished = true
@@ -242,6 +255,7 @@ func on_import_fully_completed():
 		if main_dialog:
 			main_dialog.queue_free()
 			main_dialog = null
+
 
 func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 	var ti: TreeItem = tw.extra
@@ -251,6 +265,7 @@ func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 		ti.set_custom_color(0, Color("#228822"))
 	else:
 		ti.set_custom_color(0, Color("#ff4422"))
+
 
 func do_import_step():
 	if _currently_preprocessing_assets != 0:
@@ -360,12 +375,14 @@ func do_import_step():
 
 	print("Done Queueing work: state=" + str(tree_dialog_state))
 
+
 func _done_preprocessing_assets():
 	print("Finished all preprocessing!!")
 	self.import_worker.stop_all_threads_and_wait()
 	print("Joined.")
 	asset_database.save()
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+
 
 func _asset_failed(tw: Object):
 	_currently_preprocessing_assets -= 1
@@ -376,6 +393,7 @@ func _asset_failed(tw: Object):
 	ti.add_button(0, fail_icon, -1, true, "Import Failed!")
 	if _currently_preprocessing_assets == 0:
 		_done_preprocessing_assets()
+
 
 func start_godot_import(tw: Object):
 	#var meta_data: PackedByteArray = tw.asset.metadata_tar_header.get_data()
@@ -406,10 +424,12 @@ func start_godot_import(tw: Object):
 		asset_database.insert_meta(tw.asset.parsed_meta)
 	asset_work_waiting_scan.push_back(tw)
 
+
 #func start_godot_import_stub(tw: Object):
 #	tw.asset.pathname = tw.asset.pathname.get_basename() + "." + tw.output_path.get_extension()
 #	if asset_adapter.write_godot_stub(tw.asset):
 #		asset_work_waiting_scan.push_back(tw)
+
 
 func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
@@ -444,22 +464,24 @@ func _asset_processing_finished(tw: Object):
 		elif asset_type == asset_adapter.ASSET_TYPE_SCENE:
 			print("Asset " + str(tw.output_path) + " is scene")
 			asset_scenes.push_back(tw)
-		else: # asset_type == asset_adapter.ASSET_TYPE_UNKNOWN:
+		else:  # asset_type == asset_adapter.ASSET_TYPE_UNKNOWN:
 			print("Asset " + str(tw.output_path) + " is other")
 			asset_materials_and_other.push_back(tw)
 		# start_godot_import_stub(tw) # We now write it directly in the preprocess function.
 	if _currently_preprocessing_assets == 0:
 		_done_preprocessing_assets()
 
+
 func _asset_processing_started(tw: Object):
 	print("Started processing asset is " + str(tw.asset.pathname) + "/" + str(tw.asset.guid))
 	var ti: TreeItem = tw.extra
 	ti.set_custom_color(0, Color("#228888"))
 
+
 func _preprocess_recursively(ti: TreeItem) -> int:
 	var ret: int = 0
 	if ti.is_checked(0):
-		var path = ti.get_tooltip_text(0) # HACK! No data field in TreeItem?? Let's use the tooltip?!
+		var path = ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
 		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:
@@ -475,16 +497,19 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 		ret += _preprocess_recursively(chld)
 	return ret
 
+
 func _asset_tree_window_confirmed_custom(action_name):
 	assert(action_name == "show_result")
 	self._keep_open_on_import = true
 	_asset_tree_window_confirmed()
+
 
 var import_step_timer: Timer = null
 var import_step_tick_count: int = 0
 var import_step_reentrant: bool = false
 
 var preprocess_timer: Timer = null
+
 
 func _do_import_step_tick():
 	if import_step_reentrant:
@@ -496,7 +521,7 @@ func _do_import_step_tick():
 	import_step_reentrant = true
 	import_step_tick_count += 1
 	print("TICK ======= " + str(import_step_tick_count))
-	OS.close_midi_inputs() # Place to set C++ breakpoint to check for reentrancy
+	OS.close_midi_inputs()  # Place to set C++ breakpoint to check for reentrancy
 	do_import_step()
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		import_step_timer.timeout.disconnect(self._do_import_step_tick)
@@ -512,7 +537,8 @@ func _do_import_step_tick():
 	print("TICK RETURN ======= " + str(import_step_tick_count))
 	import_step_reentrant = false
 
-func _scan_sources_complete(useless: Variant=null):
+
+func _scan_sources_complete(useless: Variant = null):
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
 	print("Reimporting sentinel to wait for import step to finish.")
@@ -546,6 +572,7 @@ func _scan_sources_complete(useless: Variant=null):
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(import_step_timer, true)
 	import_step_timer.timeout.connect(self._do_import_step_tick)
 
+
 func _preprocess_wait_tick():
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
@@ -554,7 +581,7 @@ func _preprocess_wait_tick():
 		preprocess_timer.queue_free()
 		preprocess_timer = null
 		var cfile = ConfigFile.new()
-		cfile.set_value("remap", "path", "unidot_default_remap_path") # must be non-empty. hopefully ignored.
+		cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 		cfile.set_value("remap", "importer", "keep")
 		cfile.save("res://_sentinel_file.png.import")
 		asset_adapter.write_sentinel_png("res://_sentinel_file.png")
@@ -574,7 +601,7 @@ func _asset_tree_window_confirmed():
 	asset_database = asset_database_class.new().get_singleton()
 	asset_database.in_package_import = true
 	print("Asset database object returned " + str(asset_database))
-	import_worker.start_threads(THREAD_COUNT) # Don't DISABLE_THREADING
+	import_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())
 	if preprocess_timer != null:
 		preprocess_timer.queue_free()
@@ -588,4 +615,3 @@ func _asset_tree_window_confirmed():
 		print("No assets to process!")
 		_done_preprocessing_assets()
 		return
-

@@ -6,6 +6,7 @@ var blend_to_meta_parameter: Dictionary = {}.duplicate()
 var _recurse: StringName = &""
 var _current_meta: StringName = &""
 
+
 func _find_animation_node(np: NodePath) -> AnimationNode:
 	var node: AnimationNode = tree_root
 	for idx in range(1, np.get_name_count() - 1):
@@ -27,6 +28,7 @@ func _find_animation_node(np: NodePath) -> AnimationNode:
 		if node == null:
 			push_error("Failed to find node at " + str(idx) + " in " + str(np))
 	return node
+
 
 func _setup_blend_to_meta(prop: StringName):
 	var np: NodePath = NodePath(str(prop))
@@ -103,6 +105,7 @@ func _setup_blend_to_meta(prop: StringName):
 			blend_to_meta_parameter[prop] = &""
 			super.set(prop, meta)
 
+
 func _get(prop: StringName):
 	if tree_root == null:
 		meta_to_blend_parameters.clear()
@@ -131,6 +134,7 @@ func _get(prop: StringName):
 			set_meta(prop, tree_root.get_meta(prop))
 			return get_meta(prop)
 	return null
+
 
 func _set(prop: StringName, value):
 	if prop == &"tree_root" and value != self.tree_root:

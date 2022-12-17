@@ -112,34 +112,43 @@ const baseStrings: Dictionary = {
 	1138: "m_PrefabAsset",
 }
 
-class Stream extends StreamPeerBuffer:
+
+class Stream:
+	extends StreamPeerBuffer
 	var d: PackedByteArray = self.data_array
 	var reference_prefab_guid_storage: Array
-	func _init(d: PackedByteArray, p: int=0):
+
+	func _init(d: PackedByteArray, p: int = 0):
 		self.d = d
 		self.data_array = d
 		self.reference_prefab_guid_storage = []
 		self.seek(p)
+
 	func tell() -> int:
 		return self.get_position()
+
 	func seek_end(p: int) -> void:
 		self.seek(self.get_size() - p)
+
 	func skip(off: int) -> void:
 		self.seek(self.get_position() + off)
-	func read(cnt: int=-1) -> PackedByteArray:
+
+	func read(cnt: int = -1) -> PackedByteArray:
 		if cnt == -1:
 			cnt = self.get_size() - self.get_position()
 		return self.get_data(cnt)[1]
-	func align(n: int, align_off: int=0) -> void:
+
+	func align(n: int, align_off: int = 0) -> void:
 		var old_pos: int = self.tell()
 		var new_pos: int = ((old_pos - align_off + n - 1) & ~(n - 1)) + align_off
 		# if old_pos != new_pos:
 		# 	# print("align " + str(n) + " from " + str(old_pos) + " to " + str(new_pos))
 		self.seek(new_pos)
+
 	func read_str() -> String:
 		var initial_pos: int = self.get_position()
 		if initial_pos == self.get_size():
-			push_error("Already at end for read_str " + str(initial_pos) +" " + str(self.get_size()))
+			push_error("Already at end for read_str " + str(initial_pos) + " " + str(self.get_size()))
 			return ""
 		var i: int = initial_pos
 		var ilen: int = self.get_size()
@@ -152,7 +161,8 @@ class Stream extends StreamPeerBuffer:
 		return self.d.slice(initial_pos, self.get_size()).get_string_from_ascii()
 
 
-class Def extends RefCounted:
+class Def:
+	extends RefCounted
 	var children: Array = [].duplicate()
 	var name: String = ""
 	var full_name: String = ""
@@ -162,6 +172,7 @@ class Def extends RefCounted:
 	var array: bool = false
 	var parent: RefCounted = null
 	var serVer: int = 1
+
 	func _init(name: String, type_name: String, size: int, flags: int, array: bool, serVer: int):
 		self.children = [].duplicate()
 		self.name = name
@@ -213,19 +224,22 @@ class Def extends RefCounted:
 				if self.flags == 0x4000 and self.children[1].flags == 0x0:
 					pad = false
 				var arr_variant: Variant = null
-				if (child_type_name == "SInt16" or child_type_name == "short" or
-						child_type_name == "UInt16" or child_type_name == "unsigned short"):
+				if child_type_name == "SInt16" or child_type_name == "short" or child_type_name == "UInt16" or child_type_name == "unsigned short":
 					var arr: PackedInt32Array = PackedInt32Array().duplicate()
 					while i < arrlen:
 						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
 						i += 1
 					arr_variant = arr
-				elif (child_type_name == "SInt32" or child_type_name == "int" or
-						child_type_name == "long" or child_type_name == "unsigned int" or
-						child_type_name == "UInt32" or child_type_name == "unsigned long"):
+				elif (
+					child_type_name == "SInt32"
+					or child_type_name == "int"
+					or child_type_name == "long"
+					or child_type_name == "unsigned int"
+					or child_type_name == "UInt32"
+					or child_type_name == "unsigned long"
+				):
 					arr_variant = s.read(arrlen * 4).to_int32_array()
-				elif (child_type_name == "SInt64" or child_type_name == "UInt64" or
-						child_type_name == "long long" or child_type_name == "unsigned long long"):
+				elif child_type_name == "SInt64" or child_type_name == "UInt64" or child_type_name == "long long" or child_type_name == "unsigned long long":
 					arr_variant = s.read(arrlen * 8).to_int64_array()
 				elif child_type_name == "float":
 					arr_variant = s.read(arrlen * 4).to_float32_array()
@@ -266,7 +280,7 @@ class Def extends RefCounted:
 					s.seek(x + self.size)
 				return arr_variant
 		elif not self.children.is_empty():
-			var x: int = 0 #####s.tell()
+			var x: int = 0  #####s.tell()
 			var v: Dictionary = {}.duplicate()
 			if self.serVer != 1:
 				print("Adding serializedVersion to " + str(self.type_name) + " " + str(self.name) + ": " + str(self.serVer))
@@ -289,11 +303,7 @@ class Def extends RefCounted:
 				"ColorRGBA":
 					if v.has("rgba"):
 						var color32: int = v.get("rgba")
-						return Color(
-							((color32&0xff000000)>>24) / 255.0,
-							((color32&0xff0000)>>16) / 255.0,
-							((color32&0xff00)>>8) / 255.0,
-							(color32&0xff) / 255.0)
+						return Color(((color32 & 0xff000000) >> 24) / 255.0, ((color32 & 0xff0000) >> 16) / 255.0, ((color32 & 0xff00) >> 8) / 255.0, (color32 & 0xff) / 255.0)
 					# print("reading color @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
 				"Vector2f":
@@ -311,10 +321,11 @@ class Def extends RefCounted:
 				"Matrix3x4f":
 					# print("reading matrix @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Transform3D(
-						Vector3(v.get("e00"),v.get("e10"),v.get("e20")),
-						Vector3(v.get("e01"),v.get("e11"),v.get("e21")),
-						Vector3(v.get("e02"),v.get("e12"),v.get("e22")),
-						Vector3(v.get("e03"),v.get("e13"),v.get("e23")))
+						Vector3(v.get("e00"), v.get("e10"), v.get("e20")),
+						Vector3(v.get("e01"), v.get("e11"), v.get("e21")),
+						Vector3(v.get("e02"), v.get("e12"), v.get("e22")),
+						Vector3(v.get("e03"), v.get("e13"), v.get("e23"))
+					)
 				"GUID":
 					return "%08x%08x%08x%08x" % [v.get("data[0]"), v.get("data[1]"), v.get("data[2]"), v.get("data[3]")]
 				_:
@@ -403,6 +414,7 @@ var objs: Array = [].duplicate()
 
 var meta: RefCounted = null
 
+
 func _init(meta: RefCounted, file_contents: PackedByteArray):
 	self.meta = meta
 	self.s = Stream.new(file_contents)
@@ -425,7 +437,7 @@ func _init(meta: RefCounted, file_contents: PackedByteArray):
 	#self.s.seek(ptr)
 	#self.s = Stream(self.s.read())
 
-	self.off = self.s.tell() # always 0
+	self.off = self.s.tell()  # always 0
 
 	s.big_endian = true
 	self.table_size = s.get_u32()
@@ -455,6 +467,7 @@ func _init(meta: RefCounted, file_contents: PackedByteArray):
 	self.decode_guids()
 	self.objs = self.decode_data(obj_headers)
 
+
 func decode_defs() -> Array:
 	# File ID 9 (4.3.4f1) does not have this uint8.
 	if self.file_gen >= 10:
@@ -469,9 +482,10 @@ func decode_defs() -> Array:
 		var def = self.decode_attrtab()
 		defs.push_back(def)
 		i += 1
-		if self.file_gen >= 21: # also 116 ??
-			s.get_u32() # zeros
+		if self.file_gen >= 21:  # also 116 ??
+			s.get_u32()  # zeros
 	return defs
+
 
 #func decode_guids_backwards() -> void:
 #	var pos: int = s.tell()
@@ -488,6 +502,7 @@ func decode_defs() -> Array:
 #		s.seek(s.tell() - 1 - 16)
 #		referenced_reftypes.push_back(s.get_u8())
 #		s.seek(s.tell() - 2)
+
 
 func decode_guids() -> void:
 	# 02 00 00 00 01 00 00 00 5B 21 F1 AA FF FF FF FF 02 00 00 00 FA 19 14 BD FF FF FF FF
@@ -509,6 +524,7 @@ func decode_guids() -> void:
 		var path: String = s.read_str()
 		referenced_guids.push_back(guid)
 		i += 1
+
 
 func decode_data_headers() -> Array:
 	var count: int = s.get_u32()
@@ -562,6 +578,7 @@ func decode_data_headers() -> Array:
 		i += 1
 	return obj_headers
 
+
 func decode_data(obj_headers: Array) -> Array:
 	print(str(referenced_guids) + " then " + str(referenced_reftypes))
 	for g in referenced_guids:
@@ -597,17 +614,19 @@ func decode_data(obj_headers: Array) -> Array:
 	self.s.seek(save)
 	return objs
 
+
 func lookup_string(stab: PackedByteArray, name_off: int) -> String:
 	var stab_limit: int = len(stab) - 1
 	if name_off & 0x80000000:
 		return baseStrings.get(name_off & 0x7fffffff, str(name_off & 0x7fffffff))
 	elif name_off == stab_limit + 1:
-		return "" # Cannot index at end of array.
+		return ""  # Cannot index at end of array.
 	elif name_off > stab_limit:
 		push_error("Indexing past end of stab array " + str(name_off) + " " + str(stab_limit))
-		return str(name_off) # Cannot index at end of array.
+		return str(name_off)  # Cannot index at end of array.
 	else:
 		return str(stab.slice(min(stab_limit, name_off), min(stab_limit, name_off + 100) + 1).get_string_from_ascii())
+
 
 func decode_attrtab() -> Def:
 	var code: int = 0
@@ -637,7 +656,7 @@ func decode_attrtab() -> Def:
 		code = s.get_u32()
 		attr_cnt = 1
 	var size_per: int = 24
-	if self.file_gen >= 21: # also 114?
+	if self.file_gen >= 21:  # also 114?
 		size_per = 32
 	var guid: String = ""
 	var attrs: PackedByteArray = PackedByteArray()
@@ -647,7 +666,7 @@ func decode_attrtab() -> Def:
 		for i in range(16):
 			var guidchr: int = ident[i]
 			guid += "%01x%01x" % [guidchr & 15, guidchr >> 4]
-		table_len = attr_cnt*size_per
+		table_len = attr_cnt * size_per
 		attrs = self.s.read(table_len)
 		stab = self.s.read(stab_len)
 		# print("attr code " + str(code) + " attr_cnt " + str(attr_cnt) + " stab_len " + str(stab_len))
@@ -729,7 +748,7 @@ func decode_attrtab() -> Def:
 			if def == null:
 				def = Def.new(name, type_name, size, flags, a4 != 0, a1)
 			else:
-				push_error("Found multiple top-level defs " + str(name) + " type " +  str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
+				push_error("Found multiple top-level defs " + str(name) + " type " + str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
 		var indstr: String = ""
 		for lv in range(level):
 			indstr += "  "

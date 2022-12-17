@@ -3,35 +3,32 @@ extends RefCounted
 # Based on "Simple MD4 digest implementation in pure Python" by bonsaiviking:
 #### https://gist.github.com/bonsaiviking/5644414
 
-class MD4 extends RefCounted:
+
+class MD4:
+	extends RefCounted
 	var selfh: PackedInt32Array
 	var count: int = 0
 	var remainder: PackedByteArray = PackedByteArray()
-	
-	func leftrotate(i:int, n:int) -> int:
+
+	func leftrotate(i: int, n: int) -> int:
 		return ((i << n) & 0xffffffff) | (i >> (32 - n))
 
-	func F(x:int,y:int,z:int) -> int:
+	func F(x: int, y: int, z: int) -> int:
 		return (x & y) | (~x & z)
 
-	func G(x:int,y:int,z:int) -> int:
+	func G(x: int, y: int, z: int) -> int:
 		return (x & y) | (x & z) | (y & z)
 
-	func H(x:int,y:int,z:int) -> int:
+	func H(x: int, y: int, z: int) -> int:
 		return x ^ y ^ z
 
-	func _init(data: PackedByteArray=PackedByteArray()):
+	func _init(data: PackedByteArray = PackedByteArray()):
 		self.do_init(data)
 
 	func do_init(data: PackedByteArray):
 		self.remainder = data
 		self.count = 0
-		self.selfh = PackedInt32Array([
-				0x67452301,
-				0xefcdab89,
-				0x98badcfe,
-				0x10325476
-				])
+		self.selfh = PackedInt32Array([0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476])
 
 	func _add_chunk(chunk: PackedByteArray):
 		self.count += 1
@@ -45,23 +42,23 @@ class MD4 extends RefCounted:
 		for x in self.selfh:
 			h.append(x)
 		# Round 1
-		var s = PackedInt32Array([3,7,11,19])
+		var s = PackedInt32Array([3, 7, 11, 19])
 		for r in range(16):
-			i = (16-r)%4
+			i = (16 - r) % 4
 			k = r
-			h[i] = leftrotate( (h[i] + F(h[(i+1)%4], h[(i+2)%4], h[(i+3)%4]) + X[k]) & 4294967295, s[r%4] )
+			h[i] = leftrotate((h[i] + F(h[(i + 1) % 4], h[(i + 2) % 4], h[(i + 3) % 4]) + X[k]) & 4294967295, s[r % 4])
 		# Round 2
-		s = PackedInt32Array([3,5,9,13])
+		s = PackedInt32Array([3, 5, 9, 13])
 		for r in range(16):
-			i = (16-r)%4 
-			k = 4*(r%4) + int(r/4)
-			h[i] = leftrotate( (h[i] + G(h[(i+1)%4], h[(i+2)%4], h[(i+3)%4]) + X[k] + 0x5a827999) & 4294967295, s[r%4] )
+			i = (16 - r) % 4
+			k = 4 * (r % 4) + int(r / 4)
+			h[i] = leftrotate((h[i] + G(h[(i + 1) % 4], h[(i + 2) % 4], h[(i + 3) % 4]) + X[k] + 0x5a827999) & 4294967295, s[r % 4])
 		# Round 3
-		s = PackedInt32Array([3,9,11,15])
-		var karr = PackedInt32Array([0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15]) #wish I could function
+		s = PackedInt32Array([3, 9, 11, 15])
+		var karr = PackedInt32Array([0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15])  #wish I could function
 		for r in range(16):
-			i = (16-r)%4 
-			h[i] = leftrotate( (h[i] + H(h[(i+1)%4], h[(i+2)%4], h[(i+3)%4]) + X[karr[r]] + 0x6ed9eba1) & 4294967295, s[r%4] )
+			i = (16 - r) % 4
+			h[i] = leftrotate((h[i] + H(h[(i + 1) % 4], h[(i + 2) % 4], h[(i + 3) % 4]) + X[karr[r]] + 0x6ed9eba1) & 4294967295, s[r % 4])
 
 		i = 0
 		for v in h:
@@ -76,8 +73,8 @@ class MD4 extends RefCounted:
 			self.remainder = message.slice(len(message) - r)
 		else:
 			self.remainder = PackedByteArray().duplicate()
-		for chunk in range(0, len(message)-r, 64):
-			self._add_chunk( message.slice(chunk, chunk+64) )
+		for chunk in range(0, len(message) - r, 64):
+			self._add_chunk(message.slice(chunk, chunk + 64))
 		return self
 
 	func finish() -> PackedByteArray:
@@ -94,10 +91,10 @@ class MD4 extends RefCounted:
 		return out
 
 	func hex_encode(d: PackedByteArray) -> String:
-		var shex = ''
+		var shex = ""
 		for b in d:
 			var bint: int = b
-			shex += "%02x"%([bint])
+			shex += "%02x" % ([bint])
 		return shex
 
 	func do_test():
@@ -121,16 +118,18 @@ class MD4 extends RefCounted:
 			else:
 				print("FAIL: {0}: {1}\n\texpected: {2}".format([t, hex_encode(d), h]))
 
+
 # Hash function for calculating a fileID given a classname. The assembly name determines the guid
 static func get_fileid(cls_namespace: String, cls_name: String):
-	var tohash: PackedByteArray = ([115,0,0,0])
+	var tohash: PackedByteArray = [115, 0, 0, 0]
 	tohash.append_array(cls_namespace.to_utf8_buffer())
 	tohash.append_array(cls_name.to_utf8_buffer())
 	var hash_result: PackedByteArray = MD4.new(tohash).finish()
 	return hash_result.to_int32_array()[0]
 
+
 static func convert_unityref_to_npidentifier(unityref: Array) -> NodePath:
 	assert(unityref[0] == null)
-	assert(unityref[2] != null) # MonoScript can never be local references.
+	assert(unityref[2] != null)  # MonoScript can never be local references.
 	assert(unityref[3] == 3)
 	return NodePath(unityref[2] + "/" + str(unityref[1]))

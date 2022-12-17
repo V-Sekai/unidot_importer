@@ -5,11 +5,13 @@ const BLOCKSIZE: int = 512
 var buffer: PackedByteArray = PackedByteArray()
 var offset: int = 0
 
+
 class StringFile:
 	var _s: String = ""
 	var _offset: int = 0
 	var _eof: bool = false
 	var _path: String = ""
+
 	func init(s: String):
 		_s = s
 		_offset = 0
@@ -43,6 +45,7 @@ class StringFile:
 
 	var _lines_cache: Array = [].duplicate()
 	var _line_offset: int = -1
+
 	func get_line() -> String:
 		if _lines_cache.is_empty():
 			_lines_cache = _s.split("\n", true)
@@ -56,7 +59,7 @@ class StringFile:
 		var len_ret: int = len(ret)
 		if len_ret > 0:
 			if ret.substr(len_ret - 1, len_ret) == "\r":
-			# if ret.unicode_at(len_ret - 1) == 13:
+				# if ret.unicode_at(len_ret - 1) == 13:
 				return ret.substr(0, len_ret - 1)
 		return ret
 
@@ -69,11 +72,14 @@ class StringFile:
 	func close():
 		pass
 
+
 func init_with_buffer(new_buffer: PackedByteArray):
 	buffer = new_buffer
 	return self
 
-class TarHeader extends RefCounted:
+
+class TarHeader:
+	extends RefCounted
 	var size: int = 0
 	var filename: String = ""
 	var buffer: PackedByteArray = PackedByteArray()
@@ -94,8 +100,8 @@ class TarHeader extends RefCounted:
 
 
 static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
-	var idx:int = offset
-	var end:int = offset + xlen
+	var idx: int = offset
+	var end: int = offset + xlen
 	var n: int = 0
 	if header[offset] == 128 or header[offset] == 255:
 		# GNU format, untested?
@@ -109,6 +115,7 @@ static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
 		n = (n << 3) + (header[idx] - 48)
 		idx += 1
 	return n
+
 
 func read_header() -> TarHeader:
 	if self.offset + BLOCKSIZE > len(self.buffer):

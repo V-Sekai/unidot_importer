@@ -17,42 +17,168 @@ const FORMAT_SINT32: int = 11
 var _buffer_words: int = 0
 var _buffer: PackedByteArray = PackedByteArray()
 
-var _float32_buf: Array # PackedFloat32Array # FIXME: Cast to Array as a GDScript bug workaround
-var _float16_buf: Array # PackedFloat32Array # FIXME: Cast to Array as a GDScript bug workaround
+var _float32_buf: Array  # PackedFloat32Array # FIXME: Cast to Array as a GDScript bug workaround
+var _float16_buf: Array  # PackedFloat32Array # FIXME: Cast to Array as a GDScript bug workaround
 var _int32_buf: PackedInt32Array
 var _int16_buf: PackedInt32Array
 
-var HEX_LOOKUP_TABLE: PackedByteArray = PackedByteArray([
-	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-	0,1,2,3, 4,5,6,7, 8,9,0,0, 0,0,0,0,
-	0,10,11,12, 13,14,15,0, 0,0,0,0, 0,0,0,0,
-	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0,
-	0,10,11,12, 13,14,15,0, 0,0,0,0, 0,0,0,0,
-	0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0]);
+var HEX_LOOKUP_TABLE: PackedByteArray = PackedByteArray(
+	[
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		1,
+		2,
+		3,
+		4,
+		5,
+		6,
+		7,
+		8,
+		9,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		10,
+		11,
+		12,
+		13,
+		14,
+		15,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		10,
+		11,
+		12,
+		13,
+		14,
+		15,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0,
+		0
+	]
+)
 
 var FLOAT_PREFIX: PackedByteArray = var_to_bytes([PackedByteArray(), PackedFloat32Array()])
 var INT32_PREFIX: PackedByteArray = var_to_bytes([PackedByteArray(), PackedInt32Array()])
 
+
 func hex_decode(s: String, prefix: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 	var offset: int = len(prefix)
 	var pba: PackedByteArray = prefix.duplicate()
-	var larger_sz: int = (len(s)/2 + 12 + 3)
+	var larger_sz: int = len(s) / 2 + 12 + 3
 	pba.resize(larger_sz - (larger_sz & 3) + offset)
 	var hlt: PackedByteArray = HEX_LOOKUP_TABLE
 	var i: int = 0
-	var iend: int = (len(s)/2)
+	var iend: int = len(s) / 2
 	while i < iend:
 		pba[i + offset] = 16 * hlt[s.unicode_at(i * 2)] + hlt[s.unicode_at(i * 2 + 1)]
 		i += 1
 	return pba
 
+
 func clear_views():
-	_float32_buf = Array() # PackedFloat32Array() # FIXME: Cast to Array as a GDScript bug workaround
-	_float16_buf = Array() # PackedFloat32Array() # FIXME: Cast to Array as a GDScript bug workaround
+	_float32_buf = Array()  # PackedFloat32Array() # FIXME: Cast to Array as a GDScript bug workaround
+	_float16_buf = Array()  # PackedFloat32Array() # FIXME: Cast to Array as a GDScript bug workaround
 	_int32_buf = PackedInt32Array()
 	_int16_buf = PackedInt32Array()
+
 
 func set_buffer(source_buffer: PackedByteArray):
 	clear_views()
@@ -60,12 +186,14 @@ func set_buffer(source_buffer: PackedByteArray):
 	_buffer = FLOAT_PREFIX.duplicate()
 	_buffer.append_array(source_buffer)
 
+
 func set_buffer_from_hex(source_buffer: String):
 	clear_views()
 	_buffer_words = len(source_buffer) / 8
 	_buffer = hex_decode(source_buffer, FLOAT_PREFIX)
 
-func _init(source_buffer: Variant=PackedByteArray()):
+
+func _init(source_buffer: Variant = PackedByteArray()):
 	clear_views()
 	if typeof(source_buffer) == TYPE_DICTIONARY:
 		if source_buffer.has("_typelessdata"):
@@ -83,6 +211,7 @@ func _init(source_buffer: Variant=PackedByteArray()):
 	else:
 		push_error("Unrecognized buffer type in aligned_byte_buffer._init: " + str(typeof(source_buffer)))
 
+
 func _replace_prefix(buffer_and_prefix):
 	var prefix = buffer_and_prefix[1]
 	for i in range(len(prefix) - 4):
@@ -92,9 +221,11 @@ func _replace_prefix(buffer_and_prefix):
 	buffer_and_prefix[0][len(prefix) - 2] = ((_buffer_words >> 16) & 0xff)
 	buffer_and_prefix[0][len(prefix) - 1] = ((_buffer_words >> 24) & 0xff)
 
+
 func _decode_view_with_prefix(buffer_and_prefix) -> Variant:
 	_replace_prefix(buffer_and_prefix)
 	return bytes_to_var(buffer_and_prefix[0])[1]
+
 
 func _validate_word_alignment(offset, stride) -> bool:
 	if ((stride & 3) == 0) and (stride > 0) and ((offset & 3) == 0):
@@ -102,9 +233,11 @@ func _validate_word_alignment(offset, stride) -> bool:
 	printerr("Illegal non-word-aligned stride " + str(stride) + " and offset " + str(offset))
 	return false
 
+
 ####################### 8-bit formats
 
-func uint8_subarray(offset_arg: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedInt32Array:
+
+func uint8_subarray(offset_arg: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedInt32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset_arg) * cluster / stride)
 	var offset: int = offset_arg + len(FLOAT_PREFIX)
 	if length <= 0 or _buffer.is_empty():
@@ -115,13 +248,14 @@ func uint8_subarray(offset_arg: int, length_arg: int, stride: int=4, cluster: in
 	ret.resize(length)
 	for cidx in range(cluster):
 		var i: int = 0
-		var iend: int = (length / cluster)
+		var iend: int = length / cluster
 		while i < iend:
 			ret[i * cluster + cidx] = _buffer[offset + i * stride + cidx]
 			i += 1
 	return ret
 
-func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedFloat32Array:
+
+func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedFloat32Array:
 	var sign_mul: int = 2 if is_signed else 0
 	var divisor: float = 127.0 if is_signed else 255.0
 	var offset: int = offset_arg + len(FLOAT_PREFIX)
@@ -136,7 +270,7 @@ func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: i
 	for cidx in range(cluster):
 		range_cluster.append(cidx)
 	var i: int = 0
-	var iend: int = (length / cluster)
+	var iend: int = length / cluster
 	while i < iend:
 		for cidx in range_cluster:
 			var found: int = _buffer[offset + i * stride + cidx]
@@ -145,7 +279,9 @@ func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: i
 		i += 1
 	return ret
 
+
 ####################### 16-bit formats
+
 
 func _initialize_uint16_array():
 	if _int32_buf.is_empty():
@@ -154,13 +290,14 @@ func _initialize_uint16_array():
 		_int16_buf = PackedInt32Array()
 		_int16_buf.resize(len(_int32_buf) * 2)
 		var i: int = 0
-		var iend: int = (len(_int32_buf))
+		var iend: int = len(_int32_buf)
 		while i < iend:
 			_int16_buf[i * 2] = (_int32_buf[i] & 0xffff)
 			_int16_buf[i * 2 + 1] = ((_int32_buf[i] >> 16) & 0xffff)
 			i += 1
 
-func uint16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedInt32Array:
+
+func uint16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedInt32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedInt32Array()
@@ -171,13 +308,14 @@ func uint16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1
 	ret.resize(length)
 	for cidx in range(cluster):
 		var i: int = 0
-		var iend: int = (length / cluster)
+		var iend: int = length / cluster
 		while i < iend:
 			ret[i * cluster + cidx] = _int16_buf[(offset + i * stride) / 2 + cidx]
 			i += 1
 	return ret
 
-func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedFloat32Array:
+
+func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedFloat32Array:
 	var sign_mul: int = 2 if is_signed else 0
 	var divisor: float = 32767.0 if is_signed else 65535.0
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
@@ -192,7 +330,7 @@ func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int=
 		range_cluster.append(cidx)
 	# GDScript bug with F32Array # ret.resize(length)
 	var i: int = 0
-	var iend: int = (length / cluster)
+	var iend: int = length / cluster
 	while i < iend:
 		for cidx in range_cluster:
 			var found: int = _int16_buf[(offset + i * stride) / 2 + cidx]
@@ -201,7 +339,8 @@ func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int=
 		i += 1
 	return ret
 
-func float16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=1) -> PackedFloat32Array:
+
+func float16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedFloat32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
@@ -241,9 +380,11 @@ func float16_subarray(offset: int, length_arg: int, stride: int=2, cluster: int=
 
 	return ret
 
+
 ####################### 32-bit formats
 
-func uint32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedInt32Array:
+
+func uint32_subarray(offset: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedInt32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedInt32Array()
@@ -255,13 +396,14 @@ func uint32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=1
 	ret.resize(length)
 	for cidx in range(cluster):
 		var i: int = 0
-		var iend: int = (length / cluster)
+		var iend: int = length / cluster
 		while i < iend:
 			ret[i * cluster + cidx] = _int32_buf[(offset + i * stride) / 4 + cidx]
 			i += 1
 	return ret
 
-func float32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=1) -> PackedFloat32Array:
+
+func float32_subarray(offset: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedFloat32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset) * cluster / stride)
 	print("float32 subarray " + str(offset) + " length_arg " + str(length_arg) + " length " + str(length) + " stride " + str(stride) + " cluster " + str(cluster))
 	if length <= 0 or _buffer.is_empty():
@@ -277,7 +419,7 @@ func float32_subarray(offset: int, length_arg: int, stride: int=4, cluster: int=
 	for cidx in range(cluster):
 		range_cluster.append(cidx)
 	var i: int = 0
-	var iend: int = (length / cluster)
+	var iend: int = length / cluster
 	while i < iend:
 		for cidx in range_cluster:
 			# GDScript bug with F32Array # ret[i * cluster + cidx] = _float32_buf[offset + i * stride / 4 + cidx]
@@ -298,12 +440,14 @@ static func format_byte_width(format: int) -> int:
 			printerr("Unknown format " + str(format))
 			return 4
 
-func formatted_float_uint8_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedByteArray:
+
+func formatted_float_uint8_subarray(format: int, offset: int, length: int, stride: int, cluster: int = 1) -> PackedByteArray:
 	var float_array: PackedFloat32Array = formatted_float_subarray(format, offset, length, stride, cluster)
 	var encoded_array: PackedByteArray = var_to_bytes([PackedByteArray(), float_array])
 	return encoded_array.slice(len(FLOAT_PREFIX), len(encoded_array))
 
-func formatted_float_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedFloat32Array:
+
+func formatted_float_subarray(format: int, offset: int, length: int, stride: int, cluster: int = 1) -> PackedFloat32Array:
 	match format:
 		FORMAT_FLOAT32:
 			return float32_subarray(offset, length, stride, cluster)
@@ -321,7 +465,8 @@ func formatted_float_subarray(format: int, offset: int, length: int, stride: int
 			printerr("Invalid format " + str(format) + " for float vertex array.")
 			return PackedFloat32Array()
 
-func formatted_int_subarray(format: int, offset: int, length: int, stride: int, cluster: int=1) -> PackedInt32Array:
+
+func formatted_int_subarray(format: int, offset: int, length: int, stride: int, cluster: int = 1) -> PackedInt32Array:
 	match format:
 		# I cannot see any application or usage of sign bit for integer vertex attributes
 		# (this is just bones or indices, right?)
@@ -335,31 +480,54 @@ func formatted_int_subarray(format: int, offset: int, length: int, stride: int, 
 			printerr("Invalid format " + str(format) + " for integer vertex array.")
 			return PackedInt32Array()
 
-func formatted_vector2_subarray(format: int, offset: int, length: int, stride: int, dimension: int=2, flipv: bool=false) -> PackedVector2Array:
+
+func formatted_vector2_subarray(format: int, offset: int, length: int, stride: int, dimension: int = 2, flipv: bool = false) -> PackedVector2Array:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * dimension, stride, dimension))
 	var vec2_array: PackedVector2Array = PackedVector2Array()
 	vec2_array.resize(len(float_array) / dimension)
-	var flip=1.0 if flipv else 0.0
-	var flop=-1.0 if flipv else 1.0
+	var flip = 1.0 if flipv else 0.0
+	var flop = -1.0 if flipv else 1.0
 	var i: int = 0
-	var iend: int = (len(float_array) / dimension)
+	var iend: int = len(float_array) / dimension
 	while i < iend:
 		vec2_array[i] = Vector2(float_array[i * dimension], flip + flop * float_array[i * dimension + 1])
 		i += 1
 	return vec2_array
 
+
 # Special case: comes with a vector to flip handedness if used for vertex or normal.
-func formatted_vector3_subarray(handedness_vector: Vector3, format: int, offset: int, length: int, stride: int, dimension: int=3) -> PackedVector3Array:
+func formatted_vector3_subarray(handedness_vector: Vector3, format: int, offset: int, length: int, stride: int, dimension: int = 3) -> PackedVector3Array:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * dimension, stride, dimension))
 	var vec3_array: PackedVector3Array = PackedVector3Array()
 	vec3_array.resize(len(float_array) / dimension)
-	print("Asked for format " + str(format) + " offset " + str(offset) + " length " + str(length) + " stride " + str(stride) + " dim " + str(dimension) + " outarr " + str(len(vec3_array)) + " floatarr " + str(len(float_array)) + " buflen " + str(len(_buffer)) + " floatbuflen " + str(len(_float32_buf)))
+	print(
+		(
+			"Asked for format "
+			+ str(format)
+			+ " offset "
+			+ str(offset)
+			+ " length "
+			+ str(length)
+			+ " stride "
+			+ str(stride)
+			+ " dim "
+			+ str(dimension)
+			+ " outarr "
+			+ str(len(vec3_array))
+			+ " floatarr "
+			+ str(len(float_array))
+			+ " buflen "
+			+ str(len(_buffer))
+			+ " floatbuflen "
+			+ str(len(_float32_buf))
+		)
+	)
 	match dimension:
 		2:
 			var i: int = 0
-			var iend: int = (len(float_array) / 2)
+			var iend: int = len(float_array) / 2
 			while i < iend:
 				var x: float = float_array[i * 2]
 				var y: float = float_array[i * 2 + 1]
@@ -367,13 +535,14 @@ func formatted_vector3_subarray(handedness_vector: Vector3, format: int, offset:
 				i += 1
 		_:
 			var i: int = 0
-			var iend: int = (len(float_array) / 3)
+			var iend: int = len(float_array) / 3
 			while i < iend:
 				vec3_array[i] = handedness_vector * Vector3(float_array[i * 3], float_array[i * 3 + 1], float_array[i * 3 + 2])
 				i += 1
 	return vec3_array
 
-func formatted_color_subarray(format: int, offset: int, length: int, stride: int, dimension: int=4) -> PackedColorArray:
+
+func formatted_color_subarray(format: int, offset: int, length: int, stride: int, dimension: int = 4) -> PackedColorArray:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * dimension, stride, dimension))
 	var color_array: PackedColorArray = PackedColorArray()
@@ -381,36 +550,37 @@ func formatted_color_subarray(format: int, offset: int, length: int, stride: int
 	match dimension:
 		1:
 			var i: int = 0
-			var iend: int = (len(float_array))
+			var iend: int = len(float_array)
 			while i < iend:
 				color_array[i] = Color(float_array[i], 0, 0, 1)
 				i += 1
 		2:
 			var i: int = 0
-			var iend: int = (len(float_array) / 2)
+			var iend: int = len(float_array) / 2
 			while i < iend:
 				color_array[i] = Color(float_array[i * 2], float_array[i * 2 + 1], 0, 1)
 				i += 1
 		3:
 			var i: int = 0
-			var iend: int = (len(float_array) / 3)
+			var iend: int = len(float_array) / 3
 			while i < iend:
 				color_array[i] = Color(float_array[i * 3], float_array[i * 3 + 1], float_array[i * 3 + 2], 1)
 				i += 1
 		4:
 			var i: int = 0
-			var iend: int = (len(float_array) / 4)
+			var iend: int = len(float_array) / 4
 			while i < iend:
 				color_array[i] = Color(float_array[i * 4], float_array[i * 4 + 1], float_array[i * 4 + 2], float_array[i * 4 + 3])
 				i += 1
 	return color_array
 
-func formatted_tangent_subarray(format: int, offset: int, length: int, stride: int, dimension: int=4) -> PackedFloat32Array:
+
+func formatted_tangent_subarray(format: int, offset: int, length: int, stride: int, dimension: int = 4) -> PackedFloat32Array:
 	# FIXME: Cast to Array as a GDScript bug workaround
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * 4, stride, 4))
 
 	var i: int = 0
-	var iend: int = (len(float_array))
+	var iend: int = len(float_array)
 	match dimension:
 		2:
 			while i < iend:
@@ -429,4 +599,4 @@ func formatted_tangent_subarray(format: int, offset: int, length: int, stride: i
 			while i < iend:
 				float_array[i] *= -1
 				i += 4
-	return PackedFloat32Array(float_array) # FIXME: GDScript bug workaround
+	return PackedFloat32Array(float_array)  # FIXME: GDScript bug workaround

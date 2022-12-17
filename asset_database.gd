@@ -19,9 +19,9 @@ var in_package_import: bool = false
 @export var null_material_reference: Material = null
 @export var default_material_reference: Material = null
 
+
 # SEMI-STATIC
 func get_singleton() -> Object:
-
 	var asset_database = load(ASSET_DATABASE_PATH)
 	if asset_database == null:
 		asset_database = self
@@ -30,10 +30,12 @@ func get_singleton() -> Object:
 		asset_database = load(ASSET_DATABASE_PATH)
 	return asset_database
 
+
 func save():
 	ResourceSaver.save(self, ASSET_DATABASE_PATH)
 
-func insert_meta(meta: Resource): # asset_meta
+
+func insert_meta(meta: Resource):  # asset_meta
 	if meta.get_database_int() == null:
 		meta.initialize(self)
 	if guid_to_path.has(meta.guid):
@@ -51,6 +53,7 @@ func insert_meta(meta: Resource): # asset_meta
 	guid_to_path[meta.guid] = meta.path
 	path_to_meta[meta.path] = meta
 
+
 func rename_meta(meta: Resource, new_path: String):
 	if path_to_meta[meta.path] != meta:
 		printerr("Renaming file not at the correct path")
@@ -61,23 +64,27 @@ func rename_meta(meta: Resource, new_path: String):
 	path_to_meta[new_path] = meta
 	meta.path = new_path
 
-func get_meta_at_path(path: String) -> Resource: # asset_meta
+
+func get_meta_at_path(path: String) -> Resource:  # asset_meta
 	var ret: Resource = path_to_meta.get(path)
 	if ret != null:
 		if ret.get_database_int() == null:
 			ret.initialize(self)
 	return ret
 
-func get_meta_by_guid(guid: String) -> Resource: # asset_meta
+
+func get_meta_by_guid(guid: String) -> Resource:  # asset_meta
 	var path = guid_to_path.get(guid, "")
 	if not str(path).is_empty():
 		return get_meta_at_path(path)
 	return null
 
+
 func guid_to_asset_path(guid: String) -> String:
 	return guid_to_path.get(guid, "")
 
-static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
+
+static func create_dummy_meta(asset_path: String) -> Resource:  # asset_meta
 	var meta = asset_meta_class.new()
 	meta.init_with_file(null, asset_path)
 	meta.path = asset_path
@@ -88,10 +95,12 @@ static func create_dummy_meta(asset_path: String) -> Resource: # asset_meta
 	meta.guid = hc.finish().hex_encode()
 	return meta
 
-static func parse_meta(file: Object, path: String) -> Resource: # asset_meta
+
+static func parse_meta(file: Object, path: String) -> Resource:  # asset_meta
 	var ret: Resource = asset_meta_class.new()
 	ret.init_with_file(file, path)
 	return ret
+
 
 func preload_builtin_assets():
 	truncated_shader_reference = Shader.new()
@@ -103,7 +112,7 @@ func preload_builtin_assets():
 	null_material_reference = StandardMaterial3D.new()
 	null_material_reference.resource_name = "PINK"
 	null_material_reference.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	null_material_reference.albedo_color = Color(1.0,0.0,1.0);
+	null_material_reference.albedo_color = Color(1.0, 0.0, 1.0)
 	default_material_reference = StandardMaterial3D.new()
 	default_material_reference.resource_name = "Default-Material"
 
@@ -116,12 +125,12 @@ func preload_builtin_assets():
 	path_to_meta[unity_builtin.path] = unity_builtin
 
 	var stub = Resource.new()
-	unity_builtin.override_resource(10001, "SpotCookie", stub) # Spot lights default attenuation
-	unity_builtin.override_resource(10100, "Font Material", StandardMaterial3D.new()) # GUI/Text Shader
-	unity_builtin.override_resource(10102, "Arial", stub) # Arial (font)
+	unity_builtin.override_resource(10001, "SpotCookie", stub)  # Spot lights default attenuation
+	unity_builtin.override_resource(10100, "Font Material", StandardMaterial3D.new())  # GUI/Text Shader
+	unity_builtin.override_resource(10102, "Arial", stub)  # Arial (font)
 	var cube: BoxMesh = BoxMesh.new()
 	cube.size = Vector3(1.0, 1.0, 1.0)
-	unity_builtin.override_resource(10202 , "Cube", cube)
+	unity_builtin.override_resource(10202, "Cube", cube)
 	var cylinder: CylinderMesh = CylinderMesh.new()
 	cylinder.top_radius = 0.5
 	cylinder.bottom_radius = 0.5
@@ -148,7 +157,7 @@ func preload_builtin_assets():
 	var quad_arrays: Array = quad.surface_get_arrays(0)
 	# GODOT BUG: Quad mesh has incorrect normal if axis flipped.
 	for i in range(len(quad_arrays[Mesh.ARRAY_NORMAL])):
-		quad_arrays[Mesh.ARRAY_NORMAL][i] = Vector3(0,0,-1)
+		quad_arrays[Mesh.ARRAY_NORMAL][i] = Vector3(0, 0, -1)
 	quad_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
@@ -168,11 +177,10 @@ func preload_builtin_assets():
 	default_skybox.ground_horizon_color = Color(1, 1, 1, 1)
 
 	unity_extra.override_resource(10905, "UISprite", stub)
-	unity_extra.override_resource(10302, "Default-Diffuse", default_material_reference) # Legacy Shaders/Diffuse
-	unity_extra.override_resource(10303, "Default-Material", default_material_reference) # Standard
-	unity_extra.override_resource(10304, "Default-Skybox", default_skybox) # Skybox/Procedural
-	unity_extra.override_resource(10306, "Default-Line", default_material_reference) # Particles/Alpha Blended
-	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new()) # Particles/Standard Unlit
-	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new()) # Sprites/Default
-	unity_extra.override_resource(10758, "Sprites-Mask", StandardMaterial3D.new()) # Sprites/Mask
-
+	unity_extra.override_resource(10302, "Default-Diffuse", default_material_reference)  # Legacy Shaders/Diffuse
+	unity_extra.override_resource(10303, "Default-Material", default_material_reference)  # Standard
+	unity_extra.override_resource(10304, "Default-Skybox", default_skybox)  # Skybox/Procedural
+	unity_extra.override_resource(10306, "Default-Line", default_material_reference)  # Particles/Alpha Blended
+	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new())  # Particles/Standard Unlit
+	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new())  # Sprites/Default
+	unity_extra.override_resource(10758, "Sprites-Mask", StandardMaterial3D.new())  # Sprites/Mask

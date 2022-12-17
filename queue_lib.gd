@@ -1,17 +1,20 @@
-
-
-class Deque extends RefCounted:
+class Deque:
+	extends RefCounted
 	var _arr: Array = []
 	var _start: int = 0
 	var _end: int = 0
 	var _mutex: RefCounted = null
 
-	class DummyMutex extends RefCounted:
+	class DummyMutex:
+		extends RefCounted
 		var orig_mutex: RefCounted = null
+
 		func lock():
 			pass
+
 		func unlock():
 			pass
+
 		func try_lock():
 			return OK
 
@@ -108,7 +111,7 @@ class Deque extends RefCounted:
 			return 0
 		if e > s:
 			return e - s
-		return (e + sz - s)
+		return e + sz - s
 
 	func lock():
 		_mutex.lock()
@@ -123,7 +126,7 @@ class Deque extends RefCounted:
 	func _iter_init(arg):
 		arg[0] = _start
 		return len(_arr) != 0
-	
+
 	func _iter_next(arg):
 		arg[0] = (arg[0] + 1) % len(_arr)
 		return arg[0] != _end
@@ -132,7 +135,8 @@ class Deque extends RefCounted:
 		return _arr[arg[0]]
 
 
-class Queue extends Deque:
+class Queue:
+	extends Deque
 
 	func _init():
 		_arr = [].duplicate()
@@ -148,19 +152,24 @@ class Queue extends Deque:
 		return front()
 
 
-class LockedDeque extends Deque:
+class LockedDeque:
+	extends Deque
+
 	func _init():
 		_arr = [].duplicate()
 		_mutex = Mutex.new()
 
 
-class LockedQueue extends Queue:
+class LockedQueue:
+	extends Queue
+
 	func _init():
 		_arr = [].duplicate()
 		_mutex = Mutex.new()
 
 
-class BlockingQueue extends LockedQueue:
+class BlockingQueue:
+	extends LockedQueue
 	var _semaphore: Semaphore = null
 
 	func _init():
@@ -186,38 +195,40 @@ class BlockingQueue extends LockedQueue:
 		#	unlock()
 		return pop_front()
 
+
 func _thread_function(bq: BlockingQueue, some_int: int):
-	assert(bq.pop()==1)
-	assert(bq.pop()==2)
-	assert(bq.pop()==3)
+	assert(bq.pop() == 1)
+	assert(bq.pop() == 2)
+	assert(bq.pop() == 3)
 	print("Thread Finished")
 	return "Success"
+
 
 func run_test():
 	var q: Queue = Queue.new()
 	q.push(1)
 	q.push(2)
 	q.push(3)
-	assert(q.pop()==1)
+	assert(q.pop() == 1)
 	q.push(4)
-	assert(q.pop()==2)
-	assert(q.pop()==3)
-	assert(q.pop()==4)
-	assert(q.pop()==null)
+	assert(q.pop() == 2)
+	assert(q.pop() == 3)
+	assert(q.pop() == 4)
+	assert(q.pop() == null)
 	q.push(5)
 	q.push(6)
-	assert(q.pop()==5)
-	assert(q.pop()==6)
-	assert(q.pop()==null)
+	assert(q.pop() == 5)
+	assert(q.pop() == 6)
+	assert(q.pop() == null)
 	q.push(7)
 	q.push(8)
 	q.push(9)
 	q.push(10)
-	assert(q.pop()==7)
-	assert(q.pop()==8)
-	assert(q.pop()==9)
-	assert(q.pop()==10)
-	assert(q.pop()==null)
+	assert(q.pop() == 7)
+	assert(q.pop() == 8)
+	assert(q.pop() == 9)
+	assert(q.pop() == 10)
+	assert(q.pop() == null)
 	q.push(11)
 	q.push(12)
 	q.push(13)
@@ -226,15 +237,15 @@ func run_test():
 	q.push(16)
 	q.push(17)
 	q.push(18)
-	assert(q.pop()==11)
-	assert(q.pop()==12)
-	assert(q.pop()==13)
-	assert(q.pop()==14)
-	assert(q.pop()==15)
-	assert(q.pop()==16)
-	assert(q.pop()==17)
-	assert(q.pop()==18)
-	assert(q.pop()==null)
+	assert(q.pop() == 11)
+	assert(q.pop() == 12)
+	assert(q.pop() == 13)
+	assert(q.pop() == 14)
+	assert(q.pop() == 15)
+	assert(q.pop() == 16)
+	assert(q.pop() == 17)
+	assert(q.pop() == 18)
+	assert(q.pop() == null)
 	print("Test 1 Finished")
 	var bq: BlockingQueue = BlockingQueue.new()
 	var t: Thread = Thread.new()
@@ -243,6 +254,6 @@ func run_test():
 	OS.delay_msec(100)
 	bq.push(2)
 	bq.push(3)
-	assert(t.wait_to_finish()=="Success")
-	assert(null==bq.pop_back())
+	assert(t.wait_to_finish() == "Success")
+	assert(null == bq.pop_back())
 	print("Test 2 Finished")

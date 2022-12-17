@@ -44,6 +44,7 @@ var search_obj_key_regex: RegEx = RegEx.new()
 var arr_obj_key_regex: RegEx = RegEx.new()
 var line_number: int = 0
 
+
 func _init():
 	current_obj = null
 	arr_obj_key_regex = RegEx.new()
@@ -51,14 +52,14 @@ func _init():
 	search_obj_key_regex = RegEx.new()
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
-func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 
+func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 	# WHAT THE FUCK IS THIS AND WHY DOES IT FIX line.begins_with("{") always returning false???
 	# EXPLOIT HEISENBUG NATURE TO FIX OUR PROBLEM
 	#      - _Outline_Color: {r: 1, g: 1, b: 1, a: 1}
 	str(str(line.substr(0, 1)).begins_with(str(line.substr(0, 1))))
 	# User must decode this as desired.
-	var force_string = (keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash" or parent_key == "fileIDToRecycleName" or parent_key == "internalIDToNameTable")
+	var force_string = keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash" or parent_key == "fileIDToRecycleName" or parent_key == "internalIDToNameTable"
 	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_int():
 		return line.to_int()
 	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
@@ -87,7 +88,7 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 		var is_vec3: bool = false
 		var is_rect: bool = false
 		var is_quat: bool = false
-		var value_ref: Array = [] # UnityRef
+		var value_ref: Array = []  # UnityRef
 		# UnityRef, Vector2, Vector3, Quaternion?
 		var offset = 1
 		while true:
@@ -133,7 +134,7 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 					value_color.b = value.to_float()
 				"a":
 					value_color.a = value.to_float()
-				"instanceID", "fileID": # {instanceID: 0} instead of fileID??
+				"instanceID", "fileID":  # {instanceID: 0} instead of fileID??
 					#if value != "0":
 					if value_ref.is_empty():
 						value_ref.resize(4)
@@ -169,16 +170,18 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 		j.parse(line)
 		return j.get_data()
 	elif line.begins_with("'"):
-		var s: String = line.substr(1, len(line)-1)
+		var s: String = line.substr(1, len(line) - 1)
 		str(str(typeof(s)) + "/" + str(line))
 		return s.replace("''", "")
 	else:
 		return line
 
+
 func xprint(s: String):
 	pass
 
-func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity_object_adapter.UnityObject
+
+func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unity_object_adapter.UnityObject
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
 		print("guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
@@ -187,7 +190,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 	while line.ends_with("\r"):
 		line = line.substr(0, len(line) - 1)
 	# The last line of a multiline single-quoted string is not indented if that line is empty
-	var end_single_multiline: bool = (has_single_quote_line and line == "'")
+	var end_single_multiline: bool = has_single_quote_line and line == "'"
 	var line_plain: String = line.dedent()
 	var obj_key_match: RegExMatch = arr_obj_key_regex.search(line_plain)
 	var value_start: int = 2
@@ -204,15 +207,15 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		ending_single_quotes = (len(line_plain) - len(line_plain.rstrip("'")))
 	if ending_double_quotes:
 		var idx: int = len(line_plain) - 2
-		while line_plain.substr(idx, 1) == '\\':
+		while line_plain.substr(idx, 1) == "\\":
 			idx -= 1
 			ending_double_quotes = not ending_double_quotes
 	#print("st=" + str(value_start) + " < " + str(len(line_plain)) + ":" + line_plain)
 	#print(JSON.print(line))
 	if value_start < len(line_plain) and not has_brace_line and not has_single_quote_line and not has_double_quote_line:
-		missing_brace = line_plain.substr(value_start,1) == '{' and not line_plain.ends_with('}')
-		missing_double_quote = line_plain.substr(value_start,1) == '"' and not line_plain.ends_with('"')
-		missing_single_quote = line_plain.substr(value_start,1) == "'" and ending_single_quotes % 2 == (1 if ending_single_quotes + value_start == len(line_plain) else 0)
+		missing_brace = line_plain.substr(value_start, 1) == "{" and not line_plain.ends_with("}")
+		missing_double_quote = line_plain.substr(value_start, 1) == '"' and not line_plain.ends_with('"')
+		missing_single_quote = line_plain.substr(value_start, 1) == "'" and ending_single_quotes % 2 == (1 if ending_single_quotes + value_start == len(line_plain) else 0)
 	var new_indentation_level = len(line) - len(line_plain)
 	var object_to_return: Object = null
 	if line.begins_with("--- ") or (line == "" and single_quote_line == ""):
@@ -261,7 +264,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		single_quote_line += "\n"
 		#print("Missing single start "  + str(single_quote_line))
 	elif new_indentation_level == 0 and not end_single_multiline:
-		push_error("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r","").substr(128))
+		push_error("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r", "").substr(128))
 	elif missing_single_quote:
 		single_quote_line = line_plain
 		has_single_quote_line = true
@@ -277,19 +280,19 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 		has_brace_line = true
 		continuation_line_indentation_level = new_indentation_level
 		#print("Missing brace start")
-	elif (has_single_quote_line and new_indentation_level > continuation_line_indentation_level and (ending_single_quotes % 2) == 0):
+	elif has_single_quote_line and new_indentation_level > continuation_line_indentation_level and (ending_single_quotes % 2) == 0:
 		single_quote_line += line_plain
 		#print("Missing single mid: " + brace_line)
-	elif (has_double_quote_line and new_indentation_level > continuation_line_indentation_level and not ending_double_quotes):
+	elif has_double_quote_line and new_indentation_level > continuation_line_indentation_level and not ending_double_quotes:
 		double_quote_line += " " + line_plain
 		#print("Missing double mid: " + brace_line)
-	elif (has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with('}')):
+	elif has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with("}"):
 		brace_line += " " + line_plain
-		push_error("Missing brace mid: " + brace_line) # Never seen structs big enough to wrap twice.
+		push_error("Missing brace mid: " + brace_line)  # Never seen structs big enough to wrap twice.
 	else:
 		if new_indentation_level > continuation_line_indentation_level or end_single_multiline:
 			var endcontinuation: bool = false
-			if has_brace_line and line_plain.ends_with('}'):
+			if has_brace_line and line_plain.ends_with("}"):
 				line_plain = brace_line + " " + line_plain
 				brace_line = ""
 				has_brace_line = false
@@ -313,7 +316,10 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				if obj_key_match != null and line_plain != "data:":
 					value_start = 0 + obj_key_match.get_end()
 					this_key = obj_key_match.get_string(1)
-		if new_indentation_level > indentation_level or (new_indentation_level == indentation_level and line_plain.begins_with("- ") and typeof(current_obj_tree.back()) != TYPE_ARRAY):
+		if (
+			new_indentation_level > indentation_level
+			or (new_indentation_level == indentation_level and line_plain.begins_with("- ") and typeof(current_obj_tree.back()) != TYPE_ARRAY)
+		):
 			if line_plain.begins_with("- ") or line_plain == "data:":
 				current_indent_tree.push_back(indentation_level)
 				var new_arr: Array = [].duplicate()
@@ -339,7 +345,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 
-		if line_plain.begins_with("- ") and obj_key_match != null: #(line_plain.begins_with("- ") or line_plain == "data:") and obj_key_match != null:
+		if line_plain.begins_with("- ") and obj_key_match != null:  #(line_plain.begins_with("- ") or line_plain == "data:") and obj_key_match != null:
 			current_indent_tree.push_back(indentation_level)
 			indentation_level = new_indentation_level + 2
 			var new_obj = {}.duplicate()
@@ -353,7 +359,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 				if this_key != "first" and this_key != "second" and this_key != "data":
 					prev_complex_key = this_key
 			else:
-				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()),this_key, prev_complex_key)
+				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()), this_key, prev_complex_key)
 				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 					match this_key:
 						# m_SourcePrefab (new), m_ParentPrefab (legacy) used in prefabs and scenes.
@@ -364,7 +370,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource: # unity
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val
-		elif (line_plain.begins_with("- ") or line_plain == "data:"):
+		elif line_plain.begins_with("- ") or line_plain == "data:":
 			var parsed_val = parse_value(line_plain.substr(2), "", prev_complex_key)
 			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 				meta.dependency_guids[parsed_val[2]] = 1
