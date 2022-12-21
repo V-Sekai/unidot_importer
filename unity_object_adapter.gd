@@ -460,7 +460,7 @@ class UnityMesh extends UnityObject:
 			Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
 		) * Transform3D.FLIP_X
 
-	func get_extra_resource(fileID: int) -> Skin:
+	func get_extra_resource(fileID: int) -> Resource: #Skin:
 		var sk: Skin = Skin.new()
 		var idx: int = 0
 		for b in binds:
@@ -468,7 +468,7 @@ class UnityMesh extends UnityObject:
 			idx += 1
 		return sk
 
-	func create_godot_resource() -> ArrayMesh:
+	func create_godot_resource() -> Resource: #ArrayMesh:
 		var vertex_buf: RefCounted = get_vertex_data()
 		var index_buf: RefCounted = get_index_data()
 		var vertex_layout: Dictionary = vertex_layout_info
@@ -742,7 +742,7 @@ class UnityMaterial extends UnityObject:
 				ret[x] = true
 		return ret
 
-	func create_godot_resource() -> Material:
+	func create_godot_resource() -> Resource: #Material:
 		#print("keys: " + str(keys))
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
@@ -968,7 +968,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 	func get_extra_resources() -> Dictionary:
 		return {-self.fileID: ".library.tres"}
 
-	func get_extra_resource(fileID: int) -> AnimationLibrary:
+	func get_extra_resource(fileID: int) -> Resource: #AnimationLibrary:
 		var sk: AnimationLibrary = AnimationLibrary.new()
 		var fileid_to_name: Dictionary = get_animation_guid_fileid_to_name()
 		var anim_library = self.create_animation_library_clips_at_node(null, null, fileid_to_name, {}.duplicate())
@@ -1605,7 +1605,7 @@ class UnityAnimationClip extends UnityMotion:
 	func get_godot_extension() -> String:
 		return ".anim.tres"
 
-	func create_godot_resource() -> Animation:
+	func create_godot_resource() -> Resource: #Animation:
 		if not meta.godot_resources.is_empty():
 			return null # We will create them when referenced.
 
@@ -2153,11 +2153,11 @@ class UnityTexture extends UnityObject:
 			65: # ETC2 crunched
 				push_error("ERROR: ETC2 Crunch not supported")
 			72: # RG32 int
-				return Image.FORMAT_RG16
+				return Image.FORMAT_RGH
 			73: # RGB48 int
-				return Image.FORMAT_RGB16
+				return Image.FORMAT_RGBH
 			74: # RGB64 int
-				return Image.FORMAT_RGBA16
+				return Image.FORMAT_RGBAH
 			_:
 				push_error("ERROR: Format " + str(format_index) + " is not supported")
 		return Image.FORMAT_RGBA8 # most common
@@ -2753,7 +2753,7 @@ class UnityGameObject extends UnityObject:
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
 
-	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node: # -> Node3D:
 		var state: Object = xstate
 		var ret: Node3D = null
 		var components: Array = self.components
@@ -2841,11 +2841,11 @@ class UnityGameObject extends UnityObject:
 				return 12345.678 # ???? 
 			return keys.get("m_Component")
 
-	func get_transform() -> Variant: # UnityTransform:
+	func get_transform() -> Object: # UnityTransform:
 		if is_stripped:
 			push_error("Attempted to access the transform of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
-			return 12345.678 # ???? 
+			return null # ???? 
 		if typeof(components) != TYPE_ARRAY:
 			push_error(uniq_key + " has component array: " + str(components))
 		elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
@@ -2884,7 +2884,7 @@ class UnityGameObject extends UnityObject:
 		get:
 			return keys.get("m_IsActive", 0) != 0
 
-	func is_toplevel() -> Variant: # bool
+	func is_toplevel() -> bool:
 		if is_stripped:
 			# Stripped objects are part of a Prefab, so by definition will never be toplevel
 			# (The PrefabInstance itself will be the toplevel object)
@@ -2897,7 +2897,7 @@ class UnityGameObject extends UnityObject:
 			return null
 		return transform.parent_ref[1] == 0
 
-	func get_gameObject() -> Variant: # UnityGameObject:
+	func get_gameObject() -> UnityGameObject: # UnityGameObject:
 		return self
 
 
@@ -2950,7 +2950,7 @@ class UnityPrefabInstance extends UnityGameObject:
 				return value
 		return source_prefab_meta.get_main_object_name()
 
-	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node3D:
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node: # Node3D
 		# called from toplevel (scene, inherited prefab?)
 		var ret_data: Array = self.instantiate_prefab_node(xstate, new_parent)
 		if len(ret_data) < 4:
@@ -3353,14 +3353,14 @@ class UnityPrefabInstance extends UnityGameObject:
 
 		return [self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene]
 
-	func get_transform() -> Variant: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
+	func get_transform() -> Object: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
 		return self
 
 	var rootOrder: int:
 		get:
 			return 0 # no idea..
 
-	func get_gameObject() -> Variant:
+	func get_gameObject() -> UnityGameObject:
 		return self
 
 	var parent_ref: Array: # UnityRef
@@ -3376,7 +3376,7 @@ class UnityPrefabInstance extends UnityGameObject:
 		get:
 			return meta.lookup(parent_ref)
 
-	func is_toplevel() -> Variant:
+	func is_toplevel() -> bool:
 		return not is_legacy_parent_prefab and parent_ref[1] == 0
 
 	var modifications: Array:
@@ -3419,19 +3419,19 @@ class UnityComponent extends UnityObject:
 		new_node.editor_description = str(self)
 		return new_node
 
-	func get_gameObject() -> Variant: # UnityGameObject
+	func get_gameObject() -> UnityGameObject:
 		if is_stripped:
 			push_error("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
-			return 12345.678 # ???? 
+			return null # ???? 
 		return meta.lookup(keys.get("m_GameObject", []))
 
-	func get_name() -> Variant:
+	func get_name() -> String:
 		if is_stripped:
 			push_error("Attempted to access the name of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
 			# FIXME: Make the calling function crash, since we don't have stacktraces wwww
-			return 12345.678 # ????
+			return "[stripped]" # ????
 		return str(gameObject.name)
 
 	func is_toplevel() -> bool:
@@ -4719,7 +4719,7 @@ class UnityDefaultImporter extends UnityAssetImporter:
 				return 102900000 # DefaultAsset
 
 class DiscardUnityComponent extends UnityComponent:
-	func create_godot_node(state: RefCounted, new_parent: Node) -> Node:
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
 var _type_dictionary: Dictionary = {
