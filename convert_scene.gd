@@ -4,6 +4,7 @@ extends Resource
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const scene_node_state_class: GDScript = preload("./scene_node_state.gd")
 
+
 func customComparison(a, b):
 	if typeof(a) != typeof(b):
 		return typeof(a) < typeof(b)
@@ -11,6 +12,7 @@ func customComparison(a, b):
 		return a.transform.rootOrder < b.transform.rootOrder
 	else:
 		return b.fileID < a.fileID
+
 
 func smallestTransform(a, b):
 	if typeof(a) != typeof(b):
@@ -20,13 +22,15 @@ func smallestTransform(a, b):
 	else:
 		return b.fileID < a.fileID
 
-func recursive_print(node:Node, indent:String=""):
+
+func recursive_print(node: Node, indent: String = ""):
 	var fnstr = "" if str(node.scene_file_path) == "" else (" (" + str(node.scene_file_path) + ")")
 	print(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
 	#print(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
 	var new_indent: String = indent + "  "
 	for c in node.get_children():
 		recursive_print(c, new_indent)
+
 
 func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#for asset in pkgasset.parsed_asset.assets.values():
@@ -38,9 +42,18 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	for asset in pkgasset.parsed_asset.assets.values():
 		if (asset.type == "GameObject" or asset.type == "PrefabInstance") and asset.toplevel:
 			if asset.is_non_stripped_prefab_reference:
-				continue # We don't want these.
+				continue  # We don't want these.
 			if asset.is_stripped:
-				push_error("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+				push_error(
+					(
+						"Stripped object "
+						+ asset.type
+						+ " would be added to arr "
+						+ str(asset.meta.guid)
+						+ "/"
+						+ str(asset.fileID)
+					)
+				)
 			if is_prefab:
 				if asset.type == "PrefabInstance":
 					var target_prefab_meta = asset.meta.lookup_meta(asset.source_prefab)
@@ -100,13 +113,15 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
-	var node_state: Object = scene_node_state_class.new(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
+	var node_state: Object = scene_node_state_class.new(
+		pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents
+	)
 
 	var ps: RefCounted = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
-		var parent: RefCounted = null # UnityTransform
+		var parent: RefCounted = null  # UnityTransform
 		if asset.is_stripped:
-			pass # Ignore stripped components.
+			pass  # Ignore stripped components.
 		elif asset.is_non_stripped_prefab_reference:
 			var prefab_instance_id: int = asset.prefab_instance[1]
 			var prefab_source_object: int = asset.prefab_source_object[1]
@@ -140,12 +155,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				max_c = 1.0
 			env.fog_light_color = c
 			env.fog_light_energy = max_c
-			if asset.keys.get("m_FogMode", 3) == 1: # Linear
+			if asset.keys.get("m_FogMode", 3) == 1:  # Linear
 				const TARGET_FOG_DENSITY = 0.05
 				env.fog_density = -log(TARGET_FOG_DENSITY) / asset.keys.get("m_LinearFogEnd", 0.0)
 			else:
 				env.fog_density = asset.keys.get("m_FogDensity", 0.0)
-			var sun: Array = asset.keys.get("m_Sun", [null,0,null,null])
+			var sun: Array = asset.keys.get("m_Sun", [null, 0, null, null])
 			if sun[1] != 0:
 				scene_contents.remove_child(dirlight)
 				dirlight = null
@@ -189,19 +204,19 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				env.ambient_light_energy = eng
 				env.ambient_light_sky_contribution = 0
 		elif asset.type == "LightmapSettings":
-			var lda: Array = asset.keys.get("m_LightingDataAsset", [null,0,null,null])
+			var lda: Array = asset.keys.get("m_LightingDataAsset", [null, 0, null, null])
 			if lda[1] == 0:
 				scene_contents.remove_child(bakedlm)
 				bakedlm = null
 		elif asset.type == "NavMeshSettings":
-			var nmd: Array = asset.keys.get("m_NavMeshData", [null,0,null,null])
+			var nmd: Array = asset.keys.get("m_NavMeshData", [null, 0, null, null])
 			if nmd[1] == 0:
 				scene_contents.remove_child(navregion)
 				navregion = null
 			else:
 				navregion.navmesh = NavigationMesh.new()
 		elif asset.type == "OcclusionCullingSettings":
-			var ocd: Array = asset.keys.get("m_OcclusionCullingData", [null,0,null,null])
+			var ocd: Array = asset.keys.get("m_OcclusionCullingData", [null, 0, null, null])
 			if ocd[1] == 0:
 				scene_contents.remove_child(occlusion)
 				occlusion = null
@@ -240,12 +255,16 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
 
 	node_state.env = env
-	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
+	node_state.set_main_name_map(
+		node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map
+	)
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
 		if asset.is_stripped:
-			push_error("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
+			push_error(
+				"Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID)
+			)
 		var skel: RefCounted = null
 		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
 		if asset.transform != null:
@@ -271,7 +290,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if asset.type == "PrefabInstance":
 				node_state.add_prefab_to_parent_transform(0, asset.fileID)
 
-
 	# scene_contents = node_state.owner
 	if scene_contents == null:
 		push_error("Failed to parse scene " + pkgasset.pathname)
@@ -281,14 +299,20 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		if str(asset.type) == "SkinnedMeshRenderer":
 			var ret: Node = asset.create_skinned_mesh(node_state)
 			if ret != null:
-				print("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
+				print(
+					(
+						"Finally added SkinnedMeshRenderer "
+						+ str(asset.uniq_key)
+						+ " into Skeleton"
+						+ str(scene_contents.get_path_to(ret))
+					)
+				)
 
 	for animtree in node_state.prefab_state.animator_node_to_object:
-		var obj: RefCounted = node_state.prefab_state.animator_node_to_object[animtree] # UnityAnimator
+		var obj: RefCounted = node_state.prefab_state.animator_node_to_object[animtree]  # UnityAnimator
 		# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
 		# If not found, we can't recreate the animationLibrary
 		obj.setup_post_children(animtree)
-		
 
 	if not is_prefab:
 		# Remove redundant directional light.
@@ -296,7 +320,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			var x: LightmapGI = null
 			var fileids: Array = [].duplicate()
 			for light in node_state.find_objects_of_type("Light"):
-				if light.lightType == 1: # Directional
+				if light.lightType == 1:  # Directional
 					scene_contents.remove_child(dirlight)
 					dirlight = null
 		var main_camera: Camera3D = null
@@ -315,12 +339,14 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					env.background_color = camera.environment.background_color
 					env.background_energy = camera.environment.background_energy
 				for mono in node_state.get_components(camera_obj, "MonoBehaviour"):
-					if str(mono.monoscript[2]) == "948f4100a11a5c24981795d21301da5c": # PostProcessingLayer
-						pp_layer_bits = mono.keys.get("volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0))
+					if str(mono.monoscript[2]) == "948f4100a11a5c24981795d21301da5c":  # PostProcessingLayer
+						pp_layer_bits = mono.keys.get(
+							"volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0)
+						)
 						break
 				break
 		for mono in node_state.find_objects_of_type("MonoBehaviour"):
-			if str(mono.monoscript[2]) == "8b9a305e18de0c04dbd257a21cd47087": # PostProcessingVolume
+			if str(mono.monoscript[2]) == "8b9a305e18de0c04dbd257a21cd47087":  # PostProcessingVolume
 				var go: RefCounted = node_state.get_gameobject(mono)
 				if not mono.enabled or not go.enabled:
 					continue

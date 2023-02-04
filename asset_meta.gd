@@ -90,9 +90,27 @@ func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 			tt.visited[target_guid] = true
 			var child_meta: Resource = lookup_meta_by_guid_noinit(tt.database, target_guid)
 			if child_meta == null:
-				push_error("Unable to find dependency " + str(target_guid) + " of type " + str(meta.dependency_guids.get(target_guid, "")))
+				push_error(
+					(
+						"Unable to find dependency "
+						+ str(target_guid)
+						+ " of type "
+						+ str(meta.dependency_guids.get(target_guid, ""))
+					)
+				)
 			else:
-				print("toposort inner guid " + str(child_meta.guid) + "/" + str(child_meta.path) + "/" + str(target_guid) + " " + str(child_meta.prefab_dependency_guids))
+				print(
+					(
+						"toposort inner guid "
+						+ str(child_meta.guid)
+						+ "/"
+						+ str(child_meta.path)
+						+ "/"
+						+ str(target_guid)
+						+ " "
+						+ str(child_meta.prefab_dependency_guids)
+					)
+				)
 				child_meta.database_holder = database_holder
 				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
@@ -115,12 +133,23 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 			if child_meta == null:
 				push_error("Unable to find dependency " + str(target_guid))
 			else:
-				print("toposort toplevel guid " + str(target_guid) + "/" + str(child_meta.path) + " " + str(child_meta.prefab_dependency_guids))
+				print(
+					(
+						"toposort toplevel guid "
+						+ str(target_guid)
+						+ "/"
+						+ str(child_meta.path)
+						+ " "
+						+ str(child_meta.prefab_dependency_guids)
+					)
+				)
 				child_meta.toposort_prefab_recurse(child_meta, tt)
 	return tt.output
 
 
-func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary) -> int:
+func remap_prefab_gameobject_names_inner(
+	prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary
+) -> int:
 	var gameobject_renames: Dictionary = self.gameobject_fileid_to_rename
 	var transform_new_children: Dictionary = self.transform_fileid_to_children
 	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
@@ -184,9 +213,18 @@ func remap_prefab_gameobject_names(prefab_id: int, original_map: Dictionary) -> 
 func calculate_prefab_nodepaths(database: Resource):
 	#if not is_toplevel:
 	for prefab_fileid in self.prefab_id_to_guid:
-		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(database, self.prefab_id_to_guid.get(prefab_fileid))
+		var target_prefab_meta: Resource = lookup_meta_by_guid_noinit(
+			database, self.prefab_id_to_guid.get(prefab_fileid)
+		)
 		if target_prefab_meta == null:
-			push_error("Failed to lookup prefab fileid " + str(prefab_fileid) + " guid " + str(self.prefab_id_to_guid.get(prefab_fileid)))
+			push_error(
+				(
+					"Failed to lookup prefab fileid "
+					+ str(prefab_fileid)
+					+ " guid "
+					+ str(self.prefab_id_to_guid.get(prefab_fileid))
+				)
+			)
 			continue
 		if target_prefab_meta.get_database() == null:
 			target_prefab_meta.initialize(self.get_database())
@@ -195,24 +233,38 @@ func calculate_prefab_nodepaths(database: Resource):
 	if self.prefab_id_to_guid.is_empty():
 		self.prefab_gameobject_name_to_fileid_and_children = {}
 	else:
-		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(0, self.gameobject_name_to_fileid_and_children)
+		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(
+			0, self.gameobject_name_to_fileid_and_children
+		)
 
 
 func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 	# xor is the actual operation used for a prefabbed fileid in a prefab instance.
 	var my_path_prefix: String = str(fileid_to_nodepath.get(prefab_fileid)) + "/"
 	for target_fileid in target_prefab_meta.fileid_to_nodepath:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
+		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(
+			my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid))
+		)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_nodepath:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid)))
+		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(
+			my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid))
+		)
 	for target_fileid in target_prefab_meta.fileid_to_skeleton_bone:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid)
+		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid)
+		)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
-		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid)
+		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid)
+		)
 	for target_fileid in target_prefab_meta.fileid_to_utype:
-		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(target_fileid)
+		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(
+			target_fileid
+		)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_utype:
-		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.prefab_fileid_to_utype.get(target_fileid)
+		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.prefab_fileid_to_utype.get(target_fileid)
+		)
 	for target_type in target_prefab_meta.type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
 			self.prefab_type_to_fileids[target_type] = PackedInt64Array()
@@ -224,7 +276,9 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 		for target_fileid in target_prefab_meta.prefab_type_to_fileids.get(target_type):
 			self.prefab_type_to_fileids[target_type].push_back(int(target_fileid) ^ int(prefab_fileid))
 	for target_fileid in target_prefab_meta.fileid_to_gameobject_fileid:
-		self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid)
+		self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid)
+		)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_gameobject_fileid:
 		self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = (
 			target_prefab_meta.prefab_fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid)
@@ -238,7 +292,11 @@ func calculate_prefab_nodepaths_recursive():
 		return
 	var database: Resource = get_database()
 	for process_meta in toposorted:
-		if process_meta != null and process_meta.guid != guid and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter"):
+		if (
+			process_meta != null
+			and process_meta.guid != guid
+			and (process_meta.main_object_id == 100100000 or process_meta.importer_type == "PrefabImporter")
+		):
 			process_meta.calculate_prefab_nodepaths(database)
 
 	#var gameobject_fileid_to_components: Dictionary = {}.duplicate()
@@ -336,12 +394,42 @@ func lookup(unityref: Array, silent: bool = false) -> RefCounted:
 	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.parsed == null:
 		if not silent:
-			push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")")
+			push_error(
+				(
+					"Target ref "
+					+ found_meta.path
+					+ ":"
+					+ str(local_id)
+					+ " ("
+					+ found_meta.guid
+					+ ")"
+					+ " was not yet parsed! from "
+					+ path
+					+ " ("
+					+ guid
+					+ ")"
+				)
+			)
 		return null
 	var ret: RefCounted = found_meta.parsed.assets.get(local_id)
 	if ret == null:
 		if not silent:
-			push_error("Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")")
+			push_error(
+				(
+					"Target ref "
+					+ found_meta.path
+					+ ":"
+					+ str(local_id)
+					+ " ("
+					+ found_meta.guid
+					+ ")"
+					+ " is null! from "
+					+ path
+					+ " ("
+					+ guid
+					+ ")"
+				)
+			)
 		return null
 	ret.meta = found_meta
 	return ret
@@ -379,7 +467,9 @@ func get_godot_node(unityref: Array) -> Node:
 		if local_id == 100100000:
 			push_warning("Looking up prefab " + str(unityref) + " in loaded scene " + ps.resource_name)
 			return node
-		var np: NodePath = found_meta.fileid_to_nodepath.get(local_id, found_meta.prefab_fileid_to_nodepath.get(local_id, NodePath()))
+		var np: NodePath = found_meta.fileid_to_nodepath.get(
+			local_id, found_meta.prefab_fileid_to_nodepath.get(local_id, NodePath())
+		)
 		if np == NodePath():
 			push_error("Could not find node " + str(unityref) + " in loaded scene " + ps.resource_name)
 			return null
@@ -388,7 +478,9 @@ func get_godot_node(unityref: Array) -> Node:
 			push_error("Path " + str(np) + " was missing in " + str(unityref) + " in loaded scene " + ps.resource_name)
 			return null
 		if node is Skeleton3D:
-			var bone_to_reroot: String = found_meta.fileid_to_skeleton_bone.get(local_id, found_meta.prefab_fileid_to_skeleton_bone.get(local_id, ""))
+			var bone_to_reroot: String = found_meta.fileid_to_skeleton_bone.get(
+				local_id, found_meta.prefab_fileid_to_skeleton_bone.get(local_id, "")
+			)
 			var bone_to_keep: int = node.find_bone(bone_to_reroot)
 			var keep: Array = []
 			for b in range(node.get_bone_count()):
@@ -396,11 +488,15 @@ func get_godot_node(unityref: Array) -> Node:
 				while parb != -1:
 					if parb == bone_to_keep:
 						var parname: String = "" if b == bone_to_keep else node.get_bone_name(node.get_bone_parent(b))
-						(
-							keep
-							. append(
-								[node.get_bone_name(b), parname, node.get_bone_pose_position(b), node.get_bone_pose_rotation(b), node.get_bone_pose_scale(b), node.get_bone_rest(b)]
-							)
+						keep.append(
+							[
+								node.get_bone_name(b),
+								parname,
+								node.get_bone_pose_position(b),
+								node.get_bone_pose_rotation(b),
+								node.get_bone_pose_scale(b),
+								node.get_bone_rest(b)
+							]
 						)
 						break
 					parb = node.get_bone_parent(parb)
@@ -457,7 +553,22 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 			return ret
 	if found_meta.parsed == null:
 		if not silent:
-			push_error("Failed to find Resource at " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + "! from " + path + " (" + guid + ")")
+			push_error(
+				(
+					"Failed to find Resource at "
+					+ found_meta.path
+					+ ":"
+					+ str(local_id)
+					+ " ("
+					+ found_meta.guid
+					+ ")"
+					+ "! from "
+					+ path
+					+ " ("
+					+ guid
+					+ ")"
+				)
+			)
 		return null
 	if not silent:
 		push_error(
@@ -539,7 +650,19 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	var parsed = ParsedAsset.new()
 	print("Parsing " + str(guid))
 	var bin_parser = bin_parser_class.new(self, bytearray)
-	print("Parsed " + str(guid) + ":" + str(bin_parser) + " found " + str(len(bin_parser.objs)) + " objects and " + str(len(bin_parser.defs)) + " defs")
+	print(
+		(
+			"Parsed "
+			+ str(guid)
+			+ ":"
+			+ str(bin_parser)
+			+ " found "
+			+ str(len(bin_parser.objs))
+			+ " objects and "
+			+ str(len(bin_parser.defs))
+			+ " defs"
+		)
+	)
 	var next_basic_id: Dictionary = {}.duplicate()
 	if self.main_object_id == 0:
 		for output_obj in bin_parser.objs:

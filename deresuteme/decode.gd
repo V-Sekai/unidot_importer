@@ -194,12 +194,36 @@ class Def:
 		if self.array:
 			var x: int = s.tell()
 			if self.children.is_empty():
-				push_error("Children is empty for " + str(self.full) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+				push_error(
+					(
+						"Children is empty for "
+						+ str(self.full)
+						+ " type "
+						+ str(type_name)
+						+ " size "
+						+ str(size)
+						+ " flags "
+						+ str(flags)
+					)
+				)
 				return []
 			# print("a " + self.full_name)
 			var arrlen: int = self.children[0].read(s, referenced_guids, referenced_reftypes)
 			if not (arrlen < 100000000):
-				push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+				push_error(
+					(
+						"Attempting to read "
+						+ str(arrlen)
+						+ " in array "
+						+ str(self.full_name)
+						+ " type "
+						+ str(type_name)
+						+ " size "
+						+ str(size)
+						+ " flags "
+						+ str(flags)
+					)
+				)
 				return []
 			var child_type_name: String = self.children[1].type_name
 			if child_type_name == "char":
@@ -217,14 +241,32 @@ class Def:
 				return ret
 			else:
 				if not (self.children[1].size * arrlen < 400000000 and arrlen < 100000000):
-					push_error("Attempting to read " + str(arrlen) + " in array " + str(self.full_name) + " type " + str(type_name) + " size " + str(size) + " flags " + str(flags))
+					push_error(
+						(
+							"Attempting to read "
+							+ str(arrlen)
+							+ " in array "
+							+ str(self.full_name)
+							+ " type "
+							+ str(type_name)
+							+ " size "
+							+ str(size)
+							+ " flags "
+							+ str(flags)
+						)
+					)
 					return []
 				var i: int = 0
 				var pad: bool = true
 				if self.flags == 0x4000 and self.children[1].flags == 0x0:
 					pad = false
 				var arr_variant: Variant = null
-				if child_type_name == "SInt16" or child_type_name == "short" or child_type_name == "UInt16" or child_type_name == "unsigned short":
+				if (
+					child_type_name == "SInt16"
+					or child_type_name == "short"
+					or child_type_name == "UInt16"
+					or child_type_name == "unsigned short"
+				):
 					var arr: PackedInt32Array = PackedInt32Array().duplicate()
 					while i < arrlen:
 						arr.push_back(self.children[1].read(s, referenced_guids, referenced_reftypes))
@@ -239,7 +281,12 @@ class Def:
 					or child_type_name == "unsigned long"
 				):
 					arr_variant = s.read(arrlen * 4).to_int32_array()
-				elif child_type_name == "SInt64" or child_type_name == "UInt64" or child_type_name == "long long" or child_type_name == "unsigned long long":
+				elif (
+					child_type_name == "SInt64"
+					or child_type_name == "UInt64"
+					or child_type_name == "long long"
+					or child_type_name == "unsigned long long"
+				):
 					arr_variant = s.read(arrlen * 8).to_int64_array()
 				elif child_type_name == "float":
 					arr_variant = s.read(arrlen * 4).to_float32_array()
@@ -283,7 +330,16 @@ class Def:
 			var x: int = 0  #####s.tell()
 			var v: Dictionary = {}.duplicate()
 			if self.serVer != 1:
-				print("Adding serializedVersion to " + str(self.type_name) + " " + str(self.name) + ": " + str(self.serVer))
+				print(
+					(
+						"Adding serializedVersion to "
+						+ str(self.type_name)
+						+ " "
+						+ str(self.name)
+						+ ": "
+						+ str(self.serVer)
+					)
+				)
 				v["serializedVersion"] = self.serVer
 			for i in self.children:
 				v[i.name] = i.read(s, referenced_guids, referenced_reftypes)
@@ -303,7 +359,12 @@ class Def:
 				"ColorRGBA":
 					if v.has("rgba"):
 						var color32: int = v.get("rgba")
-						return Color(((color32 & 0xff000000) >> 24) / 255.0, ((color32 & 0xff0000) >> 16) / 255.0, ((color32 & 0xff00) >> 8) / 255.0, (color32 & 0xff) / 255.0)
+						return Color(
+							((color32 & 0xff000000) >> 24) / 255.0,
+							((color32 & 0xff0000) >> 16) / 255.0,
+							((color32 & 0xff00) >> 8) / 255.0,
+							(color32 & 0xff) / 255.0
+						)
 					# print("reading color @" + ("%x .. %x" % [x, s.tell()]) + " " + self.full_name + "/" + self.type_name + " " + str(v))
 					return Color(v.get("r"), v.get("g"), v.get("b"), v.get("a"))
 				"Vector2f":
@@ -340,9 +401,25 @@ class Def:
 						if v.get("m_PathID", 0) == 0:
 							return [null, v.get("m_PathID", 0), null, 0]
 						elif v.get("m_FileID", 0) >= len(referenced_guids) or v.get("m_FileID", 0) < 0:
-							push_error("Asset " + self.full_name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
+							push_error(
+								(
+									"Asset "
+									+ self.full_name
+									+ "/"
+									+ self.type_name
+									+ " invalid pptr "
+									+ str(v)
+									+ " @"
+									+ str(s.tell())
+								)
+							)
 						else:
-							var ret_ref = [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
+							var ret_ref = [
+								null,
+								v.get("m_PathID", 0),
+								referenced_guids[v.get("m_FileID", 0)],
+								referenced_reftypes[v.get("m_FileID", 0)]
+							]
 							if self.name == "prototype" or self.name == "prefab":
 								if ret_ref[2] != null:
 									#print(" Possible Ref " + str(self.full_name) + " to " + str(ret_ref[2]))
@@ -737,7 +814,9 @@ func decode_attrtab() -> Def:
 			var d: Def = def
 			for ii in range(level - 1):
 				if len(d.children) == 0:
-					push_error("Unable to recurse to level " + str(level) + " of " + str(def.name) + "/" + str(def.type_name))
+					push_error(
+						"Unable to recurse to level " + str(level) + " of " + str(def.name) + "/" + str(def.type_name)
+					)
 					break
 				d = d.children[-1]
 			# print("level is " + str(level) + " pushing back a child " + str(name) + "/" + str(type_name) + " into " + str(d.name) + "/" + str(d.type_name))
@@ -748,7 +827,18 @@ func decode_attrtab() -> Def:
 			if def == null:
 				def = Def.new(name, type_name, size, flags, a4 != 0, a1)
 			else:
-				push_error("Found multiple top-level defs " + str(name) + " type " + str(type_name) + " into " + str(def.name) + "/" + str(def.type_name))
+				push_error(
+					(
+						"Found multiple top-level defs "
+						+ str(name)
+						+ " type "
+						+ str(type_name)
+						+ " into "
+						+ str(def.name)
+						+ "/"
+						+ str(def.type_name)
+					)
+				)
 		var indstr: String = ""
 		for lv in range(level):
 			indstr += "  "

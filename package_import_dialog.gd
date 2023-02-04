@@ -403,10 +403,22 @@ func start_godot_import(tw: Object):
 	#metafil = null
 	var asset_modified: bool = asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
 	var import_modified: bool = asset_adapter.write_godot_import(tw.asset)
-	print("Wrote file " + tw.output_path + " asset modified:" + str(asset_modified) + " import modified:" + str(import_modified))
+	print(
+		(
+			"Wrote file "
+			+ tw.output_path
+			+ " asset modified:"
+			+ str(asset_modified)
+			+ " import modified:"
+			+ str(import_modified)
+		)
+	)
 
 	var force_reimport: bool = false
-	if asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL and force_reimport_models_checkbox.button_pressed:
+	if (
+		asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL
+		and force_reimport_models_checkbox.button_pressed
+	):
 		force_reimport = true
 	if asset_database.get_meta_at_path(tw.asset.parsed_meta.path) == null:
 		push_warning("Asset " + str(tw.asset.parsed_meta.guid) + " alraedy existed in project but not in database.")
@@ -442,7 +454,16 @@ func _asset_processing_finished(tw: Object):
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	print("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
-	print("Finished processing meta path " + str(tw.asset.parsed_meta.path) + " guid " + str(tw.asset.parsed_meta.guid) + " opath " + str(tw.output_path))
+	print(
+		(
+			"Finished processing meta path "
+			+ str(tw.asset.parsed_meta.path)
+			+ " guid "
+			+ str(tw.asset.parsed_meta.guid)
+			+ " opath "
+			+ str(tw.output_path)
+		)
+	)
 	if not asset_adapter.uses_godot_importer(tw.asset):
 		asset_database.insert_meta(tw.asset.parsed_meta)
 	if tw.asset.asset_tar_header != null:

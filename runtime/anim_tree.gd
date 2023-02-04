@@ -23,7 +23,9 @@ func _find_animation_node(np: NodePath) -> AnimationNode:
 		elif node is AnimationNodeAnimation:
 			push_error("Encountered AnimationNodeAnimation while walking node tree... " + str(np))
 		else:
-			push_error("Encountered unknown node type " + str(node.get_class()) + " while walking node tree... " + str(np))
+			push_error(
+				"Encountered unknown node type " + str(node.get_class()) + " while walking node tree... " + str(np)
+			)
 			node = node._get_child_by_name(np.get_name(idx))
 		if node == null:
 			push_error("Failed to find node at " + str(idx) + " in " + str(np))

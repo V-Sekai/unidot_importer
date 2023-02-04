@@ -15,10 +15,11 @@ const STRING_KEYS: Dictionary = {
 	"path": 1,
 	"attribute": 1,
 	"m_ShaderKeywords": 1,
-	"typelessdata": 1, # Mesh m_VertexData; Texture image data
+	"typelessdata": 1,  # Mesh m_VertexData; Texture image data
 	"m_IndexBuffer": 1,
 	"Hash": 1,
 }
+
 
 func to_classname(utype: Variant) -> String:
 	if typeof(utype) == TYPE_NODE_PATH:
@@ -38,13 +39,41 @@ func instantiate_unity_object(meta: Object, fileID: int, utype: int, type: Strin
 	var actual_type = type
 	if utype != 0 and utype_to_classname.has(utype):
 		actual_type = utype_to_classname[utype]
-		if actual_type != type and (type != "Behaviour" or actual_type != "FlareLayer") and (type != "Prefab" or actual_type != "PrefabInstance"):
-			push_error("Mismatched type for " + meta.guid + ":" + str(fileID) + " type:" + type + " vs. utype:" + str(utype) + ":" + actual_type)
+		if (
+			actual_type != type
+			and (type != "Behaviour" or actual_type != "FlareLayer")
+			and (type != "Prefab" or actual_type != "PrefabInstance")
+		):
+			push_error(
+				(
+					"Mismatched type for "
+					+ meta.guid
+					+ ":"
+					+ str(fileID)
+					+ " type:"
+					+ type
+					+ " vs. utype:"
+					+ str(utype)
+					+ ":"
+					+ actual_type
+				)
+			)
 	if _type_dictionary.has(actual_type):
 		# print("Will instantiate object of type " + str(actual_type) + "/" + str(type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
 		ret = _type_dictionary[actual_type].new()
 	else:
-		push_error("Failed to instantiate object of type " + str(actual_type) + "/" + str(type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
+		push_error(
+			(
+				"Failed to instantiate object of type "
+				+ str(actual_type)
+				+ "/"
+				+ str(type)
+				+ "/"
+				+ str(utype)
+				+ "/"
+				+ str(classname_to_utype.get(actual_type, utype))
+			)
+		)
 		if type.ends_with("Importer"):
 			ret = UnityAssetImporter.new()
 		else:
@@ -68,7 +97,16 @@ func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) 
 	if _type_dictionary.has(actual_type):
 		ret = _type_dictionary[actual_type].new()
 	else:
-		push_error("Failed to instantiate object of type " + str(actual_type) + "/" + str(utype) + "/" + str(classname_to_utype.get(actual_type, utype)))
+		push_error(
+			(
+				"Failed to instantiate object of type "
+				+ str(actual_type)
+				+ "/"
+				+ str(utype)
+				+ "/"
+				+ str(classname_to_utype.get(actual_type, utype))
+			)
+		)
 		ret = UnityObject.new()
 	ret.meta = meta
 	ret.adapter = self
@@ -80,14 +118,15 @@ func instantiate_unity_object_from_utype(meta: Object, fileID: int, utype: int) 
 
 # Unity types follow:
 ### ================ BASE OBJECT TYPE ================
-class UnityObject extends RefCounted:
-	var meta: Resource = null # AssetMeta instance
+class UnityObject:
+	extends RefCounted
+	var meta: Resource = null  # AssetMeta instance
 	var keys: Dictionary = {}
-	var fileID: int = 0 # Not set in .meta files
+	var fileID: int = 0  # Not set in .meta files
 	var type: String = ""
-	var utype: int = 0 # Not set in .meta files
+	var utype: int = 0  # Not set in .meta files
 	var _cache_uniq_key: String = ""
-	var adapter: RefCounted = null # RefCounted to containing scope.
+	var adapter: RefCounted = null  # RefCounted to containing scope.
 
 	# Some components or game objects within a prefab are "stripped" dummy objects.
 	# Setting the stripped flag is not required...
@@ -100,7 +139,9 @@ class UnityObject extends RefCounted:
 	var uniq_key: String:
 		get:
 			if _cache_uniq_key.is_empty():
-				_cache_uniq_key = str(utype)+":"+str(keys.get("m_Name",""))+":"+str(meta.guid) + ":" + str(fileID)
+				_cache_uniq_key = (
+					str(utype) + ":" + str(keys.get("m_Name", "")) + ":" + str(meta.guid) + ":" + str(fileID)
+				)
 			return _cache_uniq_key
 
 	func _to_string() -> String:
@@ -115,7 +156,7 @@ class UnityObject extends RefCounted:
 	func get_name() -> String:
 		if fileID == meta.main_object_id:
 			return meta.get_main_object_name()
-		return str(keys.get("m_Name","NO_NAME:"+uniq_key))
+		return str(keys.get("m_Name", "NO_NAME:" + uniq_key))
 
 	var toplevel: bool:
 		get:
@@ -185,16 +226,16 @@ class UnityObject extends RefCounted:
 		var position: Vector3 = matn.origin
 
 		var has_trs: bool = false
-		if (props.has("_quaternion")):
+		if props.has("_quaternion"):
 			has_trs = true
 			quat = props.get("_quaternion")
 		elif props.has("rotation_degrees"):
 			has_trs = true
 			quat = Quaternion(props.get("rotation_degrees") * PI / 180.0)
-		if (props.has("scale")):
+		if props.has("scale"):
 			has_trs = true
 			scale = props.get("scale")
-		if (props.has("position")):
+		if props.has("position"):
 			has_trs = true
 			position = props.get("position")
 
@@ -224,7 +265,7 @@ class UnityObject extends RefCounted:
 		# var transform_position: Vector3 = Vector3()
 		# var transform_rotation: Quaternion = Quaternion()
 		# var transform_position: Vector3 = Vector3()
-		if (props.has("_quaternion")):
+		if props.has("_quaternion"):
 			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
 
 		var has_position_x: bool = props.has("position:x")
@@ -254,18 +295,18 @@ class UnityObject extends RefCounted:
 		for propname in props:
 			if typeof(props.get(propname)) == TYPE_NIL:
 				continue
-			elif str(propname) == "_quaternion": # .begins_with("_"):
+			elif str(propname) == "_quaternion":  # .begins_with("_"):
 				pass
 			elif str(propname).ends_with(":x") or str(propname).ends_with(":y") or str(propname).ends_with(":z"):
 				pass
 			elif str(propname) == "name":
-				pass # We cannot do Name here because it will break existing NodePath of outer prefab to children.
+				pass  # We cannot do Name here because it will break existing NodePath of outer prefab to children.
 			else:
 				print("SET " + str(node.name) + ":" + propname + " to " + str(props[propname]))
 				var dig: Variant = node
-				var dig_propnames: Array = propname.split(":") # example: dig_propnames = ["shape", "size"]
+				var dig_propnames: Array = propname.split(":")  # example: dig_propnames = ["shape", "size"]
 				for prop in dig_propnames.slice(0, len(dig_propnames) - 1):
-					dig = dig.get(prop) # example: dig = CollisionShape3D
+					dig = dig.get(prop)  # example: dig = CollisionShape3D
 				dig.set(dig_propnames[-1], props.get(propname))
 
 	func apply_mesh_renderer_props(meta: RefCounted, node: MeshInstance3D, props: Dictionary):
@@ -304,11 +345,19 @@ class UnityObject extends RefCounted:
 			current_materials.push_back(mat)
 			material_idx += 1
 
-		while last_extra_material != null and (str(last_extra_material.resource_name).begins_with(prefix) or str(last_extra_material.resource_name).begins_with(new_prefix)):
+		while (
+			last_extra_material != null
+			and (
+				str(last_extra_material.resource_name).begins_with(prefix)
+				or str(last_extra_material.resource_name).begins_with(new_prefix)
+			)
+		):
 			if str(last_extra_material.resource_name).begins_with(new_prefix):
 				prefix = new_prefix
 				var guid_fileid = str(last_extra_material.resource_name).substr(len(prefix)).split(":")
-				current_materials.push_back(meta.get_godot_resource([null, guid_fileid[1].to_int(), guid_fileid[0], null]))
+				current_materials.push_back(
+					meta.get_godot_resource([null, guid_fileid[1].to_int(), guid_fileid[0], null])
+				)
 				material_idx += 1
 				new_prefix = material_prefix + str(material_idx) + ":"
 			#material_idx_to_extra_material[material_idx] = last_extra_material
@@ -353,7 +402,7 @@ class UnityObject extends RefCounted:
 		var ref: Variant = uprops.get(key, null)
 		if typeof(ref) == TYPE_ARRAY:
 			return ref
-		return [null,0,"",0]
+		return [null, 0, "", 0]
 
 	static func get_vector(uprops: Dictionary, key: String) -> Variant:
 		if uprops.has(key):
@@ -361,9 +410,8 @@ class UnityObject extends RefCounted:
 		print("key is " + str(key) + "; " + str(uprops))
 		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
 			var xreturn: Vector3 = Vector3(
-				uprops.get(key + ".x", 0.0),
-				uprops.get(key + ".y", 0.0),
-				uprops.get(key + ".z", 0.0))
+				uprops.get(key + ".x", 0.0), uprops.get(key + ".y", 0.0), uprops.get(key + ".z", 0.0)
+			)
 			print("xreturn is " + str(xreturn))
 			return xreturn
 		return null
@@ -376,9 +424,9 @@ class UnityObject extends RefCounted:
 				uprops.get(key + ".x", 0.0),
 				uprops.get(key + ".y", 0.0),
 				uprops.get(key + ".z", 0.0),
-				uprops.get(key + ".w", 1.0))
+				uprops.get(key + ".w", 1.0)
+			)
 		return null
-
 
 	# Prefab source properties: Component and GameObject sub-types only:
 	# UNITY 2018+:
@@ -405,17 +453,17 @@ class UnityObject extends RefCounted:
 			# Might be some 5.6 content. See arktoon Shaders/ExampleScene.unity
 			# non-stripped prefab references are allowed to override properties.
 			return not is_stripped and not (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
-	
+
 	var is_prefab_reference: bool:
 		get:
 			if not is_stripped:
 				#if not (prefab_source_object[1] == 0 or prefab_instance[1] == 0):
 				#	print(str(self.uniq_key) + " WITHIN " + str(self.meta.guid) + " / " + str(self.meta.path) + " keys:" + str(self.keys))
-				pass #assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
+				pass  #assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
 			else:
 				# Might have source object=0 if the object is a dummy / broken prefab?
-				pass # assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
-			return (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+				pass  # assert (prefab_source_object[1] != 0 and prefab_instance[1] != 0)
+			return prefab_source_object[1] != 0 and prefab_instance[1] != 0
 
 	func get_component_key() -> Variant:
 		if self.utype == 114:
@@ -429,14 +477,15 @@ class UnityObject extends RefCounted:
 
 ### ================ ASSET TYPES ================
 # FIXME: All of these are native Godot types. I'm not sure if these types are needed or warranted.
-class UnityMesh extends UnityObject:
-	
+class UnityMesh:
+	extends UnityObject
+
 	func get_primitive_format(submesh: Dictionary) -> int:
 		match submesh.get("topology", 0):
 			0:
 				return Mesh.PRIMITIVE_TRIANGLES
 			1:
-				return Mesh.PRIMITIVE_TRIANGLES # quad meshes handled specially later
+				return Mesh.PRIMITIVE_TRIANGLES  # quad meshes handled specially later
 			2:
 				return Mesh.PRIMITIVE_LINES
 			3:
@@ -453,14 +502,18 @@ class UnityMesh extends UnityObject:
 		return {-self.fileID: ".skin.tres"}
 
 	func dict_to_matrix(b: Dictionary) -> Transform3D:
-		return Transform3D.FLIP_X.affine_inverse() * Transform3D(
-			Vector3(b.get("e00"), b.get("e10"), b.get("e20")),
-			Vector3(b.get("e01"), b.get("e11"), b.get("e21")),
-			Vector3(b.get("e02"), b.get("e12"), b.get("e22")),
-			Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
-		) * Transform3D.FLIP_X
+		return (
+			Transform3D.FLIP_X.affine_inverse()
+			* Transform3D(
+				Vector3(b.get("e00"), b.get("e10"), b.get("e20")),
+				Vector3(b.get("e01"), b.get("e11"), b.get("e21")),
+				Vector3(b.get("e02"), b.get("e12"), b.get("e22")),
+				Vector3(b.get("e03"), b.get("e13"), b.get("e23")),
+			)
+			* Transform3D.FLIP_X
+		)
 
-	func get_extra_resource(fileID: int) -> Resource: #Skin:
+	func get_extra_resource(fileID: int) -> Resource:  #Skin:
 		var sk: Skin = Skin.new()
 		var idx: int = 0
 		for b in binds:
@@ -468,17 +521,41 @@ class UnityMesh extends UnityObject:
 			idx += 1
 		return sk
 
-	func create_godot_resource() -> Resource: #ArrayMesh:
+	func create_godot_resource() -> Resource:  #ArrayMesh:
 		var vertex_buf: RefCounted = get_vertex_data()
 		var index_buf: RefCounted = get_index_data()
 		var vertex_layout: Dictionary = vertex_layout_info
 		var channel_info_array: Array = vertex_layout.get("m_Channels", [])
 		# https://docs.unity3d.com/2019.4/Documentation/ScriptReference/Rendering.VertexAttribute.html
-		var unity_to_godot_mesh_channels: Array = [ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL, ArrayMesh.ARRAY_TANGENT, ArrayMesh.ARRAY_COLOR, ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2, ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_CUSTOM2, ArrayMesh.ARRAY_CUSTOM3, -1, -1, ArrayMesh.ARRAY_WEIGHTS, ArrayMesh.ARRAY_BONES]
+		var unity_to_godot_mesh_channels: Array = [
+			ArrayMesh.ARRAY_VERTEX,
+			ArrayMesh.ARRAY_NORMAL,
+			ArrayMesh.ARRAY_TANGENT,
+			ArrayMesh.ARRAY_COLOR,
+			ArrayMesh.ARRAY_TEX_UV,
+			ArrayMesh.ARRAY_TEX_UV2,
+			ArrayMesh.ARRAY_CUSTOM0,
+			ArrayMesh.ARRAY_CUSTOM1,
+			ArrayMesh.ARRAY_CUSTOM2,
+			ArrayMesh.ARRAY_CUSTOM3,
+			-1,
+			-1,
+			ArrayMesh.ARRAY_WEIGHTS,
+			ArrayMesh.ARRAY_BONES
+		]
 		# Old vertex layout is probably stable since Unity 5.0
 		if vertex_layout.get("serializedVersion", 1) < 2:
 			# Old layout seems to have COLOR at the end.
-			unity_to_godot_mesh_channels = [ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL, ArrayMesh.ARRAY_TANGENT, ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2, ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_COLOR]
+			unity_to_godot_mesh_channels = [
+				ArrayMesh.ARRAY_VERTEX,
+				ArrayMesh.ARRAY_NORMAL,
+				ArrayMesh.ARRAY_TANGENT,
+				ArrayMesh.ARRAY_TEX_UV,
+				ArrayMesh.ARRAY_TEX_UV2,
+				ArrayMesh.ARRAY_CUSTOM0,
+				ArrayMesh.ARRAY_CUSTOM1,
+				ArrayMesh.ARRAY_COLOR
+			]
 
 		var tmp: Array = self.pre2018_skin
 		var pre2018_weights_buf: PackedFloat32Array = tmp[0]
@@ -490,11 +567,28 @@ class UnityMesh extends UnityObject:
 		var stream_strides: Array = [0, 0, 0, 0]
 		var stream_offsets: Array = [0, 0, 0, 0]
 		if len(unity_to_godot_mesh_channels) != len(channel_info_array):
-			push_error("Unity has the wrong number of vertex channels: " + str(len(unity_to_godot_mesh_channels)) + " vs " + str(len(channel_info_array)))
+			push_error(
+				(
+					"Unity has the wrong number of vertex channels: "
+					+ str(len(unity_to_godot_mesh_channels))
+					+ " vs "
+					+ str(len(channel_info_array))
+				)
+			)
 
 		for array_idx in range(len(unity_to_godot_mesh_channels)):
 			var channel_info: Dictionary = channel_info_array[array_idx]
-			stream_strides[channel_info.get("stream", 0)] += (channel_info.get("dimension", 4) * aligned_byte_buffer.format_byte_width(channel_info.get("format", 0)) + 3) / 4 * 4
+			stream_strides[channel_info.get("stream", 0)] += (
+				(
+					(
+						channel_info.get("dimension", 4)
+						* aligned_byte_buffer.format_byte_width(channel_info.get("format", 0))
+					)
+					+ 3
+				)
+				/ 4
+				* 4
+			)
 		for s in range(1, 4):
 			stream_offsets[s] = stream_offsets[s - 1] + (total_vertex_count * stream_strides[s - 1] + 15) / 16 * 16
 
@@ -503,9 +597,13 @@ class UnityMesh extends UnityObject:
 			surface_arrays.resize(ArrayMesh.ARRAY_MAX)
 			var surface_index_buf: PackedInt32Array
 			if idx_format == 0:
-				surface_index_buf = index_buf.uint16_subarray(submesh.get("firstByte",0), submesh.get("indexCount",-1))
+				surface_index_buf = index_buf.uint16_subarray(
+					submesh.get("firstByte", 0), submesh.get("indexCount", -1)
+				)
 			else:
-				surface_index_buf = index_buf.uint32_subarray(submesh.get("firstByte",0), submesh.get("indexCount",-1))
+				surface_index_buf = index_buf.uint32_subarray(
+					submesh.get("firstByte", 0), submesh.get("indexCount", -1)
+				)
 			if submesh.get("topology", 0) == 1:
 				# convert quad mesh to tris
 				var new_buf: PackedInt32Array = PackedInt32Array()
@@ -513,7 +611,7 @@ class UnityMesh extends UnityObject:
 				var quad_idx = [0, 1, 2, 2, 1, 3]
 				var range_6: Array = [0, 1, 2, 3, 4, 5]
 				var i: int = 0
-				var ilen: int = (len(surface_index_buf) / 4)
+				var ilen: int = len(surface_index_buf) / 4
 				while i < ilen:
 					for el in range_6:
 						new_buf[i * 6 + el] = surface_index_buf[i * 4 + quad_idx[el]]
@@ -522,16 +620,31 @@ class UnityMesh extends UnityObject:
 			var deltaVertex: int = submesh.get("firstVertex", 0)
 			var baseFirstVertex: int = submesh.get("baseVertex", 0) + deltaVertex
 			var vertexCount: int = submesh.get("vertexCount", 0)
-			print("baseFirstVertex "+ str(baseFirstVertex)+ " baseVertex "+ str(submesh.get("baseVertex", 0)) + " deltaVertex " + str(deltaVertex) + " index0 " + str(surface_index_buf[0]))
+			print(
+				(
+					"baseFirstVertex "
+					+ str(baseFirstVertex)
+					+ " baseVertex "
+					+ str(submesh.get("baseVertex", 0))
+					+ " deltaVertex "
+					+ str(deltaVertex)
+					+ " index0 "
+					+ str(surface_index_buf[0])
+				)
+			)
 			if deltaVertex != 0:
 				var i: int = 0
-				var ilen: int = (len(surface_index_buf))
+				var ilen: int = len(surface_index_buf)
 				while i < ilen:
 					surface_index_buf[i] -= deltaVertex
 					i += 1
 			if not pre2018_weights_buf.is_empty():
-				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.slice(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4)
-				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.slice(baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4)
+				surface_arrays[ArrayMesh.ARRAY_WEIGHTS] = pre2018_weights_buf.slice(
+					baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4
+				)
+				surface_arrays[ArrayMesh.ARRAY_BONES] = pre2018_bones_buf.slice(
+					baseFirstVertex * 4, (vertexCount + baseFirstVertex) * 4
+				)
 			var compress_flags: int = 0
 			for array_idx in range(len(unity_to_godot_mesh_channels)):
 				var godot_array_type = unity_to_godot_mesh_channels[array_idx]
@@ -539,7 +652,9 @@ class UnityMesh extends UnityObject:
 					continue
 				var channel_info: Dictionary = channel_info_array[array_idx]
 				var stream: int = channel_info.get("stream", 0)
-				var offset: int = channel_info.get("offset", 0) + stream_offsets[stream] + baseFirstVertex * stream_strides[stream]
+				var offset: int = (
+					channel_info.get("offset", 0) + stream_offsets[stream] + baseFirstVertex * stream_strides[stream]
+				)
 				var format: int = channel_info.get("format", 0)
 				var dimension: int = channel_info.get("dimension", 4)
 				if dimension <= 0:
@@ -549,41 +664,99 @@ class UnityMesh extends UnityObject:
 						if dimension == 8:
 							compress_flags |= ArrayMesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS
 						print("Do bones int")
-						surface_arrays[godot_array_type] = vertex_buf.formatted_int_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_int_subarray(
+							format, offset, dimension * vertexCount, stream_strides[stream], dimension
+						)
 					ArrayMesh.ARRAY_WEIGHTS:
 						print("Do weights int")
-						surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(
+							format, offset, dimension * vertexCount, stream_strides[stream], dimension
+						)
 					ArrayMesh.ARRAY_VERTEX, ArrayMesh.ARRAY_NORMAL:
 						print("Do vertex or normal vec3 " + str(godot_array_type) + " " + str(format))
-						surface_arrays[godot_array_type] = vertex_buf.formatted_vector3_subarray(Vector3(-1,1,1), format, offset, vertexCount, stream_strides[stream], dimension)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_vector3_subarray(
+							Vector3(-1, 1, 1), format, offset, vertexCount, stream_strides[stream], dimension
+						)
 					ArrayMesh.ARRAY_TANGENT:
 						print("Do tangent float " + str(godot_array_type) + " " + str(format))
-						surface_arrays[godot_array_type] = vertex_buf.formatted_tangent_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_tangent_subarray(
+							format, offset, vertexCount, stream_strides[stream], dimension
+						)
 					ArrayMesh.ARRAY_COLOR:
 						print("Do color " + str(godot_array_type) + " " + str(format))
-						surface_arrays[godot_array_type] = vertex_buf.formatted_color_subarray(format, offset, vertexCount, stream_strides[stream], dimension)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_color_subarray(
+							format, offset, vertexCount, stream_strides[stream], dimension
+						)
 					ArrayMesh.ARRAY_TEX_UV, ArrayMesh.ARRAY_TEX_UV2:
 						print("Do uv " + str(godot_array_type) + " " + str(format))
-						print("Offset " + str(offset) + " = " + str(channel_info.get("offset", 0)) + "," + str(stream_offsets[stream]) + "," + str(baseFirstVertex) + "," + str(stream_strides[stream]) + "," + str(dimension))
-						surface_arrays[godot_array_type] = vertex_buf.formatted_vector2_subarray(format, offset, vertexCount, stream_strides[stream], dimension, true)
-						print("triangle 0: " + str(surface_arrays[godot_array_type][surface_index_buf[0]]) + ";" + str(surface_arrays[godot_array_type][surface_index_buf[1]]) + ";" + str(surface_arrays[godot_array_type][surface_index_buf[2]]))
+						print(
+							(
+								"Offset "
+								+ str(offset)
+								+ " = "
+								+ str(channel_info.get("offset", 0))
+								+ ","
+								+ str(stream_offsets[stream])
+								+ ","
+								+ str(baseFirstVertex)
+								+ ","
+								+ str(stream_strides[stream])
+								+ ","
+								+ str(dimension)
+							)
+						)
+						surface_arrays[godot_array_type] = vertex_buf.formatted_vector2_subarray(
+							format, offset, vertexCount, stream_strides[stream], dimension, true
+						)
+						print(
+							(
+								"triangle 0: "
+								+ str(surface_arrays[godot_array_type][surface_index_buf[0]])
+								+ ";"
+								+ str(surface_arrays[godot_array_type][surface_index_buf[1]])
+								+ ";"
+								+ str(surface_arrays[godot_array_type][surface_index_buf[2]])
+							)
+						)
 					ArrayMesh.ARRAY_CUSTOM0, ArrayMesh.ARRAY_CUSTOM1, ArrayMesh.ARRAY_CUSTOM2, ArrayMesh.ARRAY_CUSTOM3:
-						pass # Custom channels are currently broken in Godot master:
-					ArrayMesh.ARRAY_MAX: # ARRAY_MAX is a placeholder to disable this
+						pass  # Custom channels are currently broken in Godot master:
+					ArrayMesh.ARRAY_MAX:  # ARRAY_MAX is a placeholder to disable this
 						print("Do custom " + str(godot_array_type) + " " + str(format))
-						var custom_shift = (ArrayMesh.ARRAY_FORMAT_CUSTOM1_SHIFT - ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT) * (godot_array_type - ArrayMesh.ARRAY_CUSTOM0) + ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+						var custom_shift = (
+							(
+								(ArrayMesh.ARRAY_FORMAT_CUSTOM1_SHIFT - ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+								* (godot_array_type - ArrayMesh.ARRAY_CUSTOM0)
+							)
+							+ ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+						)
 						if format == aligned_byte_buffer.FORMAT_UNORM8 or format == aligned_byte_buffer.FORMAT_SNORM8:
 							# assert(dimension == 4) # Unity docs says always word aligned, so I think this means it is guaranteed to be 4.
-							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(format, offset, 4 * vertexCount, stream_strides[stream], 4)
-							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_RGBA8_UNORM if format == aligned_byte_buffer.FORMAT_UNORM8 else ArrayMesh.ARRAY_CUSTOM_RGBA8_SNORM) << custom_shift
+							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(
+								format, offset, 4 * vertexCount, stream_strides[stream], 4
+							)
+							compress_flags |= (
+								(
+									ArrayMesh.ARRAY_CUSTOM_RGBA8_UNORM
+									if format == aligned_byte_buffer.FORMAT_UNORM8
+									else ArrayMesh.ARRAY_CUSTOM_RGBA8_SNORM
+								)
+								<< custom_shift
+							)
 						elif format == aligned_byte_buffer.FORMAT_FLOAT16:
-							assert(dimension == 2 or dimension == 4) # Unity docs says always word aligned, so I think this means it is guaranteed to be 2 or 4.
-							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(format, offset, dimension * vertexCount * 2, stream_strides[stream], dimension * 2)
-							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_RG_HALF if dimension == 2 else ArrayMesh.ARRAY_CUSTOM_RGBA_HALF) << custom_shift
+							assert(dimension == 2 or dimension == 4)  # Unity docs says always word aligned, so I think this means it is guaranteed to be 2 or 4.
+							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(
+								format, offset, dimension * vertexCount * 2, stream_strides[stream], dimension * 2
+							)
+							compress_flags |= (
+								(ArrayMesh.ARRAY_CUSTOM_RG_HALF if dimension == 2 else ArrayMesh.ARRAY_CUSTOM_RGBA_HALF)
+								<< custom_shift
+							)
 							# We could try to convert SNORM16 and UNORM16 to float16 but that sounds confusing and complicated.
 						else:
 							assert(dimension <= 4)
-							surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(format, offset, dimension * vertexCount, stream_strides[stream], dimension)
+							surface_arrays[godot_array_type] = vertex_buf.formatted_float_subarray(
+								format, offset, dimension * vertexCount, stream_strides[stream], dimension
+							)
 							compress_flags |= (ArrayMesh.ARRAY_CUSTOM_R_FLOAT + (dimension - 1)) << custom_shift
 			#firstVertex: 1302
 			#vertexCount: 38371
@@ -594,7 +767,14 @@ class UnityMesh extends UnityObject:
 			#f.flush()
 			#f = null
 			for i in range(ArrayMesh.ARRAY_MAX):
-				print("Array " + str(i) + ": length=" + (str(len(surface_arrays[i])) if typeof(surface_arrays[i]) != TYPE_NIL else "NULL"))
+				print(
+					(
+						"Array "
+						+ str(i)
+						+ ": length="
+						+ (str(len(surface_arrays[i])) if typeof(surface_arrays[i]) != TYPE_NIL else "NULL")
+					)
+				)
 			print("here are some flags " + str(compress_flags))
 			arr_mesh.add_surface_from_arrays(primitive_format, surface_arrays, [], {}, compress_flags)
 		# arr_mesh.set_custom_aabb(local_aabb)
@@ -603,8 +783,17 @@ class UnityMesh extends UnityObject:
 
 	var local_aabb: AABB:
 		get:
-			print(str(typeof(keys.get("m_LocalAABB", {}).get("m_Center"))) +"/" + str(keys.get("m_LocalAABB", {}).get("m_Center")))
-			return AABB(keys.get("m_LocalAABB", {}).get("m_Center") * Vector3(-1,1,1), keys.get("m_LocalAABB", {}).get("m_Extent"))
+			print(
+				(
+					str(typeof(keys.get("m_LocalAABB", {}).get("m_Center")))
+					+ "/"
+					+ str(keys.get("m_LocalAABB", {}).get("m_Center"))
+				)
+			)
+			return AABB(
+				keys.get("m_LocalAABB", {}).get("m_Center") * Vector3(-1, 1, 1),
+				keys.get("m_LocalAABB", {}).get("m_Extent")
+			)
 
 	var pre2018_skin: Array:
 		get:
@@ -650,7 +839,9 @@ class UnityMesh extends UnityObject:
 	func get_index_data() -> RefCounted:
 		return aligned_byte_buffer.new(keys.get("m_IndexBuffer", ""))
 
-class UnityMaterial extends UnityObject:
+
+class UnityMaterial:
+	extends UnityObject
 
 	# Old:
 	#    m_Colors:
@@ -714,12 +905,12 @@ class UnityMaterial extends UnityObject:
 
 	func get_texture_scale(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
-		var scale: Vector2 = env.get("m_Scale", Vector2(1,1))
+		var scale: Vector2 = env.get("m_Scale", Vector2(1, 1))
 		return Vector3(scale.x, scale.y, 0.0)
 
 	func get_texture_offset(texProperties: Dictionary, name: String) -> Vector3:
 		var env = texProperties.get(name, {})
-		var offset: Vector2 = env.get("m_Offset", Vector2(0,0))
+		var offset: Vector2 = env.get("m_Offset", Vector2(0, 0))
 		return Vector3(offset.x, offset.y, 0.0)
 
 	func get_color(colorProperties: Dictionary, name: String, dfl: Color) -> Color:
@@ -738,11 +929,11 @@ class UnityMaterial extends UnityObject:
 		var ret: Dictionary = {}.duplicate()
 		var kwd = keys.get("m_ShaderKeywords", "")
 		if typeof(kwd) == TYPE_STRING:
-			for x in kwd.split(' '):
+			for x in kwd.split(" "):
 				ret[x] = true
 		return ret
 
-	func create_godot_resource() -> Resource: #Material:
+	func create_godot_resource() -> Resource:  #Material:
 		#print("keys: " + str(keys))
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
@@ -755,10 +946,10 @@ class UnityMaterial extends UnityObject:
 		ret.resource_name = self.name
 		# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unity
 		# But it seems to workaround a problem with some materials for now.
-		ret.depth_draw_mode = true ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
-		ret.albedo_tex_force_srgb = true # Nothing works if this isn't set to true explicitly. Stupid default.
+		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
+		ret.albedo_tex_force_srgb = true  # Nothing works if this isn't set to true explicitly. Stupid default.
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-		ret.albedo_texture = get_texture(texProperties, "_MainTex2") ### ONLY USED IN ONE SHADER. This case should be removed.
+		ret.albedo_texture = get_texture(texProperties, "_MainTex2")  ### ONLY USED IN ONE SHADER. This case should be removed.
 		if ret.albedo_texture == null:
 			ret.albedo_texture = get_texture(texProperties, "_MainTex")
 		if ret.albedo_texture == null:
@@ -780,7 +971,7 @@ class UnityMaterial extends UnityObject:
 			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
 			ret.emission = Color.BLACK
 			if emis_mag > 0:
-				ret.emission = Color(emis_vec.x/emis_mag, emis_vec.y/emis_mag, emis_vec.z/emis_mag)
+				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag)
 				ret.emission_energy = emis_mag
 			ret.emission_texture = get_texture(texProperties, "_EmissionMap")
 			if ret.emission_texture != null:
@@ -797,7 +988,7 @@ class UnityMaterial extends UnityObject:
 		if occlusion != null:
 			ret.ao_enabled = true
 			ret.ao_texture = occlusion
-			ret.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0) # why godot defaults to 0???
+			ret.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)  # why godot defaults to 0???
 			ret.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
 		if kws.get("_METALLICGLOSSMAP"):
 			ret.metallic_texture = get_texture(texProperties, "_MetallicGlossMap")
@@ -806,7 +997,7 @@ class UnityMaterial extends UnityObject:
 			if typeof(ret.get("roughness_invert_channel")) == TYPE_BOOL:
 				ret.roughness_texture = ret.metallic_texture
 				ret.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_ALPHA
-				ret.set("roughness_invert_channel", true) # Experimental patch
+				ret.set("roughness_invert_channel", true)  # Experimental patch
 		# TODO: Glossiness: invert color channels??
 		ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
 		if kws.get("_ALPHATEST_ON"):
@@ -824,12 +1015,18 @@ class UnityMaterial extends UnityObject:
 	func get_godot_extension() -> String:
 		return ".mat.tres"
 
-class UnityShader extends UnityObject:
+
+class UnityShader:
+	extends UnityObject
 	pass
+
 
 # todo: create
 
-class UnityAnimatorRelated extends UnityObject: # Helper functions
+
+class UnityAnimatorRelated:
+	extends UnityObject  # Helper functions
+
 	func get_unique_identifier(p_name: String, used_names: Dictionary) -> StringName:
 		var out_str: String = ""
 		for ch in p_name:
@@ -854,7 +1051,9 @@ class UnityAnimatorRelated extends UnityObject: # Helper functions
 	func ref_to_anim_key(motion_ref: Array) -> String:
 		return "%s:%d" % [meta.guid if typeof(motion_ref[2]) == TYPE_NIL else motion_ref[2], motion_ref[1]]
 
-	func recurse_to_motion(controller: RefCounted, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary):
+	func recurse_to_motion(
+		controller: RefCounted, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary
+	):
 		var motion_node: AnimationRootNode = null
 		var anim_key: String = ref_to_anim_key(motion_ref)
 		if animation_guid_fileid_to_name.has(anim_key):
@@ -862,7 +1061,16 @@ class UnityAnimatorRelated extends UnityObject: # Helper functions
 			motion_node.animation = animation_guid_fileid_to_name[anim_key]
 		else:
 			var blend_tree = meta.lookup(motion_ref)
-			print("type: " + str(blend_tree.type) + " class " + str(blend_tree.get_class()) + " " + str(blend_tree.uniq_key))
+			print(
+				(
+					"type: "
+					+ str(blend_tree.type)
+					+ " class "
+					+ str(blend_tree.get_class())
+					+ " "
+					+ str(blend_tree.uniq_key)
+				)
+			)
 			if blend_tree.type != "BlendTree":
 				push_error("Animation not in animation_guid_fileid_to_name: " + str(anim_key))
 				motion_node = AnimationNodeAnimation.new()
@@ -870,7 +1078,9 @@ class UnityAnimatorRelated extends UnityObject: # Helper functions
 				motion_node = blend_tree.create_animation_node(controller, layer_index, animation_guid_fileid_to_name)
 		return motion_node
 
-class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
+
+class UnityRuntimeAnimatorController:
+	extends UnityAnimatorRelated
 
 	func get_godot_extension() -> String:
 		return ".controller.tres"
@@ -878,7 +1088,9 @@ class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
 	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
 		return null
 
-	func create_animation_library_clips_at_node(animator: RefCounted, node_parent: Node, animation_guid_fileid_to_name: Dictionary, requested_clips: Dictionary) -> AnimationLibrary:
+	func create_animation_library_clips_at_node(
+		animator: RefCounted, node_parent: Node, animation_guid_fileid_to_name: Dictionary, requested_clips: Dictionary
+	) -> AnimationLibrary:
 		for key in animation_guid_fileid_to_name:
 			var guid_fid = key.split(":")
 			var anim_guid = guid_fid[0]
@@ -890,7 +1102,7 @@ class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
 
 		var anim_library = AnimationLibrary.new()
 		for clip_name in requested_clips:
-			var anim_clip_obj: UnityAnimationClip = meta.lookup(requested_clips[clip_name], true) # TODO: What if this fails? What if animation in glb file?
+			var anim_clip_obj: UnityAnimationClip = meta.lookup(requested_clips[clip_name], true)  # TODO: What if this fails? What if animation in glb file?
 			var anim_res: Animation = meta.get_godot_resource(requested_clips[clip_name], true)
 			if anim_res == null and anim_clip_obj == null:
 				meta.lookup(requested_clips[clip_name])
@@ -917,7 +1129,10 @@ class UnityRuntimeAnimatorController extends UnityAnimatorRelated:
 	func create_godot_resource() -> Resource:
 		return null
 
-class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
+
+class UnityAnimatorOverrideController:
+	extends UnityRuntimeAnimatorController
+
 	# Store original unity object!
 	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
 		var controller_ref: Array = keys["m_Controller"]
@@ -931,7 +1146,9 @@ class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
 			var override_clip: Array = clip["m_OverrideClip"]
 			override_clips[animation_guid_fileid_to_name[ref_to_anim_key(orig_clip)]] = override_clip
 		# m_Clips: m_OriginalClip / m_OverrideClip
-		var anim_library = self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, override_clips)
+		var anim_library = self.create_animation_library_clips_at_node(
+			animator, node_parent, animation_guid_fileid_to_name, override_clips
+		)
 		anim_library.set_meta("base_node", referenced_sm)
 		anim_library.set_meta("base_library", referenced_library)
 		return anim_library
@@ -939,27 +1156,31 @@ class UnityAnimatorOverrideController extends UnityRuntimeAnimatorController:
 	func create_godot_resource() -> Resource:
 		return create_animation_library_at_node(null, null)
 
-class UnityAnimatorController extends UnityRuntimeAnimatorController:
+
+class UnityAnimatorController:
+	extends UnityRuntimeAnimatorController
 
 	var parameters: Dictionary = {}
 
 	# An AnimationController references two things:\
 	# 1. an animation library which depends on the node.
-	# 2. 
+	# 2.
 	func create_animation_library_at_node(animator: RefCounted, node_parent: Node) -> AnimationLibrary:  # UnityAnimator
 		var this_res: AnimationRootNode = meta.get_godot_resource([null, self.fileID, null, 0])
 		var animation_guid_fileid_to_name: Dictionary = this_res.get_meta(&"guid_fileid_to_animation_name", {})
 		assert(not animation_guid_fileid_to_name.is_empty())
-		return self.create_animation_library_clips_at_node(animator, node_parent, animation_guid_fileid_to_name, {}.duplicate())
+		return self.create_animation_library_clips_at_node(
+			animator, node_parent, animation_guid_fileid_to_name, {}.duplicate()
+		)
 
 	func get_animation_guid_fileid_to_name():
 		var animation_guid_fileid_to_name: Dictionary = {}.duplicate()
 		var animation_used_names: Dictionary = {}.duplicate()
 		var sm_path: Array = [].duplicate()
 		var lay_idx: int = -1
-		for lay in keys['m_AnimatorLayers']:
+		for lay in keys["m_AnimatorLayers"]:
 			lay_idx += 1
-			var sm: UnityAnimatorStateMachine = meta.lookup(lay['m_StateMachine'])
+			var sm: UnityAnimatorStateMachine = meta.lookup(lay["m_StateMachine"])
 			sm_path.append(lay.get("m_Name", "layer"))
 			sm.get_all_animations(sm_path, animation_used_names, animation_guid_fileid_to_name)
 			sm_path.clear()
@@ -968,7 +1189,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 	func get_extra_resources() -> Dictionary:
 		return {-self.fileID: ".library.tres"}
 
-	func get_extra_resource(fileID: int) -> Resource: #AnimationLibrary:
+	func get_extra_resource(fileID: int) -> Resource:  #AnimationLibrary:
 		var sk: AnimationLibrary = AnimationLibrary.new()
 		var fileid_to_name: Dictionary = get_animation_guid_fileid_to_name()
 		var anim_library = self.create_animation_library_clips_at_node(null, null, fileid_to_name, {}.duplicate())
@@ -982,23 +1203,23 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		var blended_layers = AnimationNodeBlendTree.new()
 		var tmp_used_params: Dictionary = {}.duplicate()
 		self.parameters = {}.duplicate()
-		for param in keys['m_AnimatorParameters']:
+		for param in keys["m_AnimatorParameters"]:
 			var type: String = "unknown"
 			var defval: Variant = 0
 			match str(param["m_Type"]):
-				'1':
+				"1":
 					type = "float"
 					defval = float(param["m_DefaultFloat"])
-				'3':
+				"3":
 					type = "int"
 					defval = int(param["m_DefaultInt"])
-				'4':
+				"4":
 					type = "bool"
 					if param["m_DefaultBool"]:
 						defval = true
 					else:
 						defval = false
-				'9':
+				"9":
 					type = "trigger"
 					if param["m_DefaultBool"]:
 						defval = true
@@ -1006,7 +1227,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 						defval = false
 			var param_name: StringName = get_unique_identifier(param["m_Name"], tmp_used_params)
 			parameters[param["m_Name"]] = {"uniq_name": param_name, "type": type, "default": defval}
-			blended_layers.set_meta(param_name, defval) # toplevel meta is used.
+			blended_layers.set_meta(param_name, defval)  # toplevel meta is used.
 		var lay_x: float = 0.0
 		var last_output: StringName = &""
 		var used_names: Dictionary = {}.duplicate()
@@ -1014,9 +1235,9 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		var animation_used_names: Dictionary = {}.duplicate()
 		var sm_path: Array = [].duplicate()
 		var lay_idx: int = -1
-		for lay in keys['m_AnimatorLayers']:
+		for lay in keys["m_AnimatorLayers"]:
 			lay_idx += 1
-			var sm: UnityAnimatorStateMachine = meta.lookup(lay['m_StateMachine'])
+			var sm: UnityAnimatorStateMachine = meta.lookup(lay["m_StateMachine"])
 			sm_path.append(lay.get("m_Name", "layer"))
 			sm.get_all_animations(sm_path, animation_used_names, animation_guid_fileid_to_name)
 			sm_path.clear()
@@ -1024,7 +1245,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		# Godot: "An AnimationNodeOutput node named output is created by default."
 		used_names[&"output"] = 0
 		lay_idx = -1
-		for lay in keys['m_AnimatorLayers']:
+		for lay in keys["m_AnimatorLayers"]:
 			lay_idx += 1
 			'''
 	m_Name: Base Layer
@@ -1042,9 +1263,9 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 			var renamed_layer = get_unique_name(lay["m_Name"], used_names)
 			lay["m_Controller"] = [null, self.fileID, null, 0]
 			var node_to_add: AnimationRootNode = create_flat_state_machine(lay_idx, animation_guid_fileid_to_name)
-			print('aaa')
+			print("aaa")
 			blended_layers.add_node(renamed_layer, node_to_add, Vector2(100 + lay_x, 400))
-			print('bbb ' + str(renamed_layer))
+			print("bbb " + str(renamed_layer))
 			if last_output != &"":
 				# TODO: We may wish to generate the correct mask based on animation clip outputs...
 				# but this will depend on the animation clips in question, and I wanted to keep this agnostic.
@@ -1081,7 +1302,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		sm.add_node(&"test2", n2)
 		sm.add_transition(&"test1", &"test2", t1)
 		sm.add_transition(&"test1", &"test2", t2)
-		var has_dupe_transitions: bool = (sm.get_transition(0) == t1 && sm.get_transition(1) == t2)
+		var has_dupe_transitions: bool = sm.get_transition(0) == t1 && sm.get_transition(1) == t2
 		sm.remove_transition_by_index(1)
 		sm.remove_transition_by_index(0)
 		sm.remove_node(&"test1")
@@ -1098,11 +1319,11 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 	const STATE_MACHINE_OFFSET: Vector3 = Vector3(300, 200, 0)
 
 	func create_flat_state_machine(layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
-		var lay: Dictionary = keys['m_AnimatorLayers'][layer_index]
-		var root_state_machine_ref: Array = lay['m_StateMachine']
+		var lay: Dictionary = keys["m_AnimatorLayers"][layer_index]
+		var root_state_machine_ref: Array = lay["m_StateMachine"]
 		var root_sm: UnityAnimatorStateMachine = meta.lookup(root_state_machine_ref)
 		var state_uniq_names = {}.duplicate()
-		var state_duplicates = {}.duplicate() # such as any state self transitions; other self transitions; multi transitions.
+		var state_duplicates = {}.duplicate()  # such as any state self transitions; other self transitions; multi transitions.
 		var state_data = {}.duplicate()
 		state_uniq_names[&"Start"] = 0
 		state_uniq_names[&"End"] = 0
@@ -1115,7 +1336,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		root_sm.get_any_state_transitions(any_transition_list)
 		any_transition_list.reverse()
 		var exit_parent = {}.duplicate()
-		exit_parent[root_sm.uniq_key] = root_sm # null # make a sort of temporary exit node which holds it for one frame.
+		exit_parent[root_sm.uniq_key] = root_sm  # null # make a sort of temporary exit node which holds it for one frame.
 		root_sm.get_exit_parent(exit_parent)
 		var sm = AnimationNodeStateMachine.new()
 		sm.resource_name = keys.get("m_Name", "")
@@ -1128,10 +1349,10 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 		var transition_count = {}.duplicate()
 		var state_count = {}.duplicate()
 		for state_key in state_data:
-			transition_count[state_key + state_key] = 1 # state to itself is not allowed anyway.
+			transition_count[state_key + state_key] = 1  # state to itself is not allowed anyway.
 			state_count[state_key] = 1
 
-		for transition_obj in any_transition_list: # Godot favors last transition.
+		for transition_obj in any_transition_list:  # Godot favors last transition.
 			var can_trans_to_self: bool = transition_obj.keys.get("m_CanTransitionToSelf", 0) != 0
 			var transition_list = transition_obj.resolve_state_transitions(exit_parent, null)
 			for src_state_key in state_data:
@@ -1185,12 +1406,12 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 			for i in range(1, state_count[state_key]):
 				var dup_name = get_unique_name(dup_prefix, state_uniq_names)
 				anim_node = this_state["state"].create_animation_node(self, layer_index, animation_guid_fileid_to_name)
-				sm.add_node(dup_name, anim_node, this_state["pos"] + i * Vector2(25,25))
+				sm.add_node(dup_name, anim_node, this_state["pos"] + i * Vector2(25, 25))
 				dupes.append(dup_name)
 			state_duplicates[this_state["name"]] = dupes
 
 		transition_count = {}.duplicate()
-		for x_transition_obj in any_transition_list: # Godot favors last transition.
+		for x_transition_obj in any_transition_list:  # Godot favors last transition.
 			var transition_obj: UnityAnimatorStateTransition = x_transition_obj
 			var can_trans_to_self: bool = transition_obj.keys.get("m_CanTransitionToSelf", 0) != 0
 			var transition_list: Array = transition_obj.resolve_state_transitions(exit_parent, null)
@@ -1202,13 +1423,19 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
 						continue
 					var trans_key: String = src_state_key + dst_state.uniq_key
-					create_dupe_transitions(sm, transition_obj, state_data[src_state_key]["name"], state_data[dst_state.uniq_key]["name"],
-								state_duplicates, transition_count.get(trans_key, 0), condition_list)
+					create_dupe_transitions(
+						sm,
+						transition_obj,
+						state_data[src_state_key]["name"],
+						state_data[dst_state.uniq_key]["name"],
+						state_duplicates,
+						transition_count.get(trans_key, 0),
+						condition_list
+					)
 					if not allow_dupe_transitions:
 						if not transition_count.has(trans_key):
 							transition_count[trans_key] = 0
 						transition_count[trans_key] += 1
-
 
 		for state_key in state_data:
 			var this_state: Dictionary = state_data[state_key]
@@ -1222,8 +1449,15 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					if dst_state == null:
 						continue
 					var trans_key: String = state_key + dst_state.uniq_key
-					create_dupe_transitions(sm, transition_obj, this_state["name"], state_data[dst_state.uniq_key]["name"],
-								state_duplicates, transition_count.get(trans_key, 0), condition_list)
+					create_dupe_transitions(
+						sm,
+						transition_obj,
+						this_state["name"],
+						state_data[dst_state.uniq_key]["name"],
+						state_duplicates,
+						transition_count.get(trans_key, 0),
+						condition_list
+					)
 					if not allow_dupe_transitions:
 						if not transition_count.has(trans_key):
 							transition_count[trans_key] = 0
@@ -1239,8 +1473,15 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 				sm.set_start_node(state_data[def_state.uniq_key]["name"])
 		return sm
 
-	func create_dupe_transitions(sm: AnimationNodeStateMachine, transition_obj: UnityAnimatorStateTransition, src_state_name: StringName, dst_state_name: StringName,
-					state_duplicates: Dictionary, dst_idx: int, condition_list: Array):
+	func create_dupe_transitions(
+		sm: AnimationNodeStateMachine,
+		transition_obj: UnityAnimatorStateTransition,
+		src_state_name: StringName,
+		dst_state_name: StringName,
+		state_duplicates: Dictionary,
+		dst_idx: int,
+		condition_list: Array
+	):
 		var conditions: String = ""
 		var is_muted: bool = transition_obj.keys.get("m_Mute", false)
 		for trans in condition_list:
@@ -1254,7 +1495,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 				var cond_to_add = ""
 				match event:
 					1:
-						cond_to_add = "%s" % [parameter] # bool true
+						cond_to_add = "%s" % [parameter]  # bool true
 					2:
 						cond_to_add = "not %s" % [parameter]
 					3:
@@ -1271,7 +1512,7 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 					conditions += cond_to_add
 
 		var trans = AnimationNodeStateMachineTransition.new()
-		trans.xfade_time = 0 ##### FIXME: xfade_time > 0 sometimes causes hung machines ##### transition_obj.keys["m_TransitionDuration"]
+		trans.xfade_time = 0  ##### FIXME: xfade_time > 0 sometimes causes hung machines ##### transition_obj.keys["m_TransitionDuration"]
 		# Godot does not currently support exit time. transition_obj.keys["m_ExitTime"]
 		if transition_obj.keys["m_HasExitTime"] and transition_obj.keys["m_ExitTime"] > 0.0001:
 			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
@@ -1297,19 +1538,27 @@ class UnityAnimatorController extends UnityRuntimeAnimatorController:
 			sm.add_transition(src_dupe, dst_dupe, trans)
 			src_dupe_idx += 1
 
-class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 
-	func get_state_data(sm_prefix: String, state_data: Dictionary, unique_names: Dictionary, sm_pos: Vector3, pos_scale: float):
+class UnityAnimatorStateMachine:
+	extends UnityAnimatorRelated
+
+	func get_state_data(
+		sm_prefix: String, state_data: Dictionary, unique_names: Dictionary, sm_pos: Vector3, pos_scale: float
+	):
 		for state in keys["m_ChildStates"]:
 			var child: UnityAnimatorState = meta.lookup(state["m_State"])
 			var child_name: StringName = get_unique_name(StringName(sm_prefix + child.keys["m_Name"]), unique_names)
 			var child_pos: Vector3 = sm_pos + state["m_Position"] * pos_scale
-			state_data[child.uniq_key] = {"name": child_name, "state": child, "pos": Vector2(child_pos.x, child_pos.y), "sm": self}
-		
+			state_data[child.uniq_key] = {
+				"name": child_name, "state": child, "pos": Vector2(child_pos.x, child_pos.y), "sm": self
+			}
+
 		for state_machine in keys["m_ChildStateMachines"]:
 			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
 			var child_pos: Vector3 = sm_pos + state_machine["m_Position"] * pos_scale
-			child.get_state_data(sm_prefix + child.keys["m_Name"] + "/", state_data, unique_names, child_pos, pos_scale * 0.5)
+			child.get_state_data(
+				sm_prefix + child.keys["m_Name"] + "/", state_data, unique_names, child_pos, pos_scale * 0.5
+			)
 
 	func get_exit_parent(sm_to_parent: Dictionary):
 		for state_machine in keys["m_ChildStateMachines"]:
@@ -1320,7 +1569,7 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 	func get_any_state_transitions(transition_list: Array):
 		for transition in keys["m_AnyStateTransitions"]:
 			transition_list.append(meta.lookup(transition))
-		
+
 		for state_machine in keys["m_ChildStateMachines"]:
 			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
 			child.get_any_state_transitions(transition_list)
@@ -1336,7 +1585,7 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 			if motion != null:
 				sm_path.append(basename)
 				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
-				sm_path.remove_at(len(sm_path)-1)
+				sm_path.remove_at(len(sm_path) - 1)
 			else:
 				var name: String = basename
 				for i in range(len(uniq_name_dict) + 1):
@@ -1349,7 +1598,12 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 							name = "%s %s %d" % [sm_name, basename, i]
 						else:
 							name = "%s %s" % [sm_name, basename]
-						print("Trying %s name %s from %s %s" % [str(sm_name), str(name), str(basename), str(uniq_name_dict)])
+						print(
+							(
+								"Trying %s name %s from %s %s"
+								% [str(sm_name), str(name), str(basename), str(uniq_name_dict)]
+							)
+						)
 				uniq_name_dict[name] = 1
 				out_guid_fid_to_anim_name[child.ref_to_anim_key(motion_ref)] = name
 
@@ -1357,11 +1611,17 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 			var child: UnityAnimatorStateMachine = meta.lookup(state_machine["m_StateMachine"])
 			sm_path.append(child.keys["m_Name"])
 			child.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
-			sm_path.remove_at(len(sm_path)-1)
+			sm_path.remove_at(len(sm_path) - 1)
 
-	func resolve_entry_state_transitions(exit_src: Object, exit_parent: Dictionary, transition_list: Array, transition_dict: Dictionary, inp_condition_list: Array):
+	func resolve_entry_state_transitions(
+		exit_src: Object,
+		exit_parent: Dictionary,
+		transition_list: Array,
+		transition_dict: Dictionary,
+		inp_condition_list: Array
+	):
 		var trans_list: Array = keys["m_EntryTransitions"]
-		if exit_src != null and exit_src.uniq_key != self.uniq_key: # if root, we use entry transitions anyway.
+		if exit_src != null and exit_src.uniq_key != self.uniq_key:  # if root, we use entry transitions anyway.
 			trans_list = []
 			#m_StateMachineTransitions:
 			#- first: {fileID: 7243501764948564761}
@@ -1385,7 +1645,7 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 			if dst_state != null and not trans_obj.keys["m_IsExit"]:
 				condition_list.append(dst_state)
 				transition_list.append(condition_list)
-			else: # if dst_sm != null or trans_obj.keys["m_IsExit"]:
+			else:  # if dst_sm != null or trans_obj.keys["m_IsExit"]:
 				var new_exit_src: Object = null
 				if trans_obj.keys["m_IsExit"]:
 					new_exit_src = self
@@ -1397,35 +1657,50 @@ class UnityAnimatorStateMachine extends UnityAnimatorRelated:
 					# condition_list.append(null)
 					# transition_list.append(condition_list) # transition to broken link or top-level exit: go to special exit state.
 				else:
-					dst_sm.resolve_entry_state_transitions(new_exit_src, exit_parent, transition_list, transition_dict, condition_list)
+					dst_sm.resolve_entry_state_transitions(
+						new_exit_src, exit_parent, transition_list, transition_dict, condition_list
+					)
 			transition_dict.erase(trans_obj.uniq_key)
 		var def_state = meta.lookup(keys["m_DefaultState"])
 		if def_state != null:
 			inp_condition_list.append(def_state)
 			transition_list.append(inp_condition_list)
 
-class UnityAnimatorState extends UnityAnimatorRelated:
-	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+
+class UnityAnimatorState:
+	extends UnityAnimatorRelated
+
+	func create_animation_node(
+		controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary
+	) -> AnimationRootNode:
 		var motion_ref: Array = keys["m_Motion"]
-		var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, motion_ref, animation_guid_fileid_to_name)
+		var motion_node: AnimationRootNode = recurse_to_motion(
+			controller, layer_index, motion_ref, animation_guid_fileid_to_name
+		)
 		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
 		var speed: float = keys.get("m_Speed", 1)
 		var cycle_off: float = keys.get("m_CycleOffset", 0)
-		var speed_param_active: int = keys.get("m_SpeedParameterActive", 0) and not keys.get("m_SpeedParameter", "").is_empty()
-		var time_param_active: int = keys.get("m_TimeParameterActive", 0) and not keys.get("m_TimeParameter", "").is_empty()
-		var cycle_param_active: int = keys.get("m_CycleParameterActive", 0) and not keys.get("m_CycleParameter", "").is_empty()
+		var speed_param_active: int = (
+			keys.get("m_SpeedParameterActive", 0) and not keys.get("m_SpeedParameter", "").is_empty()
+		)
+		var time_param_active: int = (
+			keys.get("m_TimeParameterActive", 0) and not keys.get("m_TimeParameter", "").is_empty()
+		)
+		var cycle_param_active: int = (
+			keys.get("m_CycleParameterActive", 0) and not keys.get("m_CycleParameter", "").is_empty()
+		)
 		var ret = motion_node
 		# not sure we support cycle offset?
 		if speed != 1 or speed_param_active == 1 or time_param_active == 1:
 			var bt = AnimationNodeBlendTree.new()
 			ret = bt
-			bt.add_node(&"Animation", motion_node, Vector2(200,200))
+			bt.add_node(&"Animation", motion_node, Vector2(200, 200))
 			var last_node = &"Animation"
 			var xval = 500
 			if speed != 1:
 				var tsnode = AnimationNodeTimeScale.new()
 				tsnode.set_meta("scale", speed)
-				bt.add_node(&"TimeScale", tsnode, Vector2(xval,0))
+				bt.add_node(&"TimeScale", tsnode, Vector2(xval, 0))
 				xval += 200
 				bt.connect_node(&"TimeScale", 0, last_node)
 				last_node = &"TimeScale"
@@ -1433,7 +1708,7 @@ class UnityAnimatorState extends UnityAnimatorRelated:
 				var tsnode = AnimationNodeTimeScale.new()
 				tsnode.set_meta("scale", controller.get_parameter_uniq_name(keys["m_SpeedParameter"]))
 				var node_name = StringName("TimeScaleParam")
-				bt.add_node(node_name, tsnode, Vector2(xval,0))
+				bt.add_node(node_name, tsnode, Vector2(xval, 0))
 				xval += 200
 				bt.connect_node(node_name, 0, last_node)
 				last_node = node_name
@@ -1441,18 +1716,23 @@ class UnityAnimatorState extends UnityAnimatorRelated:
 				var seeknode = AnimationNodeTimeSeek.new()
 				seeknode.set_meta("seek_position", controller.get_parameter_uniq_name(keys["m_TimeParameter"]))
 				var node_name = StringName("TimeSeek")
-				bt.add_node(node_name, seeknode, Vector2(xval,0))
+				bt.add_node(node_name, seeknode, Vector2(xval, 0))
 				xval += 200
 				bt.connect_node(node_name, 0, last_node)
 				last_node = node_name
 			bt.connect_node(&"output", 0, last_node)
-			bt.set_node_position(&"output", Vector2(xval,0))
+			bt.set_node_position(&"output", Vector2(xval, 0))
 		return ret
 
-class UnityAnimatorTransitionBase extends UnityAnimatorRelated:
-	pass # abstract
 
-class UnityAnimatorStateTransition extends UnityAnimatorTransitionBase:
+class UnityAnimatorTransitionBase:
+	extends UnityAnimatorRelated
+	pass  # abstract
+
+
+class UnityAnimatorStateTransition:
+	extends UnityAnimatorTransitionBase
+
 	func resolve_state_transitions(exit_parent: Dictionary, this_sm: Object):
 		var dst_sm: UnityAnimatorStateMachine = meta.lookup(keys.get("m_DstStateMachine"))
 		var dst_state: UnityAnimatorState = meta.lookup(keys.get("m_DstState"))
@@ -1469,18 +1749,25 @@ class UnityAnimatorStateTransition extends UnityAnimatorTransitionBase:
 			condition_list.append(dst_state)
 			transition_list.append(condition_list)
 		elif dst_sm != null:
-			var transition_dict = {}.duplicate() # avoid cycles
-			dst_sm.resolve_entry_state_transitions(exit_src, exit_parent, transition_list, transition_dict, condition_list)
+			var transition_dict = {}.duplicate()  # avoid cycles
+			dst_sm.resolve_entry_state_transitions(
+				exit_src, exit_parent, transition_list, transition_dict, condition_list
+			)
 		return transition_list
 
-class UnityAnimatorTransition extends UnityAnimatorTransitionBase:
+
+class UnityAnimatorTransition:
+	extends UnityAnimatorTransitionBase
 	pass
 
-class UnityMotion extends UnityAnimatorRelated:
-	pass # abstract
-		
 
-class UnityBlendTree extends UnityMotion:
+class UnityMotion:
+	extends UnityAnimatorRelated
+	pass  # abstract
+
+
+class UnityBlendTree:
+	extends UnityMotion
 
 	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
 		for child in keys["m_Childs"]:
@@ -1495,17 +1782,17 @@ class UnityBlendTree extends UnityMotion:
 			var motion_ref: Array = child["m_Motion"]
 			if out_guid_fid_to_anim_name.has(ref_to_anim_key(motion_ref)):
 				continue
-			var motion: Object = meta.lookup(motion_ref, true) # TODO: Need to get the godot resource's name for imported glb
+			var motion: Object = meta.lookup(motion_ref, true)  # TODO: Need to get the godot resource's name for imported glb
 			if motion != null:
 				sm_path.append(basename)
 				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
-				sm_path.remove_at(len(sm_path)-1)
+				sm_path.remove_at(len(sm_path) - 1)
 			else:
 				var name: String = basename
 				for i in range(len(uniq_name_dict) + 1):
 					if not uniq_name_dict.has(name):
 						break
-					for j in range(len(sm_path)-1, -1, -1):
+					for j in range(len(sm_path) - 1, -1, -1):
 						var sm_name = sm_path[j]
 						if not uniq_name_dict.has(name):
 							break
@@ -1513,28 +1800,37 @@ class UnityBlendTree extends UnityMotion:
 							name = "%s %s %d" % [sm_name, basename, i]
 						else:
 							name = "%s %s" % [sm_name, basename]
-						print("Trying %s name %s from %s %s" % [str(sm_name), str(name), str(basename), str(uniq_name_dict)])
+						print(
+							(
+								"Trying %s name %s from %s %s"
+								% [str(sm_name), str(name), str(basename), str(uniq_name_dict)]
+							)
+						)
 				uniq_name_dict[name] = 1
 				out_guid_fid_to_anim_name[ref_to_anim_key(motion_ref)] = name
 
-	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
-		var minmax: Rect2 = Rect2(-1.1,-1.1,2.2,2.2)
+	func create_animation_node(
+		controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary
+	) -> AnimationRootNode:
+		var minmax: Rect2 = Rect2(-1.1, -1.1, 2.2, 2.2)
 		var ret: AnimationRootNode = null
 		match keys["m_BlendType"]:
-			0: # Simple1D
+			0:  # Simple1D
 				var bs = AnimationNodeBlendSpace1D.new()
 				for child in keys["m_Childs"]:
 					# TODO: m_TimeScale and m_CycleOffset
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
+					var motion_node: AnimationRootNode = recurse_to_motion(
+						controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name
+					)
 					if child.get("m_TimeScale", 1) != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
 						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
-						bt.add_node(&"Motion", motion_node, Vector2(200,200))
-						bt.add_node(&"TimeScale", tsnode, Vector2(500,200))
+						bt.add_node(&"Motion", motion_node, Vector2(200, 200))
+						bt.add_node(&"TimeScale", tsnode, Vector2(500, 200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
 						bt.connect_node(&"output", 0, &"TimeScale")
-						bt.set_node_position(&"output", Vector2(700,200))
+						bt.set_node_position(&"output", Vector2(700, 200))
 						motion_node = bt
 					bs.add_blend_point(motion_node, child["m_Threshold"])
 					minmax = minmax.expand(Vector2(child["m_Threshold"] * 1.1, 0.0))
@@ -1542,30 +1838,36 @@ class UnityBlendTree extends UnityMotion:
 				bs.max_space = minmax.end.x
 				bs.set_meta("blend_position", controller.get_parameter_uniq_name(keys.get("m_BlendParameter", "Blend")))
 				ret = bs
-			1, 2, 3: # SimpleDirectional2D, FreeformDirectional2D, FreeformCartesian2D
+			1, 2, 3:  # SimpleDirectional2D, FreeformDirectional2D, FreeformCartesian2D
 				# TODO: Does Godot support the different types of 2D blending?
 				var bs = AnimationNodeBlendSpace2D.new()
 				for child in keys["m_Childs"]:
 					# TODO: m_TimeScale and m_CycleOffset
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
+					var motion_node: AnimationRootNode = recurse_to_motion(
+						controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name
+					)
 					if child.get("m_TimeScale", 1) != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
 						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
-						bt.add_node(&"Motion", motion_node, Vector2(200,200))
-						bt.add_node(&"TimeScale", tsnode, Vector2(500,200))
+						bt.add_node(&"Motion", motion_node, Vector2(200, 200))
+						bt.add_node(&"TimeScale", tsnode, Vector2(500, 200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
 						bt.connect_node(&"output", 0, &"TimeScale")
-						bt.set_node_position(&"output", Vector2(700,200))
+						bt.set_node_position(&"output", Vector2(700, 200))
 						motion_node = bt
 					bs.add_blend_point(motion_node, child["m_Position"])
 					minmax = minmax.expand(child["m_Position"] * 1.1)
 				bs.min_space = minmax.position
 				bs.max_space = minmax.end
-				bs.set_meta("blend_position_x", controller.get_parameter_uniq_name(keys.get("m_BlendParameter", "Blend")))
-				bs.set_meta("blend_position_y", controller.get_parameter_uniq_name(keys.get("m_BlendParameterY", "Blend")))
+				bs.set_meta(
+					"blend_position_x", controller.get_parameter_uniq_name(keys.get("m_BlendParameter", "Blend"))
+				)
+				bs.set_meta(
+					"blend_position_y", controller.get_parameter_uniq_name(keys.get("m_BlendParameterY", "Blend"))
+				)
 				ret = bs
-			4: # Direct
+			4:  # Direct
 				# Add a bunch of AnimationNodeAdd2? Do these get chained somehow?
 				var bt = AnimationNodeBlendTree.new()
 				var uniq_dict: Dictionary = {}.duplicate()
@@ -1573,12 +1875,14 @@ class UnityBlendTree extends UnityMotion:
 				uniq_dict[&"Child"] = 1
 				uniq_dict[&"TimeScale"] = 1
 				uniq_dict[&"Transition"] = 1
-				bt.add_node(&"Transition", AnimationNodeTransition.new(), Vector2(200,200))
+				bt.add_node(&"Transition", AnimationNodeTransition.new(), Vector2(200, 200))
 				var last_name = &"Transition"
 
 				var i = 0
 				for child in keys["m_Childs"]:
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
+					var motion_node: AnimationRootNode = recurse_to_motion(
+						controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name
+					)
 					var motion_name = get_unique_name("Child", uniq_dict)
 					bt.add_node(motion_name, motion_node, Vector2(500, i * 200))
 					if child.get("m_TimeScale", 1) != 1:
@@ -1589,7 +1893,9 @@ class UnityBlendTree extends UnityMotion:
 						bt.connect_node(tsname, 0, motion_name)
 						motion_name = tsname
 					var add_node = AnimationNodeAdd2.new()
-					add_node.set_meta("add_amount", controller.get_parameter_uniq_name(child.get("m_DirectBlendParameter", "Blend")))
+					add_node.set_meta(
+						"add_amount", controller.get_parameter_uniq_name(child.get("m_DirectBlendParameter", "Blend"))
+					)
 					var add_name = get_unique_name(child.get("m_DirectBlendParameter", "Blend"), uniq_dict)
 					bt.add_node(add_name, add_node, Vector2(900, i * 200 - 100))
 					bt.connect_node(add_name, 0, last_name)
@@ -1600,14 +1906,16 @@ class UnityBlendTree extends UnityMotion:
 				ret = bt
 		return ret
 
-class UnityAnimationClip extends UnityMotion:
+
+class UnityAnimationClip:
+	extends UnityMotion
 
 	func get_godot_extension() -> String:
 		return ".anim.tres"
 
-	func create_godot_resource() -> Resource: #Animation:
+	func create_godot_resource() -> Resource:  #Animation:
 		if not meta.godot_resources.is_empty():
-			return null # We will create them when referenced.
+			return null  # We will create them when referenced.
 
 		# We will try our best to infer this data, but we get better results
 		# if created relative to a particular node.
@@ -1637,7 +1945,9 @@ class UnityAnimationClip extends UnityMotion:
 		var animator_go: UnityGameObject = animator.gameObject
 		var path_split: PackedStringArray = unipath.split("/")
 		var current_fileID: int = animator_go.fileID
-		var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
+		var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(
+			current_fileID, {}
+		)
 		var extra_path: String = ""
 		for path_component in path_split:
 			print("Look for component %s in %d:%s" % [path_component, current_fileID, str(current_obj)])
@@ -1646,14 +1956,28 @@ class UnityAnimationClip extends UnityMotion:
 				current_obj = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
 			else:
 				extra_path += "/" + str(path_component)
-		print("Path %s became %d comp %s %s current %s" % [str(path_split), current_fileID, str(unicomp), extra_path, str(current_obj)])
+		print(
+			(
+				"Path %s became %d comp %s %s current %s"
+				% [str(path_split), current_fileID, str(unicomp), extra_path, str(current_obj)]
+			)
+		)
 		if extra_path.is_empty() and (typeof(unicomp) != TYPE_INT or unicomp != 1):
 			current_fileID = current_obj.get(unicomp, current_fileID)
-		var nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(current_fileID,
-				animator.meta.fileid_to_nodepath.get(current_fileID, NodePath()))
-		print("Resolving %d from %s and %s to %s" % [current_fileID,
-				str(animator.meta.prefab_fileid_to_nodepath.keys()),
-				str(animator.meta.fileid_to_nodepath.keys()), str(nodepath)])
+		var nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(
+			current_fileID, animator.meta.fileid_to_nodepath.get(current_fileID, NodePath())
+		)
+		print(
+			(
+				"Resolving %d from %s and %s to %s"
+				% [
+					current_fileID,
+					str(animator.meta.prefab_fileid_to_nodepath.keys()),
+					str(animator.meta.fileid_to_nodepath.keys()),
+					str(nodepath)
+				]
+			)
+		)
 		if nodepath == NodePath():
 			print("Returning default nodepath because some path failed to resolve.")
 			if typeof(unicomp) == TYPE_INT:
@@ -1663,13 +1987,15 @@ class UnityAnimationClip extends UnityMotion:
 			return NodePath(unipath)
 		if not extra_path.is_empty():
 			nodepath = NodePath(str(nodepath) + extra_path)
-		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(current_fileID,
-				animator.meta.fileid_to_skeleton_bone.get(current_fileID, ""))
+		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(
+			current_fileID, animator.meta.fileid_to_skeleton_bone.get(current_fileID, "")
+		)
 		if not skeleton_bone.is_empty() and (typeof(unicomp) == TYPE_INT or unicomp == 4):
 			return NodePath(str(nodepath) + ":" + skeleton_bone)
 		return nodepath
 
-	class KeyframeIterator extends RefCounted:
+	class KeyframeIterator:
+		extends RefCounted
 		var curve: Dictionary
 		var keyframes: Array
 		var init_key: Dictionary
@@ -1697,7 +2023,7 @@ class UnityAnimationClip extends UnityMotion:
 			next_slope = next_key["inSlope"]
 			self.is_constant = false
 
-		func next(timestep: float=-1.0) -> Variant:
+		func next(timestep: float = -1.0) -> Variant:
 			if is_eof:
 				return null
 			if len(keyframes) == 1:
@@ -1744,9 +2070,11 @@ class UnityAnimationClip extends UnityMotion:
 				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
 					resolved_key = "T" + resolved_key
 				_:
-					push_warning(str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
+					push_warning(
+						str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key
+					)
 					new_track_names.append([clip.track_get_path(track_idx), "", []])
-					continue # unsupported track type.
+					continue  # unsupported track type.
 			if not resolved_to_default_paths.has(resolved_key):
 				push_warning(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
 				new_track_names.append([clip.track_get_path(track_idx), "", []])
@@ -1776,7 +2104,17 @@ class UnityAnimationClip extends UnityMotion:
 					new_path = resolve_gameobject_component_path(animator, path, classID)
 					new_resolved_key = "T" + str(new_path)
 			if new_path == NodePath():
-				push_warning(str(self.uniq_key) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
+				push_warning(
+					(
+						str(self.uniq_key)
+						+ ": anim Unable to resolve "
+						+ str(typ)
+						+ " track at "
+						+ resolved_key
+						+ " orig "
+						+ str(orig_info)
+					)
+				)
 				new_track_names.append([clip.track_get_path(track_idx), resolved_key, orig_info])
 				continue
 			new_track_names.append([new_path, new_resolved_key, orig_info])
@@ -1788,7 +2126,7 @@ class UnityAnimationClip extends UnityMotion:
 
 	func adapt_animation_clip_at_node(animator: RefCounted, node_parent: Node, clip: Animation):
 		var generated_track_nodepaths: Array = generate_track_nodepaths_for_node(animator, node_parent, clip)
-		if generated_track_nodepaths.is_empty(): # Already adapted.
+		if generated_track_nodepaths.is_empty():  # Already adapted.
 			return
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_resolved_to_default: Dictionary = {}.duplicate()
@@ -1808,7 +2146,7 @@ class UnityAnimationClip extends UnityMotion:
 	# variants of the animation clip by hash, allowing multiple scenes to share their versions of adapted clips.
 	func get_adapted_clip_path_hash(animator: RefCounted, node_parent: Node, clip: Animation) -> int:
 		var generated_track_nodepaths: Array = generate_track_nodepaths_for_node(animator, node_parent, clip)
-		if generated_track_nodepaths.is_empty(): # Already adapted.
+		if generated_track_nodepaths.is_empty():  # Already adapted.
 			return 0
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_hash_data: PackedByteArray = PackedByteArray().duplicate()
@@ -1836,9 +2174,9 @@ class UnityAnimationClip extends UnityMotion:
 		var resolved_to_default: Dictionary = {}
 		for track in keys["m_FloatCurves"]:
 			var attr: String = track["attribute"]
-			var path: String = track.get("path", "") # Some omit path if for the current GameObject...?
-			var classID: int = track["classID"] # Todo: convet classID to class guid+id
-			var adapted_obj: UnityObject = adapter.instantiate_unity_object_from_utype(meta, 0, classID) # no fileID??
+			var path: String = track.get("path", "")  # Some omit path if for the current GameObject...?
+			var classID: int = track["classID"]  # Todo: convet classID to class guid+id
+			var adapted_obj: UnityObject = adapter.instantiate_unity_object_from_utype(meta, 0, classID)  # no fileID??
 			if len(track["curve"].get("m_Curve", [])) == 0:
 				push_error("Empty curve detected " + path + ":" + attr)
 				continue
@@ -1858,8 +2196,12 @@ class UnityAnimationClip extends UnityMotion:
 						key_iter.prev_slope = key_iter.prev_slope.to_float()
 					if typeof(key_iter.next_slope) == TYPE_STRING:
 						key_iter.next_slope = key_iter.next_slope.to_float()
-					key_iter.is_constant = (typeof(key_iter.prev_slope) == TYPE_STRING || typeof(key_iter.next_slope) == TYPE_STRING ||
-							is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope))
+					key_iter.is_constant = (
+						typeof(key_iter.prev_slope) == TYPE_STRING
+						|| typeof(key_iter.next_slope) == TYPE_STRING
+						|| is_inf(key_iter.prev_slope)
+						|| is_inf(key_iter.next_slope)
+					)
 					var val_variant: Variant = key_iter.next()
 					if typeof(val_variant) == TYPE_STRING:
 						val_variant = val_variant.to_float()
@@ -1870,14 +2212,21 @@ class UnityAnimationClip extends UnityMotion:
 				var target_node: Node = null
 				if node_parent != null:
 					target_node = node_parent.get_node(nodepath)
-					print("nodepath %s from %s %s became %s" % [str(nodepath), str(node_parent), str(node_parent.name), str(target_node)])
+					print(
+						(
+							"nodepath %s from %s %s became %s"
+							% [str(nodepath), str(node_parent), str(node_parent.name), str(target_node)]
+						)
+					)
 					if target_node == null:
 						var gdscriptweird: Node = null
 						target_node = gdscriptweird
 				# yuk yuk. This needs to be improved but should be a good start for some properties:
 				var converted_property_keys = adapted_obj.convert_properties(target_node, {attr: 0.0}).keys()
 				if converted_property_keys.is_empty():
-					push_warning("Unknown property " + str(attr) + " for " + str(path) + " type " + str(adapted_obj.type))
+					push_warning(
+						"Unknown property " + str(attr) + " for " + str(path) + " type " + str(adapted_obj.type)
+					)
 					continue
 				var converted_property: String = converted_property_keys[0]
 				nodepath = NodePath(str(nodepath) + ":" + converted_property)
@@ -1913,9 +2262,14 @@ class UnityAnimationClip extends UnityMotion:
 			while not key_iter.is_eof:
 				var prev_slope: Vector3 = key_iter.prev_slope
 				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) ||
-						is_inf(prev_slope.y) || is_inf(next_slope.y) ||
-						is_inf(prev_slope.z) || is_inf(next_slope.z))
+				key_iter.is_constant = (
+					is_inf(prev_slope.x)
+					|| is_inf(next_slope.x)
+					|| is_inf(prev_slope.y)
+					|| is_inf(next_slope.y)
+					|| is_inf(prev_slope.z)
+					|| is_inf(next_slope.z)
+				)
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.position_track_insert_key(postrack, ts, value)
@@ -1932,25 +2286,30 @@ class UnityAnimationClip extends UnityMotion:
 			while not key_iter.is_eof:
 				var prev_slope: Vector3 = key_iter.prev_slope
 				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) ||
-						is_inf(prev_slope.y) || is_inf(next_slope.y) ||
-						is_inf(prev_slope.z) || is_inf(next_slope.z))
+				key_iter.is_constant = (
+					is_inf(prev_slope.x)
+					|| is_inf(next_slope.x)
+					|| is_inf(prev_slope.y)
+					|| is_inf(next_slope.y)
+					|| is_inf(prev_slope.z)
+					|| is_inf(next_slope.z)
+				)
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				# NOTE: value is assumed to be YXZ in Godot terms, but it has 6 different modes in Unity.
-				var godot_euler_mode : int = EULER_ORDER_YXZ
+				var godot_euler_mode: int = EULER_ORDER_YXZ
 				match track["curve"].get("m_RotationOrder", 2):
-					0: # XYZ
+					0:  # XYZ
 						godot_euler_mode = EULER_ORDER_ZYX
-					1: # XZY
+					1:  # XZY
 						godot_euler_mode = EULER_ORDER_YZX
-					2: # YZX
+					2:  # YZX
 						godot_euler_mode = EULER_ORDER_XZY
-					3: # YXZ
+					3:  # YXZ
 						godot_euler_mode = EULER_ORDER_ZXY
-					4: # ZXY
+					4:  # ZXY
 						godot_euler_mode = EULER_ORDER_YXZ
-					5: # ZYX
+					5:  # ZYX
 						godot_euler_mode = EULER_ORDER_XYZ
 				# This is more complicated than this...
 				# The keys need to be baked out and sampled using this mode.
@@ -1968,10 +2327,16 @@ class UnityAnimationClip extends UnityMotion:
 			while not key_iter.is_eof:
 				var prev_slope: Quaternion = key_iter.prev_slope
 				var next_slope: Quaternion = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) ||
-						is_inf(prev_slope.y) || is_inf(next_slope.y) ||
-						is_inf(prev_slope.z) || is_inf(next_slope.z) ||
-						is_inf(prev_slope.w) || is_inf(next_slope.w))
+				key_iter.is_constant = (
+					is_inf(prev_slope.x)
+					|| is_inf(next_slope.x)
+					|| is_inf(prev_slope.y)
+					|| is_inf(next_slope.y)
+					|| is_inf(prev_slope.z)
+					|| is_inf(next_slope.z)
+					|| is_inf(prev_slope.w)
+					|| is_inf(next_slope.w)
+				)
 				var value: Quaternion = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, value)
@@ -1988,9 +2353,14 @@ class UnityAnimationClip extends UnityMotion:
 			while not key_iter.is_eof:
 				var prev_slope: Vector3 = key_iter.prev_slope
 				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) ||
-						is_inf(prev_slope.y) || is_inf(next_slope.y) ||
-						is_inf(prev_slope.z) || is_inf(next_slope.z))
+				key_iter.is_constant = (
+					is_inf(prev_slope.x)
+					|| is_inf(next_slope.x)
+					|| is_inf(prev_slope.y)
+					|| is_inf(next_slope.y)
+					|| is_inf(prev_slope.z)
+					|| is_inf(next_slope.z)
+				)
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.scale_track_insert_key(scaletrack, ts, value)
@@ -2019,7 +2389,10 @@ class UnityAnimationClip extends UnityMotion:
 			ResourceSaver.save(anim, anim.resource_path)
 		return anim
 
-class UnityTexture extends UnityObject:
+
+class UnityTexture:
+	extends UnityObject
+
 	func get_godot_extension() -> String:
 		return ".tex.tres"
 
@@ -2029,7 +2402,7 @@ class UnityTexture extends UnityObject:
 			return self.keys["image data"]
 		var tld = self.keys["_typelessdata"]
 		print("TLD LEN " + str(len(tld)))
-		var hexdec: PackedByteArray = aligned_byte_buffer.new().hex_decode(tld) # a bit slow :'-(
+		var hexdec: PackedByteArray = aligned_byte_buffer.new().hex_decode(tld)  # a bit slow :'-(
 		print(len(hexdec))
 		return hexdec
 
@@ -2068,19 +2441,19 @@ class UnityTexture extends UnityObject:
 	func get_godot_format() -> int:
 		var format_index: int = keys.get("m_TextureFormat", keys.get("m_Format", 0))
 		match format_index:
-			1: # A8
+			1:  # A8
 				return Image.FORMAT_R8
-			2: # ARGB4444
+			2:  # ARGB4444
 				return Image.FORMAT_RGBA4444
 			3:
 				return Image.FORMAT_RGB8
 			4:
 				return Image.FORMAT_RGBA8
-			5: # ARGB32
+			5:  # ARGB32
 				return Image.FORMAT_RGBA8
 			7:
 				return Image.FORMAT_RGB565
-			9: # R16 (16-bit int). not supported in Godot
+			9:  # R16 (16-bit int). not supported in Godot
 				return Image.FORMAT_RH
 			10:
 				return Image.FORMAT_DXT1
@@ -2090,7 +2463,7 @@ class UnityTexture extends UnityObject:
 				return Image.FORMAT_DXT5
 			13:
 				return Image.FORMAT_RGBA4444
-			14: # BGRA32
+			14:  # BGRA32
 				return Image.FORMAT_RGBA8
 			15:
 				return Image.FORMAT_RH
@@ -2104,21 +2477,21 @@ class UnityTexture extends UnityObject:
 				return Image.FORMAT_RGF
 			20:
 				return Image.FORMAT_RGBAF
-			21: # YUY2 for video playback
+			21:  # YUY2 for video playback
 				return Image.FORMAT_RGBA8
 			22:
 				return Image.FORMAT_RGBE9995
-			24: # BC6H
+			24:  # BC6H
 				return Image.FORMAT_BPTC_RGBFU
 			25:
 				return Image.FORMAT_BPTC_RGBA
-			26: # BC4, compressed one-channel texture
+			26:  # BC4, compressed one-channel texture
 				return Image.FORMAT_RGTC_R
-			27: # BC5, compressed two-channel texture
+			27:  # BC5, compressed two-channel texture
 				return Image.FORMAT_RGTC_RG
-			28: # DXT1 crunched
+			28:  # DXT1 crunched
 				push_error("ERROR: DXT1 Crunch not supported")
-			29: # DXT5 crunched
+			29:  # DXT5 crunched
 				push_error("ERROR: DXT5 Crunch not supported")
 			30:
 				push_error("ERROR: PVRTC RGB2 not supported")
@@ -2144,29 +2517,29 @@ class UnityTexture extends UnityObject:
 				return Image.FORMAT_ETC2_RGB8A1
 			47:
 				return Image.FORMAT_ETC2_RGBA8
-			62: # RG16 int
+			62:  # RG16 int
 				return Image.FORMAT_RG8
-			63: # R8 int
+			63:  # R8 int
 				return Image.FORMAT_R8
-			64: # ETC crunched
+			64:  # ETC crunched
 				push_error("ERROR: ETC Crunch not supported")
-			65: # ETC2 crunched
+			65:  # ETC2 crunched
 				push_error("ERROR: ETC2 Crunch not supported")
-			72: # RG32 int
+			72:  # RG32 int
 				return Image.FORMAT_RGH
-			73: # RGB48 int
+			73:  # RGB48 int
 				return Image.FORMAT_RGBH
-			74: # RGB64 int
+			74:  # RGB64 int
 				return Image.FORMAT_RGBAH
 			_:
 				push_error("ERROR: Format " + str(format_index) + " is not supported")
-		return Image.FORMAT_RGBA8 # most common
+		return Image.FORMAT_RGBA8  # most common
 
 	func gen_image_layer(imgdata: PackedByteArray, byteoffset: int, length: int) -> Image:
 		var format: int = self.get_godot_format()
 		print("Format for " + meta.path + " is " + str(format))
 		var img: Image = Image.new()
-		print(str(len(imgdata))+","+str(byteoffset)+","+str(byteoffset+length))
+		print(str(len(imgdata)) + "," + str(byteoffset) + "," + str(byteoffset + length))
 		if byteoffset != 0 or length != 0:
 			imgdata = imgdata.slice(byteoffset, byteoffset + length)
 		print(" is now " + str(len(imgdata)))
@@ -2179,25 +2552,29 @@ class UnityTexture extends UnityObject:
 		return gen_image_layer(imgdata, 0, 0)
 
 
-class UnityTexture2D extends UnityTexture:
+class UnityTexture2D:
+	extends UnityTexture
+
 	func create_godot_resource() -> Resource:
 		var imgtex: ImageTexture = ImageTexture.new()
 		imgtex.create_from_image(self.gen_image())
 		return imgtex
 
-class UnityTextureLayered extends UnityTexture:
+
+class UnityTextureLayered:
+	extends UnityTexture
 
 	var depth: int:
 		get:
 			return keys["m_Depth"]
 
-	func gen_images(is_3d: bool=false) -> Array:
+	func gen_images(is_3d: bool = false) -> Array:
 		var imgdata: PackedByteArray = self.get_image_data()
 		print("Depth is " + str(self.depth) + " len(imgdata) is " + str(len(imgdata)))
-		if (self.depth <= 0):
+		if self.depth <= 0:
 			return []
 		var stride_per: int = len(imgdata) / self.depth
-		if (stride_per <= 0):
+		if stride_per <= 0:
 			push_error("len(imgdata) per layer is 0")
 			return []
 		var images: Array = []
@@ -2229,7 +2606,7 @@ class UnityTextureLayered extends UnityTexture:
 				length_per = tmp_img.get_mipmap_offset(mip_idx)
 				mip_idx += 1
 				if mip_dim == 1:
-					length_per += length_per - last_off # last two mipmaps are always the same for compressed.
+					length_per += length_per - last_off  # last two mipmaps are always the same for compressed.
 					break
 				last_off = length_per
 		print(str(length_per) + " -> " + str(stride_per))
@@ -2239,46 +2616,64 @@ class UnityTextureLayered extends UnityTexture:
 			offset += stride_per
 		return images
 
-class UnityTexture2DArray extends UnityTextureLayered:
+
+class UnityTexture2DArray:
+	extends UnityTextureLayered
+
 	func create_godot_resource() -> Resource:
 		var imgtex: Texture2DArray = Texture2DArray.new()
 		imgtex.create_from_images(self.gen_images())
 		return imgtex
 
-class UnityTexture3D extends UnityTextureLayered:
+
+class UnityTexture3D:
+	extends UnityTextureLayered
+
 	func create_godot_resource() -> Resource:
 		var imgtex: ImageTexture3D = ImageTexture3D.new()
-		imgtex.create(self.get_godot_format(), self.width, self.height, self.depth, false,
-				self.gen_images(true))
+		imgtex.create(self.get_godot_format(), self.width, self.height, self.depth, false, self.gen_images(true))
 		return imgtex
 
-class UnityCubemap extends UnityTextureLayered:
+
+class UnityCubemap:
+	extends UnityTextureLayered
+
 	func create_godot_resource() -> Resource:
 		var imgtex: Cubemap = Cubemap.new()
 		imgtex.create_from_images(self.gen_images())
 		return imgtex
 
-class UnityCubemapArray extends UnityTextureLayered:
+
+class UnityCubemapArray:
+	extends UnityTextureLayered
+
 	func create_godot_resource() -> Resource:
 		var imgtex: CubemapArray = CubemapArray.new()
 		imgtex.create_from_images(self.gen_images())
 		return imgtex
 
-class UnityRenderTexture extends UnityTexture:
+
+class UnityRenderTexture:
+	extends UnityTexture
 	pass
 
-class UnityCustomRenderTexture extends UnityRenderTexture:
+
+class UnityCustomRenderTexture:
+	extends UnityRenderTexture
 	pass
 
 
-class UnityTerrainLayer extends UnityObject:
+class UnityTerrainLayer:
+	extends UnityObject
+
 	func get_godot_extension() -> String:
 		return ".terrainlayer.tres"
+
 	func create_godot_resource() -> Resource:
 		var mat = StandardMaterial3D.new()
-		var diffuse_tex: Texture2D = meta.get_godot_resource(keys.get("m_DiffuseTexture", [null,0,null,null]))
-		var tilesize: Vector2 = keys.get("m_TileSize", Vector2(1,1))
-		var tileoffset: Vector2 = keys.get("m_TileOffset", Vector2(0,0))
+		var diffuse_tex: Texture2D = meta.get_godot_resource(keys.get("m_DiffuseTexture", [null, 0, null, null]))
+		var tilesize: Vector2 = keys.get("m_TileSize", Vector2(1, 1))
+		var tileoffset: Vector2 = keys.get("m_TileOffset", Vector2(0, 0))
 		var spec: Color = keys.get("m_Specular", Color.TRANSPARENT)
 		var metal: float = keys.get("m_Metallic", 0.0)
 		var smooth: float = keys.get("m_Smoothness", 0.0)
@@ -2289,7 +2684,7 @@ class UnityTerrainLayer extends UnityObject:
 		mat.uv1_scale = Vector3(1.0 / tilesize.x, 1.0 / tilesize.y, 0.0)
 		mat.uv1_offset = Vector3(tileoffset.x / tilesize.x, tileoffset.y / tilesize.x, 0.0)
 
-		var normal_tex: Texture2D = meta.get_godot_resource(keys.get("m_NormalMapTexture", [null,0,null,null]))
+		var normal_tex: Texture2D = meta.get_godot_resource(keys.get("m_NormalMapTexture", [null, 0, null, null]))
 		var normalscale: float = keys.get("m_NormalScale", 1.0)
 		mat.normal_enabled = normal_tex != null
 		mat.normal_texture = normal_tex
@@ -2303,7 +2698,9 @@ class UnityTerrainLayer extends UnityObject:
 		#var maskmap_tex: Texture2D = meta.get_godot_resource(keys.get("m_MaskMapTexture", [null,0,null,null]))
 		return mat
 
-class UnityTerrainData extends UnityObject:
+
+class UnityTerrainData:
+	extends UnityObject
 	var mesh_data: ArrayMesh = null
 	var collision_mesh: ConcavePolygonShape3D = null
 	var terrain_mat: Material = null
@@ -2329,25 +2726,30 @@ class UnityTerrainData extends UnityObject:
 	func gen_multimeshes() -> Array:
 		var tree_prototype_matrices: Array[Transform3D]
 		var multimeshes: Array[MultiMesh]
-		var material_overrides: Array # can't use typed array if some elements are null
+		var material_overrides: Array  # can't use typed array if some elements are null
 		var transform_counts: PackedInt32Array = PackedInt32Array().duplicate()
 		var detail_data: Dictionary = keys.get("m_DetailDatabase", {})
 		var bend_factors: Array[float]
 		for detail in detail_data.get("m_TreePrototypes", []):
-			var target_ref: Array = detail.get("prefab", [null,0,null,null])
+			var target_ref: Array = detail.get("prefab", [null, 0, null, null])
 			var tree_scene: Node = meta.get_godot_node(target_ref)
 			var meshinst: MeshInstance3D = null
 			var mesh: Mesh = null
 			if tree_scene != null:
 				recursive_print(tree_scene, " %d>   " % [len(multimeshes)])
-				meshinst = find_meshinst(tree_scene) # tree_scene.find_nodes("*", "MeshInstance3D")
+				meshinst = find_meshinst(tree_scene)  # tree_scene.find_nodes("*", "MeshInstance3D")
 			if meshinst != null:
 				mesh = meshinst.mesh
 				if meshinst.material_override != null:
 					material_overrides.append(meshinst.material_override)
-				elif meshinst.get_surface_override_material_count() >= 1 and meshinst.get_surface_override_material(0) != null:
+				elif (
+					meshinst.get_surface_override_material_count() >= 1
+					and meshinst.get_surface_override_material(0) != null
+				):
 					if meshinst.get_surface_override_material_count() > 1:
-						push_error("Godot Multimesh does not implement per-surface override materials! Will look wrong.")
+						push_error(
+							"Godot Multimesh does not implement per-surface override materials! Will look wrong."
+						)
 					material_overrides.append(meshinst.get_surface_override_material(0))
 				else:
 					material_overrides.append(null)
@@ -2361,13 +2763,15 @@ class UnityTerrainData extends UnityObject:
 				tree_prototype_matrices.append(Transform3D.IDENTITY)
 				material_overrides.append(null)
 			var mm: MultiMesh = MultiMesh.new()
-			mm.resource_name = str(meta.lookup_meta(target_ref).resource_name).get_file().get_basename() if tree_scene != null else ""
+			mm.resource_name = (
+				str(meta.lookup_meta(target_ref).resource_name).get_file().get_basename() if tree_scene != null else ""
+			)
 			if mm.resource_name == "":
 				mm.resource_name = StringName("tree%d" % [len(multimeshes)])
 			mm.transform_format = MultiMesh.TRANSFORM_3D
 			mm.use_colors = true
 			mm.mesh = mesh
-			bend_factors.append(detail.get("bendFactor", 0.0)) # not yet implemented.
+			bend_factors.append(detail.get("bendFactor", 0.0))  # not yet implemented.
 			multimeshes.append(mm)
 			transform_counts.append(0)
 			if tree_scene != null:
@@ -2396,8 +2800,7 @@ class UnityTerrainData extends UnityObject:
 			transform_counts[idx] += 1
 		return [multimeshes, material_overrides]
 
-
-	func recursive_print(node:Node, indent:String=""):
+	func recursive_print(node: Node, indent: String = ""):
 		var fnstr = "" if str(node.scene_file_path) == "" else (" (" + str(node.scene_file_path) + ")")
 		print(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
 		#print(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
@@ -2406,11 +2809,14 @@ class UnityTerrainData extends UnityObject:
 			recursive_print(c, new_indent)
 
 	func get_extra_resources() -> Dictionary:
-		var dict = {
-			self.fileID ^ 0x1234567: ".terrain.mat.tres",
-			self.fileID ^ 0xdeca604: ".terrain.mesh.res",
-			self.fileID ^ 0xc0111de4: ".terrain.collider.res",
-		}.duplicate()
+		var dict = (
+			{
+				self.fileID ^ 0x1234567: ".terrain.mat.tres",
+				self.fileID ^ 0xdeca604: ".terrain.mesh.res",
+				self.fileID ^ 0xc0111de4: ".terrain.collider.res",
+			}
+			. duplicate()
+		)
 		var found_splatmap: bool = false
 		for other_id in meta.fileid_to_utype:
 			if other_id != self.fileID:
@@ -2433,7 +2839,7 @@ class UnityTerrainData extends UnityObject:
 		self.resolution = heightmap["m_Resolution"]
 		var vertex_count = resolution * resolution
 		var index_count = (resolution - 1) * (resolution - 1)
-		assert (resolution * resolution == len(heightmap["m_Heights"]))
+		assert(resolution * resolution == len(heightmap["m_Heights"]))
 		var heights: PackedInt32Array = heightmap.get("m_Heights")
 		self.scale = heightmap.get("m_Scale")
 		#var surface = SurfaceTool.new()
@@ -2486,7 +2892,7 @@ class UnityTerrainData extends UnityObject:
 		really_temp_arrays[Mesh.ARRAY_INDEX] = indices_tris
 		temp_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, really_temp_arrays)
 		var surface = SurfaceTool.new()
-		surface.create_from(temp_mesh, 0) # Missing API here to create directly from arrays!!!! :'-(
+		surface.create_from(temp_mesh, 0)  # Missing API here to create directly from arrays!!!! :'-(
 		# generate_normals does not support triangle strip.
 		surface.generate_normals()
 		surface.generate_tangents()
@@ -2497,7 +2903,7 @@ class UnityTerrainData extends UnityObject:
 		# Missing API: No way to make SurfaceTool from arrays???
 		# I guess we just do it ourselves
 		var indices_optimized: PackedInt32Array = PackedInt32Array().duplicate()
-		indices_optimized.resize((resolution) * ((resolution - 1)/2) * 4)
+		indices_optimized.resize((resolution) * ((resolution - 1) / 2) * 4)
 		indices_optimized.fill(0)
 		# Triangle strip:
 		idx = 0
@@ -2556,22 +2962,28 @@ shader_type spatial;
 			for i in range(len(terrain_layers)):
 				shader_code += "uniform vec4 smoothMetalNormal%d = vec4(0);\n" % [i]
 				shader_code += "uniform vec4 scaleOffset%d = vec4(1,1,0,0);\n" % [i]
-			shader_code += "\n\nvoid fragment() {\n";
+			shader_code += "\n\nvoid fragment() {\n"
 			shader_code += "\tvec4 splat, albedo0col = vec4(0), albedo = vec4(0); vec2 thisUV, normalXY = vec2(0);\n"
 			shader_code += "\tvec4 smoothMetalNormal = vec4(0); float normalStrength = 0.0; float strength = 0.0;\n\n"
 			for splati in range(len(alpha_textures)):
 				shader_code += "\tsplat = texture(splat%d, UV);\n" % [splati * 4]
 				for idx in range(min(len(terrain_layers) - splati * 4, 4)):
-					var i = splati * 4 + idx;
+					var i = splati * 4 + idx
 					shader_code += "\tthisUV = UV * scaleOffset%d.xy + scaleOffset%d.zw;\n" % [i, i]
 					if i == 0:
-						shader_code += "\talbedo0col = splat[%d] * texture(albedo%d, thisUV); albedo = splat[%d] * albedo0col;\n" % [idx, i, idx]
+						shader_code += (
+							"\talbedo0col = splat[%d] * texture(albedo%d, thisUV); albedo = splat[%d] * albedo0col;\n"
+							% [idx, i, idx]
+						)
 					else:
 						shader_code += "\talbedo += splat[%d] * texture(albedo%d, thisUV);\n" % [idx, i]
 					shader_code += "\tstrength += splat[%d];\n" % [idx]
 					if normal_enabled[i]:
-						shader_code += "\tnormalStrength += splat[%d] * smoothMetalNormal%d.z;\n" % [idx, i];
-						shader_code += "\tnormalXY += splat[%d] * smoothMetalNormal%d.z * (texture(albedo%d, thisUV).xy * 2.0 - 1.0);\n" % [idx, i, i]
+						shader_code += "\tnormalStrength += splat[%d] * smoothMetalNormal%d.z;\n" % [idx, i]
+						shader_code += (
+							"\tnormalXY += splat[%d] * smoothMetalNormal%d.z * (texture(albedo%d, thisUV).xy * 2.0 - 1.0);\n"
+							% [idx, i, i]
+						)
 					shader_code += "\tsmoothMetalNormal += splat[%d] * smoothMetalNormal%d;\n\n" % [idx, i]
 			shader_code += "\tsmoothMetalNormal = max(0.0, 1.0 - strength) * smoothMetalNormal0 + min(1.0, 1.0 / strength) * smoothMetalNormal;\n"
 			shader_code += "\tALBEDO = max(0.0, 1.0 - strength) * albedo0col.xyz + min(1.0, 1.0 / strength) * albedo.xyz;\n"
@@ -2596,10 +3008,16 @@ shader_type spatial;
 					normal_scale = layer_mat.normal_scale
 				var roughness = layer_mat.roughness
 				var metallic = layer_mat.metallic
-				var uv1_scale: Vector2 = Vector2(layer_mat.uv1_scale.x, layer_mat.uv1_scale.y) * Vector2(scale.x, scale.z) * resolution
+				var uv1_scale: Vector2 = (
+					Vector2(layer_mat.uv1_scale.x, layer_mat.uv1_scale.y) * Vector2(scale.x, scale.z) * resolution
+				)
 				var uv1_offset = layer_mat.uv1_offset
-				mat.set_shader_parameter("smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0))
-				mat.set_shader_parameter("scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y))
+				mat.set_shader_parameter(
+					"smoothMetalNormal%d" % [i], Plane(1.0 - roughness, metallic, normal_scale, 0.0)
+				)
+				mat.set_shader_parameter(
+					"scaleOffset%d" % [i], Plane(uv1_scale.x, uv1_scale.y, uv1_offset.x, uv1_offset.y)
+				)
 				i += 1
 			i = 0
 			for splat_texture_obj in alpha_textures:
@@ -2615,13 +3033,13 @@ shader_type spatial;
 	func create_godot_resource() -> Resource:
 		var packed_scene = PackedScene.new()
 		var rootnode = Node3D.new()
-		rootnode.top_level = true # ideally only ignore rotation, scale.
+		rootnode.top_level = true  # ideally only ignore rotation, scale.
 		rootnode.name = self.keys.get("m_Name", meta.resource_name)
 		var meshinst: MeshInstance3D = MeshInstance3D.new()
 		meshinst.name = "TerrainMesh"
 		meshinst.mesh = mesh_data
 		rootnode.add_child(meshinst)
-		meshinst.owner = rootnode # must happen after add_child
+		meshinst.owner = rootnode  # must happen after add_child
 		var multimeshes_and_materials = self.gen_multimeshes()
 		var multimeshes: Array[MultiMesh] = multimeshes_and_materials[0]
 		var material_overrides: Array = multimeshes_and_materials[1]
@@ -2633,7 +3051,7 @@ shader_type spatial;
 			mminst.multimesh = multimesh
 			mminst.material_override = material_overrides[i]
 			rootnode.add_child(mminst, true)
-			mminst.owner = rootnode # must happen after add_child
+			mminst.owner = rootnode  # must happen after add_child
 			i += 1
 		var err = packed_scene.pack(rootnode)
 		if err != OK:
@@ -2656,10 +3074,12 @@ shader_type spatial;
 		assert(fileID == 0)
 		return null
 
-### ================ GAME OBJECT TYPE ================
-class UnityGameObject extends UnityObject:
 
-	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> Array: # prefab_fileID,prefab_name,go_fileID,node
+### ================ GAME OBJECT TYPE ================
+class UnityGameObject:
+	extends UnityObject
+
+	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> Array:  # prefab_fileID,prefab_name,go_fileID,node
 		if child_transform.type == "PrefabInstance":
 			# PrefabInstance child of stripped Transform part of another PrefabInstance
 			var prefab_instance: UnityPrefabInstance = child_transform
@@ -2672,13 +3092,35 @@ class UnityGameObject extends UnityObject:
 			return prefab_instance.instantiate_prefab_node(state, new_parent)
 		else:
 			if child_transform.is_stripped:
-				push_error("*!*!*! CHILD IS STRIPPED " + str(child_transform) + "; "+ str(child_transform.is_prefab_reference) + ";" + str(child_transform.prefab_source_object) + ";" + str(child_transform.prefab_instance))
+				push_error(
+					(
+						"*!*!*! CHILD IS STRIPPED "
+						+ str(child_transform)
+						+ "; "
+						+ str(child_transform.is_prefab_reference)
+						+ ";"
+						+ str(child_transform.prefab_source_object)
+						+ ";"
+						+ str(child_transform.prefab_instance)
+					)
+				)
 			var child_game_object: UnityGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
 				push_error("child gameObject is a prefab reference! " + child_game_object.uniq_key)
-			var new_skelley: RefCounted = state.uniq_key_to_skelley.get(child_transform.uniq_key, null) # Skelley
+			var new_skelley: RefCounted = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)  # Skelley
 			if new_skelley == null and new_parent == null:
-				push_error("We did not create a node for this child, but it is not a skeleton bone! " + uniq_key + " child " + child_transform.uniq_key + " gameObject " + child_game_object.uniq_key + " name " + child_game_object.name)
+				push_error(
+					(
+						"We did not create a node for this child, but it is not a skeleton bone! "
+						+ uniq_key
+						+ " child "
+						+ child_transform.uniq_key
+						+ " gameObject "
+						+ child_game_object.uniq_key
+						+ " name "
+						+ child_game_object.name
+					)
+				)
 			elif new_skelley != null:
 				# print("Go from " + transform_asset.uniq_key + " to " + str(child_game_object) + " transform " + str(child_transform) + " found skelley " + str(new_skelley))
 				child_game_object.create_skeleton_bone(state, new_skelley)
@@ -2686,7 +3128,7 @@ class UnityGameObject extends UnityObject:
 				child_game_object.create_godot_node(state, new_parent)
 			return [null]
 
-	func create_skeleton_bone(xstate: RefCounted, skelley: RefCounted): # SceneNodeState, Skelley
+	func create_skeleton_bone(xstate: RefCounted, skelley: RefCounted):  # SceneNodeState, Skelley
 		var state: Object = xstate
 		var godot_skeleton: Skeleton3D = skelley.godot_skeleton
 		# Instead of a transform, this sets the skeleton transform position maybe?, etc. etc. etc.
@@ -2698,7 +3140,7 @@ class UnityGameObject extends UnityObject:
 		var name_map = {}
 		name_map[1] = self.fileID
 		name_map[4] = transform.fileID
-		name_map[transform.utype] = transform.fileID # RectTransform may also point to this.
+		name_map[transform.utype] = transform.fileID  # RectTransform may also point to this.
 		if rigidbody != null:
 			ret = rigidbody.create_physical_bone(state, godot_skeleton, skeleton_bone_name)
 			rigidbody.configure_node(ret)
@@ -2753,7 +3195,7 @@ class UnityGameObject extends UnityObject:
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
 
-	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node: # -> Node3D:
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node:  # -> Node3D:
 		var state: Object = xstate
 		var ret: Node3D = null
 		var components: Array = self.components
@@ -2763,7 +3205,7 @@ class UnityGameObject extends UnityObject:
 		var name_map = {}
 		name_map[1] = self.fileID
 		name_map[4] = transform.fileID
-		name_map[transform.utype] = transform.fileID # RectTransform may also point to this.
+		name_map[transform.utype] = transform.fileID  # RectTransform may also point to this.
 
 		for component_ref in components:
 			var component = meta.lookup(component_ref.values()[0])
@@ -2833,19 +3275,19 @@ class UnityGameObject extends UnityObject:
 
 		return ret
 
-	var components: Variant: # Array:
+	var components: Variant:  # Array:
 		get:
 			if is_stripped:
 				push_error("Attempted to access the component array of a stripped " + type + " " + uniq_key)
 				# FIXME: Stripped objects do not know their name.
-				return 12345.678 # ???? 
+				return 12345.678  # ????
 			return keys.get("m_Component")
 
-	func get_transform() -> Object: # UnityTransform:
+	func get_transform() -> Object:  # UnityTransform:
 		if is_stripped:
 			push_error("Attempted to access the transform of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
-			return null # ???? 
+			return null  # ????
 		if typeof(components) != TYPE_ARRAY:
 			push_error(uniq_key + " has component array: " + str(components))
 		elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
@@ -2855,7 +3297,15 @@ class UnityGameObject extends UnityObject:
 		else:
 			var component = meta.lookup(components[0].values()[0])
 			if component.type != "Transform" and component.type != "RectTransform":
-				push_error(str(self) + " does not have Transform as first component! " + str(component.type) + ": components " + str(components))
+				push_error(
+					(
+						str(self)
+						+ " does not have Transform as first component! "
+						+ str(component.type)
+						+ ": components "
+						+ str(components)
+					)
+				)
 			return component
 		return null
 
@@ -2875,6 +3325,7 @@ class UnityGameObject extends UnityObject:
 		return outdict
 
 	var meshFilter: UnityMeshFilter = null
+
 	func get_meshFilter() -> UnityMeshFilter:
 		if meshFilter != null:
 			return meshFilter
@@ -2897,13 +3348,14 @@ class UnityGameObject extends UnityObject:
 			return null
 		return transform.parent_ref[1] == 0
 
-	func get_gameObject() -> UnityGameObject: # UnityGameObject:
+	func get_gameObject() -> UnityGameObject:  # UnityGameObject:
 		return self
 
 
 # Is a PrefabInstance a GameObject? Unity seems to treat it that way at times. Other times not...
 # Is this canon? We'll never know because the documentation denies even the existence of a "PrefabInstance" class
-class UnityPrefabInstance extends UnityGameObject:
+class UnityPrefabInstance:
+	extends UnityGameObject
 
 	func is_stripped_or_prefab_instance() -> bool:
 		return true
@@ -2920,7 +3372,7 @@ class UnityPrefabInstance extends UnityGameObject:
 
 	# TODO: Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...
 
-	# For all PrefabInstance in scene, make map from m_TransformParent 
+	# For all PrefabInstance in scene, make map from m_TransformParent
 	# Note also: a PrefabInstance with m_TransformParent=0 in a prefab defines a "Prefab Variant". In Godot terms, this is an "inhereted" or instanced scene.
 	# COMPLICATED!!!
 
@@ -2940,28 +3392,35 @@ class UnityPrefabInstance extends UnityGameObject:
 		if source_prefab_meta != null:
 			go_id = source_prefab_meta.prefab_main_gameobject_id
 		else:
-			print("During prefab name lookup, ailed to lookup meta from " + str(self.uniq_key) + " for source prefab " + str(self.source_prefab))
+			print(
+				(
+					"During prefab name lookup, ailed to lookup meta from "
+					+ str(self.uniq_key)
+					+ " for source prefab "
+					+ str(self.source_prefab)
+				)
+			)
 		for mod in modifications:
 			var property_key: String = mod.get("propertyPath", "")
-			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
+			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
 			var value: String = mod.get("value", "")
 			if property_key == "m_Name" and source_obj_ref[1] == go_id:
 				print("Found overridden m_Name: Mod is " + str(mod))
 				return value
 		return source_prefab_meta.get_main_object_name()
 
-	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node: # Node3D
+	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node:  # Node3D
 		# called from toplevel (scene, inherited prefab?)
 		var ret_data: Array = self.instantiate_prefab_node(xstate, new_parent)
 		if len(ret_data) < 4:
 			return null
-		return ret_data[3] # godot node.
+		return ret_data[3]  # godot node.
 
 	# Generally, all transforms which are sub-objects of a prefab will be marked as such ("Create map from corresponding source object id (stripped id, PrefabInstanceId^target object id) and do so recursively, to target path...")
-	func instantiate_prefab_node(xstate: RefCounted, new_parent: Node3D) -> Array: # [prefab_fileid, prefab_name, prefab_root_gameobject_id, godot_node]
-		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2] # UnityRef[2] is guid
-		var state: RefCounted = xstate # scene_node_state
-		var ps: RefCounted = state.prefab_state # scene_node_state.PrefabState
+	func instantiate_prefab_node(xstate: RefCounted, new_parent: Node3D) -> Array:  # [prefab_fileid, prefab_name, prefab_root_gameobject_id, godot_node]
+		meta.prefab_id_to_guid[self.fileID] = self.source_prefab[2]  # UnityRef[2] is guid
+		var state: RefCounted = xstate  # scene_node_state
+		var ps: RefCounted = state.prefab_state  # scene_node_state.PrefabState
 		var target_prefab_meta = meta.lookup_meta(source_prefab)
 		if target_prefab_meta == null or target_prefab_meta.guid == self.meta.guid:
 			push_error("Unable to load prefab dependency " + str(source_prefab) + " from " + str(self.meta.guid))
@@ -2975,7 +3434,7 @@ class UnityPrefabInstance extends UnityGameObject:
 		var toplevel_rename: String = ""
 		for mod in modifications:
 			var property_key: String = mod.get("propertyPath", "")
-			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
+			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
 			var value: String = mod.get("value", "")
 			var mod_fileID: int = source_obj_ref[1]
 			if property_key == "m_Name" and mod_fileID == target_prefab_meta.prefab_main_gameobject_id:
@@ -2992,14 +3451,22 @@ class UnityPrefabInstance extends UnityGameObject:
 			var dres = DirAccess.open("res://")
 			var fres = FileAccess.open(stub_filename, FileAccess.WRITE_READ)
 			print("Writing stub scene to " + stub_filename)
-			var to_write: String = ('[gd_scene load_steps=2 format=2]\n\n' +
-				'[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' +
-				'[node name=' + var_to_str(str(toplevel_rename)) + ' instance=ExtResource( 1 )]\n')
+			var to_write: String = (
+				"[gd_scene load_steps=2 format=2]\n\n"
+				+ '[ext_resource path="'
+				+ str(packed_scene.resource_path)
+				+ '" type="PackedScene" id=1]\n\n'
+				+ "[node name="
+				+ var_to_str(str(toplevel_rename))
+				+ " instance=ExtResource( 1 )]\n"
+			)
 			fres.store_string(to_write)
 			print(to_write)
 			fres.flush()
 			fres = null
-			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
+			var temp_packed_scene: PackedScene = ResourceLoader.load(
+				stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE
+			)
 			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 			dres.remove(stub_filename)
 			instanced_scene.name = StringName(toplevel_rename)
@@ -3017,8 +3484,8 @@ class UnityPrefabInstance extends UnityGameObject:
 		## using _bundled.editable_instance happens after the data is discarded...
 		## This whole system doesn't work. We need an engine mod instead that allows set_editable_instance.
 		##if new_parent != null:
-			# In this case, we must also set editable children later in convert_scene.gd
-			# Here is how we keep track of it:
+		# In this case, we must also set editable children later in convert_scene.gd
+		# Here is how we keep track of it:
 		##	ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
 		# state = state.state_with_owner(instanced_scene)
 
@@ -3047,8 +3514,8 @@ class UnityPrefabInstance extends UnityGameObject:
 		for mod in modifications:
 			print("Preparing to apply mod: Mod is " + str(mod))
 			var property_key: String = mod.get("propertyPath", "")
-			var source_obj_ref: Array = mod.get("target", [null,0,"",null])
-			var obj_value: Array = mod.get("objectReference", [null,0,"",null])
+			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
+			var obj_value: Array = mod.get("objectReference", [null, 0, "", null])
 			var value: String = mod.get("value", "")
 			var fileID: int = source_obj_ref[1]
 			if not fileID_to_keys.has(fileID):
@@ -3076,22 +3543,27 @@ class UnityPrefabInstance extends UnityGameObject:
 				# print("Legacy prefab override fileID " + str(fileID) + " key " + str(key) + " value " + str(asset.keys[key]))
 				fileID_to_keys[fileID][key] = asset.keys[key]
 		for fileID in fileID_to_keys:
-			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID,
-					target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
-			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID,
-					target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
-			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID,
-					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
+			var target_utype: int = target_prefab_meta.fileid_to_utype.get(
+				fileID, target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0)
+			)
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(
+				fileID, target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath())
+			)
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
+				fileID, target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, "")
+			)
 			print("XXXc")
 			# FIXME: I think this fileID is wrong...
-			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
-			print("XXXd " + str(target_prefab_meta.guid) +"/" + str(fileID) + "/" + str(target_nodepath))
+			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(
+				meta, fileID, target_utype
+			)
+			print("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
 			if uprops.has("m_Name"):
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
 			var existing_node = instanced_scene.get_node(target_nodepath)
-			if uprops.get("m_Controller", [null,0])[1] != 0:
+			if uprops.get("m_Controller", [null, 0])[1] != 0:
 				var animtree: AnimationTree = null
 				if target_utype == 91 and existing_node != null and existing_node.get_class() == "AnimationPlayer":
 					animtree = AnimationTree.new()
@@ -3111,10 +3583,19 @@ class UnityPrefabInstance extends UnityGameObject:
 					virtual_unity_object.fileID = fileID ^ self.fileID
 					virtual_unity_object.keys = uprops
 					state.prefab_state.animator_node_to_object[animtree] = virtual_unity_object
-					virtual_unity_object.assign_controller(animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"])
+					virtual_unity_object.assign_controller(
+						animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"]
+					)
 			print("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
-				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops))
+				push_error(
+					(
+						"FAILED to get_node to apply mod to node at path "
+						+ str(target_nodepath)
+						+ "!! Mod is "
+						+ str(uprops)
+					)
+				)
 			elif target_skel_bone.is_empty():
 				if existing_node.has_meta("unidot_keys"):
 					var orig_meta: Variant = existing_node.get_meta("unidot_keys")
@@ -3136,7 +3617,18 @@ class UnityPrefabInstance extends UnityGameObject:
 									continue
 								if prop_piece == "size":
 									continue
-								print("Splitting array key: " + str(uprop) + " prop_piece " + str(prop_piece) + ": " + str(exist_prop) + " / all props: " + str(uprops))
+								print(
+									(
+										"Splitting array key: "
+										+ str(uprop)
+										+ " prop_piece "
+										+ str(prop_piece)
+										+ ": "
+										+ str(exist_prop)
+										+ " / all props: "
+										+ str(uprops)
+									)
+								)
 								var idx: int = (prop_piece.split("[")[1].split("]")[0]).to_int()
 								exist_prop = exist_prop[idx]
 							else:
@@ -3177,23 +3669,61 @@ class UnityPrefabInstance extends UnityGameObject:
 			else:
 				if existing_node != null:
 					# Test this:
-					print("Applying mod to skeleton bone " + str(existing_node) + " at path " + str(target_nodepath) + ":" + str(target_skel_bone) + "!! Mod is " + str(uprops))
+					print(
+						(
+							"Applying mod to skeleton bone "
+							+ str(existing_node)
+							+ " at path "
+							+ str(target_nodepath)
+							+ ":"
+							+ str(target_skel_bone)
+							+ "!! Mod is "
+							+ str(uprops)
+						)
+					)
 					virtual_unity_object.configure_skeleton_bone_props(existing_node, target_skel_bone, uprops)
 				else:
-					push_error("FAILED to get_node to apply mod to skeleton at path " + str(target_nodepath) + ":" + target_skel_bone + "!! Mod is " + str(uprops))
+					push_error(
+						(
+							"FAILED to get_node to apply mod to skeleton at path "
+							+ str(target_nodepath)
+							+ ":"
+							+ target_skel_bone
+							+ "!! Mod is "
+							+ str(uprops)
+						)
+					)
 		for target_nodepath in nodepath_to_keys:
 			var virtual_unity_object: UnityObject = nodepath_to_first_virtual_object.get(target_nodepath)
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			var uprops: Dictionary = fileID_to_keys.get(fileID)
 			var props: Dictionary = nodepath_to_keys.get(target_nodepath)
 			if existing_node != null:
-				print("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props) + "/" + str(props.has("name")))
+				print(
+					(
+						"Applying mod to node "
+						+ str(existing_node)
+						+ " at path "
+						+ str(target_nodepath)
+						+ "!! Mod is "
+						+ str(props)
+						+ "/"
+						+ str(props.has("name"))
+					)
+				)
 				virtual_unity_object.apply_node_props(existing_node, props)
 				if target_nodepath == NodePath(".") and props.has("name"):
 					print("Applying name " + str(props.get("name")))
 					existing_node.name = props.get("name")
 			else:
-				push_error("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(props))
+				push_error(
+					(
+						"FAILED to get_node to apply mod to node at path "
+						+ str(target_nodepath)
+						+ "!! Mod is "
+						+ str(props)
+					)
+				)
 
 		# NOTE: We have duplicate code here for GameObject and then Transform
 		# The issue is, we will be parented to a stripped GameObject or Transform, but we do not
@@ -3218,18 +3748,40 @@ class UnityPrefabInstance extends UnityGameObject:
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityGameObject = gameobject_asset
 			var source_obj_ref = par.prefab_source_object
-			print("Checking stripped GameObject " + str(par.uniq_key) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			print(
+				(
+					"Checking stripped GameObject "
+					+ str(par.uniq_key)
+					+ ": "
+					+ str(source_obj_ref)
+					+ " is it "
+					+ target_prefab_meta.guid
+				)
+			)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
-			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
-					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
-			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
-					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(
+				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath())
+			)
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
+				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], "")
+			)
 			nodepath_bone_to_stripped_gameobject[str(target_nodepath) + "/" + str(target_skel_bone)] = gameobject_asset
-			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.scene_file_path))
+			print(
+				(
+					"Get target node "
+					+ str(target_nodepath)
+					+ " bone "
+					+ str(target_skel_bone)
+					+ " from "
+					+ str(instanced_scene.scene_file_path)
+				)
+			)
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
-			if (attachment == null):
-				push_error("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+			if attachment == null:
+				push_error(
+					"Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path)
+				)
 				continue
 			print("Found gameobject: " + str(target_parent_obj.name))
 			if not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D:
@@ -3239,7 +3791,9 @@ class UnityPrefabInstance extends UnityGameObject:
 					godot_skeleton = target_parent_obj.get_parent()
 				for comp in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 					if comp.type == "Rigidbody":
-						var physattach: PhysicalBone3D = comp.create_physical_bone(state, godot_skeleton, target_skel_bone)
+						var physattach: PhysicalBone3D = comp.create_physical_bone(
+							state, godot_skeleton, target_skel_bone
+						)
 						state.body = physattach
 						attachment = physattach
 						state.add_fileID(attachment, gameobject_asset)
@@ -3250,7 +3804,7 @@ class UnityPrefabInstance extends UnityGameObject:
 					# Will not include the Transform.
 					if len(ps.components_by_stripped_id.get(gameobject_asset.fileID, [])) >= 1:
 						attachment = BoneAttachment3D.new()
-						attachment.name = target_skel_bone # target_parent_obj.name if not stripped??
+						attachment.name = target_skel_bone  # target_parent_obj.name if not stripped??
 						attachment.bone_name = target_skel_bone
 						state.add_child(attachment, godot_skeleton, gameobject_asset)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
@@ -3273,19 +3827,43 @@ class UnityPrefabInstance extends UnityGameObject:
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityTransform = transform_asset
 			var source_obj_ref = par.prefab_source_object
-			print("Checking stripped Transform " + str(par.uniq_key) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			print(
+				(
+					"Checking stripped Transform "
+					+ str(par.uniq_key)
+					+ ": "
+					+ str(source_obj_ref)
+					+ " is it "
+					+ target_prefab_meta.guid
+				)
+			)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
-			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1],
-					target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
-			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1],
-					target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
-			var gameobject_asset: UnityGameObject = nodepath_bone_to_stripped_gameobject.get(str(target_nodepath) + "/" + str(target_skel_bone), null)
-			print("Get target node " + str(target_nodepath) + " bone " + str(target_skel_bone) + " from " + str(instanced_scene.scene_file_path))
+			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(
+				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath())
+			)
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
+				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], "")
+			)
+			var gameobject_asset: UnityGameObject = nodepath_bone_to_stripped_gameobject.get(
+				str(target_nodepath) + "/" + str(target_skel_bone), null
+			)
+			print(
+				(
+					"Get target node "
+					+ str(target_nodepath)
+					+ " bone "
+					+ str(target_skel_bone)
+					+ " from "
+					+ str(instanced_scene.scene_file_path)
+				)
+			)
 			var target_parent_obj = instanced_scene.get_node(target_nodepath)
 			var attachment: Node3D = target_parent_obj
 			var already_has_attachment: bool = false
-			if (attachment == null):
-				push_error("Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path))
+			if attachment == null:
+				push_error(
+					"Unable to find node " + str(target_nodepath) + " on scene " + str(packed_scene.resource_path)
+				)
 				continue
 			print("Found transform: " + str(target_parent_obj.name))
 			if gameobject_asset != null:
@@ -3295,14 +3873,14 @@ class UnityPrefabInstance extends UnityGameObject:
 				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
 				state.add_fileID(attachment, transform_asset)
 				already_has_attachment = true
-			elif !already_has_attachment and (not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D): # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
+			elif !already_has_attachment and (not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D):  # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
 				var godot_skeleton: Node3D = target_parent_obj
 				if target_parent_obj is BoneAttachment3D:
 					attachment = target_parent_obj
 					godot_skeleton = target_parent_obj.get_parent()
 				else:
 					attachment = BoneAttachment3D.new()
-					attachment.name = target_skel_bone # target_parent_obj.name if not stripped??
+					attachment.name = target_skel_bone  # target_parent_obj.name if not stripped??
 					attachment.bone_name = target_skel_bone
 					print("Made a new attachment! " + str(target_skel_bone))
 					state.add_child(attachment, godot_skeleton, transform_asset)
@@ -3345,32 +3923,34 @@ class UnityPrefabInstance extends UnityGameObject:
 		#calculate_prefab_nodepaths(state, instanced_scene, target_fileid, target_prefab_meta)
 		#for target_fileid in target_prefab_meta.fileid_to_nodepath:
 		#	var stripped_id = int(target_fileid)^fileID
-		#	prefab_fileid_to_nodepath = 
+		#	prefab_fileid_to_nodepath =
 		#stripped_id_to_nodepath
 		#for mod in self.modifications:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
 
-		return [self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene]
+		return [
+			self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene
+		]
 
-	func get_transform() -> Object: # Not really... but there usually isn't a stripped transform for the prefab instance itself.
+	func get_transform() -> Object:  # Not really... but there usually isn't a stripped transform for the prefab instance itself.
 		return self
 
 	var rootOrder: int:
 		get:
-			return 0 # no idea..
+			return 0  # no idea..
 
 	func get_gameObject() -> UnityGameObject:
 		return self
 
-	var parent_ref: Array: # UnityRef
+	var parent_ref: Array:  # UnityRef
 		get:
-			return keys.get("m_Modification", {}).get("m_TransformParent", [null,0,"",0])
+			return keys.get("m_Modification", {}).get("m_TransformParent", [null, 0, "", 0])
 
 	# Special case: this is used to find a common ancestor for Skeletons. We stop at the prefab instance and do not go further.
-	var parent_no_stripped: UnityObject: # Array #UnityRef
+	var parent_no_stripped: UnityObject:  # Array #UnityRef
 		get:
-			return null # meta.lookup(parent_ref)
+			return null  # meta.lookup(parent_ref)
 
 	var parent: UnityObject:
 		get:
@@ -3387,7 +3967,7 @@ class UnityPrefabInstance extends UnityGameObject:
 		get:
 			return keys.get("m_Modification", {}).get("m_RemovedComponents", [])
 
-	var source_prefab: Array: # UnityRef
+	var source_prefab: Array:  # UnityRef
 		get:
 			# new: m_SourcePrefab; old: m_ParentPrefab
 			return keys.get("m_SourcePrefab", keys.get("m_ParentPrefab", [null, 0, "", 0]))
@@ -3399,17 +3979,18 @@ class UnityPrefabInstance extends UnityGameObject:
 			# the same way modern prefabs do, the only GameObject whose Transform has m_Father == null
 			return keys.get("m_IsPrefabParent", false)
 
-class UnityPrefabLegacyUnused extends UnityPrefabInstance:
+
+class UnityPrefabLegacyUnused:
+	extends UnityPrefabInstance
 	# I think this will never exist in practice, but it's here anyway:
 	# Old Unity's "Prefab" used utype 1001 which is now "PrefabInstance", not 1001480554.
 	# so those objects should instantiate UnityPrefabInstance anyway.
 	pass
 
 
-
-
 ### ================ COMPONENT TYPES ================
-class UnityComponent extends UnityObject:
+class UnityComponent:
+	extends UnityObject
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
@@ -3423,7 +4004,7 @@ class UnityComponent extends UnityObject:
 		if is_stripped:
 			push_error("Attempted to access the gameObject of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
-			return null # ???? 
+			return null  # ????
 		return meta.lookup(keys.get("m_GameObject", []))
 
 	func get_name() -> String:
@@ -3431,14 +4012,16 @@ class UnityComponent extends UnityObject:
 			push_error("Attempted to access the name of a stripped " + type + " " + uniq_key)
 			# FIXME: Stripped objects do not know their name.
 			# FIXME: Make the calling function crash, since we don't have stacktraces wwww
-			return "[stripped]" # ????
+			return "[stripped]"  # ????
 		return str(gameObject.name)
 
 	func is_toplevel() -> bool:
 		return false
 
 
-class UnityBehaviour extends UnityComponent:
+class UnityBehaviour:
+	extends UnityComponent
+
 	func convert_properties_component(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = {}
 		if uprops.has("m_Enabled"):
@@ -3449,7 +4032,9 @@ class UnityBehaviour extends UnityComponent:
 		get:
 			return keys.get("m_Enabled", 0) != 0
 
-class UnityTransform extends UnityComponent:
+
+class UnityTransform:
+	extends UnityComponent
 
 	var skeleton_bone_index: int = -1
 
@@ -3459,14 +4044,14 @@ class UnityTransform extends UnityComponent:
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = convert_properties_component(node, uprops)
 		if uprops.has("m_LocalPosition.x"):
-			outdict["position:x"] = -1.0 * uprops.get("m_LocalPosition.x") # * FLIP_X
+			outdict["position:x"] = -1.0 * uprops.get("m_LocalPosition.x")  # * FLIP_X
 		if uprops.has("m_LocalPosition.y"):
 			outdict["position:y"] = 1.0 * uprops.get("m_LocalPosition.y")
 		if uprops.has("m_LocalPosition.z"):
 			outdict["position:z"] = 1.0 * uprops.get("m_LocalPosition.z")
 		if uprops.has("m_LocalPosition"):
 			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
-			outdict["position"] = Vector3(-1,1,1) * pos_vec # * FLIP_X
+			outdict["position"] = Vector3(-1, 1, 1) * pos_vec  # * FLIP_X
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
 			outdict["_quaternion"] = (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
@@ -3492,39 +4077,57 @@ class UnityTransform extends UnityComponent:
 			outdict["scale"] = scale
 		return outdict
 
-
 	var rootOrder: int:
 		get:
 			return keys.get("m_RootOrder", 0)
 
-	var parent_ref: Variant: # Array: # UnityRef
+	var parent_ref: Variant:  # Array: # UnityRef
 		get:
 			if is_stripped:
 				push_error("Attempted to access the parent of a stripped " + type + " " + uniq_key)
-				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
-			return keys.get("m_Father", [null,0,"",0])
+				return 12345.678  # FIXME: Returning bogus value to crash whoever does this
+			return keys.get("m_Father", [null, 0, "", 0])
 
-	var parent_no_stripped: UnityObject: # UnityTransform
+	var parent_no_stripped: UnityObject:  # UnityTransform
 		get:
 			if is_stripped or is_non_stripped_prefab_reference:
-				return meta.lookup(self.prefab_instance) # Not a UnityTransform, but sufficient for determining a common "ancestor" for skeleton bones.
+				return meta.lookup(self.prefab_instance)  # Not a UnityTransform, but sufficient for determining a common "ancestor" for skeleton bones.
 			return meta.lookup(parent_ref)
 
-	var parent: Variant: # UnityTransform:
+	var parent: Variant:  # UnityTransform:
 		get:
 			if is_stripped:
 				push_error("Attempted to access the parent of a stripped " + type + " " + uniq_key)
-				return 12345.678 # FIXME: Returning bogus value to crash whoever does this
+				return 12345.678  # FIXME: Returning bogus value to crash whoever does this
 			return meta.lookup(parent_ref)
 
 
-class UnityRectTransform extends UnityTransform:
+class UnityRectTransform:
+	extends UnityTransform
 	pass
 
-class UnityCollider extends UnityBehaviour:
+
+class UnityCollider:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
-		print("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
+		print(
+			(
+				"Creating collider at "
+				+ self.name
+				+ " type "
+				+ self.type
+				+ " parent name "
+				+ str(new_parent.name if new_parent != null else "NULL")
+				+ " path "
+				+ str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath())
+				+ " body name "
+				+ str(state.body.name if state.body != null else "NULL")
+				+ " path "
+				+ str(state.owner.get_path_to(state.body) if state.body != null else NodePath())
+			)
+		)
 		if state.body == null:
 			state.body = StaticBody3D.new()
 			state.body.name = "StaticBody3D"
@@ -3601,7 +4204,10 @@ class UnityCollider extends UnityBehaviour:
 	func is_collider() -> bool:
 		return true
 
-class UnityBoxCollider extends UnityCollider:
+
+class UnityBoxCollider:
+	extends UnityCollider
+
 	func get_shape() -> Shape3D:
 		var bs: BoxShape3D = BoxShape3D.new()
 		return bs
@@ -3614,7 +4220,10 @@ class UnityBoxCollider extends UnityCollider:
 		print(outdict)
 		return outdict
 
-class UnitySphereCollider extends UnityCollider:
+
+class UnitySphereCollider:
+	extends UnityCollider
+
 	func get_shape() -> Shape3D:
 		var bs: SphereShape3D = SphereShape3D.new()
 		return bs
@@ -3626,22 +4235,25 @@ class UnitySphereCollider extends UnityCollider:
 		print("**** SPHERE COLLIDER RADIUS " + str(outdict))
 		return outdict
 
-class UnityCapsuleCollider extends UnityCollider:
+
+class UnityCapsuleCollider:
+	extends UnityCollider
+
 	func get_shape() -> Shape3D:
 		var bs: CapsuleShape3D = CapsuleShape3D.new()
 		return bs
 
 	func get_basis_from_direction(direction: int):
-		if direction == 0: # Along the X-Axis
-			return Basis.from_euler(Vector3(0.0, 0.0, PI/2.0))
-		if direction == 1: # Along the Y-Axis (Godot default)
+		if direction == 0:  # Along the X-Axis
+			return Basis.from_euler(Vector3(0.0, 0.0, PI / 2.0))
+		if direction == 1:  # Along the Y-Axis (Godot default)
 			return Basis.from_euler(Vector3(0.0, 0.0, 0.0))
-		if direction == 2: # Along the Z-Axis
-			return Basis.from_euler(Vector3(PI/2.0, 0.0, 0.0))
+		if direction == 2:  # Along the Z-Axis
+			return Basis.from_euler(Vector3(PI / 2.0, 0.0, 0.0))
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
-		var radius: float = 0.0 # FIXME: height including radius???? Did godot change this???
+		var radius: float = 0.0  # FIXME: height including radius???? Did godot change this???
 		if node != null:
 			radius = node.shape.radius
 			print("Convert capsules " + str(node.shape.radius) + " " + str(node.name) + " and " + str(outdict))
@@ -3655,7 +4267,9 @@ class UnityCapsuleCollider extends UnityCollider:
 			outdict["shape:height"] = adj_height
 		return outdict
 
-class UnityMeshCollider extends UnityCollider:
+
+class UnityMeshCollider:
+	extends UnityCollider
 
 	# Not making these animatable?
 	var convex: bool:
@@ -3693,10 +4307,10 @@ class UnityMeshCollider extends UnityCollider:
 						outdict["shape"] = new_mesh.create_convex_shape()
 					else:
 						outdict["shape"] = new_mesh.create_trimesh_shape()
-			
+
 		return outdict
 
-	func get_mesh(uprops: Dictionary) -> Array: # UnityRef
+	func get_mesh(uprops: Dictionary) -> Array:  # UnityRef
 		var ret = get_ref(uprops, "m_Mesh")
 		if ret[1] == 0:
 			if is_stripped or gameObject.is_stripped:
@@ -3707,7 +4321,9 @@ class UnityMeshCollider extends UnityCollider:
 		return ret
 
 
-class UnityTerrainCollider extends UnityMeshCollider:
+class UnityTerrainCollider:
+	extends UnityMeshCollider
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var coll: Node3D = super.create_godot_node(state, new_parent)
 		coll.top_level = true
@@ -3722,20 +4338,21 @@ class UnityTerrainCollider extends UnityMeshCollider:
 		outdict["shape"] = get_collision_shape(uprops)
 		return outdict
 
-	func get_collision_shape(uprops: Dictionary) -> Shape3D: # UnityRef
+	func get_collision_shape(uprops: Dictionary) -> Shape3D:  # UnityRef
 		var coll_ref: Array = uprops.get("m_TerrainData")
 		coll_ref = [null, 0xc0111de4 ^ coll_ref[1], coll_ref[2], coll_ref[3]]
 		var concave: ConcavePolygonShape3D = self.meta.get_godot_resource(coll_ref)
 		return concave
 
 
-class UnityRigidbody extends UnityComponent:
+class UnityRigidbody:
+	extends UnityComponent
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
 	func create_physics_body(state: RefCounted, new_parent: Node3D, name: String) -> Node:
-		var new_node: Node3D;
+		var new_node: Node3D
 		if keys.get("m_IsKinematic") != 0:
 			var kinematic: CharacterBody3D = CharacterBody3D.new()
 			new_node = kinematic
@@ -3743,7 +4360,7 @@ class UnityRigidbody extends UnityComponent:
 			var rigid: RigidBody3D = RigidBody3D.new()
 			new_node = rigid
 
-		new_node.name = name # Not type: This replaces the usual transform node.
+		new_node.name = name  # Not type: This replaces the usual transform node.
 		state.add_child(new_node, new_parent, self)
 		return new_node
 
@@ -3761,8 +4378,9 @@ class UnityRigidbody extends UnityComponent:
 		return new_node
 
 
+class UnityMeshFilter:
+	extends UnityComponent
 
-class UnityMeshFilter extends UnityComponent:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
@@ -3771,17 +4389,33 @@ class UnityMeshFilter extends UnityComponent:
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
-			print("MeshFilter " + str(self.uniq_key) + " ref " + str(mesh_ref) + " new mesh " + str(new_mesh) + " old mesh " + str(node.mesh))
-			outdict["_mesh"] = new_mesh # property track?
+			print(
+				(
+					"MeshFilter "
+					+ str(self.uniq_key)
+					+ " ref "
+					+ str(mesh_ref)
+					+ " new mesh "
+					+ str(new_mesh)
+					+ " old mesh "
+					+ str(node.mesh)
+				)
+			)
+			outdict["_mesh"] = new_mesh  # property track?
 		return outdict
 
-	func get_filter_mesh() -> Array: # UnityRef
-		return keys.get("m_Mesh", [null,0,"",null])
+	func get_filter_mesh() -> Array:  # UnityRef
+		return keys.get("m_Mesh", [null, 0, "", null])
 
-class UnityRenderer extends UnityBehaviour:
+
+class UnityRenderer:
+	extends UnityBehaviour
 	pass
 
-class UnityMeshRenderer extends UnityRenderer:
+
+class UnityMeshRenderer:
+	extends UnityRenderer
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return create_godot_node_orig(state, new_parent, type)
 
@@ -3819,7 +4453,9 @@ class UnityMeshRenderer extends UnityRenderer:
 			const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
 			for prop in uprops:
 				if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
-					var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
+					var idx: int = (
+						str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
+					)
 					var m: Array = get_ref(uprops, prop)
 					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
 			print("Converted mesh prop " + str(outdict) + "  for uprop " + str(uprops))
@@ -3829,15 +4465,17 @@ class UnityMeshRenderer extends UnityRenderer:
 	# both material properties as well as material references??
 	# anything else to animate?
 
-	func get_mesh() -> Array: # UnityRef
+	func get_mesh() -> Array:  # UnityRef
 		if is_stripped or gameObject.is_stripped:
 			push_error("Oh no i am stripped MR")
 		var mf: RefCounted = gameObject.get_meshFilter()
 		if mf != null:
 			return mf.get_filter_mesh()
-		return [null,0,"",null]
+		return [null, 0, "", null]
 
-class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
+
+class UnitySkinnedMeshRenderer:
+	extends UnityMeshRenderer
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		if len(bones) == 0:
@@ -3848,8 +4486,12 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		else:
 			return null
 
-	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
-		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, component_name, self, self.get_mesh(), null, [])
+	func create_cloth_godot_node(
+		state: RefCounted, new_parent: Node3D, component_name: String, cloth: UnityCloth
+	) -> Node:
+		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(
+			state, new_parent, component_name, self, self.get_mesh(), null, []
+		)
 		var idx: int = 0
 		for m in keys.get("m_Materials", []):
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
@@ -3866,7 +4508,7 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		#	return null
 		var first_bone_key: String = first_bone_obj.uniq_key
 		print("SkinnedMeshRenderer: Looking up " + first_bone_key + " for " + str(self.gameObject))
-		var skelley: RefCounted = state.uniq_key_to_skelley.get(first_bone_key, null) # Skelley
+		var skelley: RefCounted = state.uniq_key_to_skelley.get(first_bone_key, null)  # Skelley
 		if skelley == null:
 			push_error("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key)
 			return null
@@ -3887,15 +4529,51 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		# TODO: skin??
 		ret.skin = meta.get_godot_resource(get_skin())
 		if ret.skin == null:
-			push_error("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " has null skin")
+			push_error(
+				(
+					"Mesh "
+					+ component_name
+					+ " at "
+					+ str(state.owner.get_path_to(ret))
+					+ " mesh "
+					+ str(ret.mesh)
+					+ " has bones "
+					+ str(len(bones))
+					+ " has null skin"
+				)
+			)
 		elif len(bones) != ret.skin.get_bind_count():
-			push_error("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " mismatched with bind bones " + str(ret.skin.get_bind_count()))
+			push_error(
+				(
+					"Mesh "
+					+ component_name
+					+ " at "
+					+ str(state.owner.get_path_to(ret))
+					+ " mesh "
+					+ str(ret.mesh)
+					+ " has bones "
+					+ str(len(bones))
+					+ " mismatched with bind bones "
+					+ str(ret.skin.get_bind_count())
+				)
+			)
 		else:
 			var edited: bool = false
 			for idx in range(len(bones)):
 				var bone_transform: UnityTransform = meta.lookup(bones[idx])
 				if bone_transform == null:
-					push_warning("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx))
+					push_warning(
+						(
+							"Mesh "
+							+ component_name
+							+ " at "
+							+ str(state.owner.get_path_to(ret))
+							+ " mesh "
+							+ str(ret.mesh)
+							+ " has null bone "
+							+ str(idx)
+						)
+					)
 					continue
 				if ret.skin.get_bind_bone(idx) != bone_transform.skeleton_bone_index:
 					edited = true
@@ -3905,7 +4583,18 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 				for idx in range(len(bones)):
 					var bone_transform: UnityTransform = meta.lookup(bones[idx])
 					if bone_transform == null:
-						push_warning("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx))
+						push_warning(
+							(
+								"Mesh "
+								+ component_name
+								+ " at "
+								+ str(state.owner.get_path_to(ret))
+								+ " mesh "
+								+ str(ret.mesh)
+								+ " has null bone "
+								+ str(idx)
+							)
+						)
 						continue
 					ret.skin.set_bind_bone(idx, bone_transform.skeleton_bone_index)
 					ret.skin.set_bind_name(idx, gdskel.get_bone_name(bone_transform.skeleton_bone_index))
@@ -3921,25 +4610,28 @@ class UnitySkinnedMeshRenderer extends UnityMeshRenderer:
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
-			outdict["_mesh"] = new_mesh # property track?
+			outdict["_mesh"] = new_mesh  # property track?
 			var skin_ref: Array = mesh_ref
 			skin_ref = [null, -skin_ref[1], skin_ref[2], skin_ref[3]]
 			var new_skin: Skin = meta.get_godot_resource(skin_ref)
-			outdict["skin"] = new_skin # property track?
+			outdict["skin"] = new_skin  # property track?
 
 			# TODO: blend shapes
 
 			# TODO: m_Bones modifications? what even is the syntax. I think we shouldn't allow changes to bones.
 		return outdict
 
-	func get_skin() -> Array: # UnityRef
-		var ret: Array = keys.get("m_Mesh", [null,0,"",null])
+	func get_skin() -> Array:  # UnityRef
+		var ret: Array = keys.get("m_Mesh", [null, 0, "", null])
 		return [null, -ret[1], ret[2], ret[3]]
 
-	func get_mesh() -> Array: # UnityRef
-		return keys.get("m_Mesh", [null,0,"",null])
+	func get_mesh() -> Array:  # UnityRef
+		return keys.get("m_Mesh", [null, 0, "", null])
 
-class UnityCloth extends UnityBehaviour:
+
+class UnityCloth:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
@@ -3950,16 +4642,19 @@ class UnityCloth extends UnityBehaviour:
 			bone_idx = skel.get_bone_parent(bone_idx)
 		return transform
 
-	func get_or_upgrade_bone_attachment(skel: Skeleton3D, state: RefCounted, bone_transform: UnityTransform) -> BoneAttachment3D:
+	func get_or_upgrade_bone_attachment(
+		skel: Skeleton3D, state: RefCounted, bone_transform: UnityTransform
+	) -> BoneAttachment3D:
 		var fileID: int = bone_transform.fileID
-		var target_nodepath: NodePath = meta.fileid_to_nodepath.get(fileID,
-				meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
+		var target_nodepath: NodePath = meta.fileid_to_nodepath.get(
+			fileID, meta.prefab_fileid_to_nodepath.get(fileID, NodePath())
+		)
 		var ret: Node3D = skel
 		if target_nodepath != NodePath():
 			ret = state.owner.get_node(target_nodepath)
 		if ret is Skeleton3D:
 			ret = BoneAttachment3D.new()
-			ret.name = skel.get_bone_name(bone_transform.skeleton_bone_index) # target_skel_bone
+			ret.name = skel.get_bone_name(bone_transform.skeleton_bone_index)  # target_skel_bone
 			state.add_child(ret, skel, bone_transform)
 			state.remove_fileID_to_skeleton_bone(bone_transform.fileID)
 			ret.bone_name = ret.name
@@ -3967,7 +4662,15 @@ class UnityCloth extends UnityBehaviour:
 		else:
 			return ret
 
-	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, smr: UnityObject, mesh: Array, skel: Skeleton3D, bones: Array) -> SoftBody3D:
+	func create_cloth_godot_node(
+		state: RefCounted,
+		new_parent: Node3D,
+		component_name: String,
+		smr: UnityObject,
+		mesh: Array,
+		skel: Skeleton3D,
+		bones: Array
+	) -> SoftBody3D:
 		var new_node: SoftBody3D = SoftBody3D.new()
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, smr)
@@ -3980,7 +4683,7 @@ class UnityCloth extends UnityBehaviour:
 		# parent_collision_ignore?????? # NodePath to a CollisionObject this SoftBody should avoid clipping. ????
 		new_node.damping_coefficient = self.damping_coefficient
 		new_node.drag_coefficient = self.drag_coefficient
-		# m_CapsuleColliders ??? 
+		# m_CapsuleColliders ???
 		# m_SphereColliders ???
 		# m_Enabled # FIXME: No way to disable?!?!
 		# FIXME: no GRAVITY?????
@@ -3998,7 +4701,7 @@ class UnityCloth extends UnityBehaviour:
 		# which might be well defined, but even if so, Unity does some black magic to deduplicate vertices
 		# across UV and normal seams. Does Godot also do this? If not, how does it keep the mesh from
 		# falling apart at UV seams? If yes, how to map the two engines' algorithms here.
-		var mesh_arrays: Array = new_node.mesh.surface_get_arrays(0) # Godot SoftBody ignores other surfaces.
+		var mesh_arrays: Array = new_node.mesh.surface_get_arrays(0)  # Godot SoftBody ignores other surfaces.
 		var mesh_verts: PackedVector3Array = mesh_arrays[Mesh.ARRAY_VERTEX]
 		var mesh_bones: PackedInt32Array = mesh_arrays[Mesh.ARRAY_BONES]
 		var mesh_weights: Array = Array(mesh_arrays[Mesh.ARRAY_WEIGHTS])
@@ -4013,7 +4716,7 @@ class UnityCloth extends UnityBehaviour:
 		# For example 1109/1200 or 104/129 verts
 		# FIXME: I noticed some differences in vertex ordering in some cases. Hmm....
 		var idx: int = 0
-		var idxlen: int = (len(mesh_verts))
+		var idxlen: int = len(mesh_verts)
 		while idx < idxlen:
 			var vert: Vector3 = mesh_verts[idx]
 			var key = str(vert.x) + "," + str(vert.y) + "," + str(vert.z)
@@ -4027,7 +4730,20 @@ class UnityCloth extends UnityBehaviour:
 				vert_idx += 1
 			idx += 1
 
-		print("Verts " + str(len(mesh_verts)) + " " + str(len(mesh_bones)) + " " + str(len(mesh_weights)) + " dedupe_len=" + str(vert_idx) + " unity_len=" + str(len(self.coefficients)))
+		print(
+			(
+				"Verts "
+				+ str(len(mesh_verts))
+				+ " "
+				+ str(len(mesh_bones))
+				+ " "
+				+ str(len(mesh_weights))
+				+ " dedupe_len="
+				+ str(vert_idx)
+				+ " unity_len="
+				+ str(len(self.coefficients))
+			)
+		)
 
 		var pinned_points: PackedInt32Array = PackedInt32Array()
 		var bones_paths: Array = [].duplicate()
@@ -4055,8 +4771,12 @@ class UnityCloth extends UnityBehaviour:
 							most_weight = weight
 							most_bone = mesh_bones[vert_idx * bone_per_vert + boneidx]
 					if not bone_idx_to_attachment_path.has(most_bone):
-						var attachment: BoneAttachment3D = get_or_upgrade_bone_attachment(skel, state, meta.lookup(bones[most_bone]))
-						bone_idx_to_bone_transform[most_bone] = get_bone_transform(skel, skel.find_bone(attachment.bone_name)).affine_inverse()
+						var attachment: BoneAttachment3D = get_or_upgrade_bone_attachment(
+							skel, state, meta.lookup(bones[most_bone])
+						)
+						bone_idx_to_bone_transform[most_bone] = (
+							get_bone_transform(skel, skel.find_bone(attachment.bone_name)).affine_inverse()
+						)
 						bone_idx_to_attachment_path[most_bone] = new_node.get_path_to(attachment)
 					bones_paths.push_back(bone_idx_to_attachment_path.get(most_bone))
 					offsets.push_back(bone_idx_to_bone_transform[most_bone] * mesh_verts[vert_idx])
@@ -4093,7 +4813,8 @@ class UnityCloth extends UnityBehaviour:
 			return keys.get("m_BendingStiffness", 1)
 
 
-class UnityLight extends UnityBehaviour:
+class UnityLight:
+	extends UnityBehaviour
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var light: Light3D
@@ -4106,8 +4827,8 @@ class UnityLight extends UnityBehaviour:
 			# Assuming RenderSettings.m_SpotCookie: == {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
 			var spot_light: SpotLight3D = SpotLight3D.new()
 			spot_light.set_param(Light3D.PARAM_SPOT_ANGLE, spotAngle * 0.5)
-			spot_light.set_param(Light3D.PARAM_SPOT_ATTENUATION, 0.5) # Eyeball guess for Unity's default spotlight texture
-			spot_light.set_param(Light3D.PARAM_ATTENUATION, 0.333) # Was 1.0
+			spot_light.set_param(Light3D.PARAM_SPOT_ATTENUATION, 0.5)  # Eyeball guess for Unity's default spotlight texture
+			spot_light.set_param(Light3D.PARAM_ATTENUATION, 0.333)  # Was 1.0
 			spot_light.set_param(Light3D.PARAM_RANGE, lightRange)
 			light = spot_light
 		elif unityLightType == 1:
@@ -4141,9 +4862,9 @@ class UnityLight extends UnityBehaviour:
 		light.shadow_enabled = shadowType != 0
 		light.set_param(Light3D.PARAM_SHADOW_BIAS, shadowBias)
 		if lightmapBakeType == 1:
-			light.light_bake_mode = Light3D.BAKE_DYNAMIC # INDIRECT??
+			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # INDIRECT??
 		elif lightmapBakeType == 2:
-			light.light_bake_mode = Light3D.BAKE_DYNAMIC # BAKE_ALL???
+			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # BAKE_ALL???
 			light.editor_only = true
 		else:
 			light.light_bake_mode = Light3D.BAKE_DISABLED
@@ -4154,11 +4875,11 @@ class UnityLight extends UnityBehaviour:
 	var color: Color:
 		get:
 			return keys.get("m_Color")
-	
+
 	var lightType: float:
 		get:
 			return keys.get("m_Type", 1)
-	
+
 	var lightRange: float:
 		get:
 			return keys.get("m_Range")
@@ -4166,11 +4887,11 @@ class UnityLight extends UnityBehaviour:
 	var intensity: float:
 		get:
 			return keys.get("m_Intensity")
-	
+
 	var bounceIntensity: float:
 		get:
 			return keys.get("m_BounceIntensity", 1.0)
-	
+
 	var spotAngle: float:
 		get:
 			return keys.get("m_SpotAngle")
@@ -4199,7 +4920,10 @@ class UnityLight extends UnityBehaviour:
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
 		return outdict
 
-class UnityAudioSource extends UnityBehaviour:
+
+class UnityAudioSource:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var audio: Node = null
 		var panlevel_curve: Dictionary = keys.get("panLevelCustomCurve", {})
@@ -4262,26 +4986,29 @@ class UnityAudioSource extends UnityBehaviour:
 			# TODO: How does unit_size work?
 		return outdict
 
-class UnityCamera extends UnityBehaviour:
+
+class UnityCamera:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var par: Node = new_parent
 		var texref: Array = keys.get("m_TargetTexture", [null, 0, null, null])
 		var rendertex: UnityObject = null
 		if texref[1] != 0:
-			rendertex = meta.lookup(texref) # FIXME: This might not find separate assets.
+			rendertex = meta.lookup(texref)  # FIXME: This might not find separate assets.
 		if rendertex != null:
 			var viewport: SubViewport = SubViewport.new()
 			viewport.name = "SubViewport"
 			new_parent.add_child(viewport, true)
 			viewport.owner = state.owner
-			viewport.size = Vector2(
-				rendertex.keys.get("m_Width"),
-				rendertex.keys.get("m_Height"))
+			viewport.size = Vector2(rendertex.keys.get("m_Width"), rendertex.keys.get("m_Height"))
 			if keys.get("m_AllowMSAA", 0) == 1:
 				if rendertex.keys.get("m_AntiAliasing", 0) == 1:
 					viewport.msaa = Viewport.MSAA_8X
 			viewport.use_occlusion_culling = keys.get("m_OcclusionCulling", 0)
-			viewport.clear_mode = SubViewport.CLEAR_MODE_ALWAYS if keys.get("m_ClearFlags") < 3 else SubViewport.CLEAR_MODE_NEVER
+			viewport.clear_mode = (
+				SubViewport.CLEAR_MODE_ALWAYS if keys.get("m_ClearFlags") < 3 else SubViewport.CLEAR_MODE_NEVER
+			)
 			# Godot is always HDR? if keys.get("m_AllowHDR", 0) == 1
 			par = viewport
 		var cam: Camera3D = Camera3D.new()
@@ -4321,7 +5048,10 @@ class UnityCamera extends UnityBehaviour:
 			outdict["size"] = uprops.get("orthographic size")
 		return outdict
 
-class UnityLightProbeGroup extends UnityComponent:
+
+class UnityLightProbeGroup:
+	extends UnityComponent
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var i = 0
 		for pos in keys.get("m_SourcePositions", []):
@@ -4333,7 +5063,10 @@ class UnityLightProbeGroup extends UnityComponent:
 			probe.position = pos
 		return null
 
-class UnityReflectionProbe extends UnityBehaviour:
+
+class UnityReflectionProbe:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var probe: ReflectionProbe = ReflectionProbe.new()
 		probe.name = "ReflectionProbe"
@@ -4373,7 +5106,9 @@ class UnityReflectionProbe extends UnityBehaviour:
 			outdict["update_mode"] = 0
 		return outdict
 
-class UnityTerrain extends UnityBehaviour:
+
+class UnityTerrain:
+	extends UnityBehaviour
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		#var terrain: MeshInstance3D = MeshInstance3D.new()
@@ -4381,7 +5116,7 @@ class UnityTerrain extends UnityBehaviour:
 		#assign_object_meta(terrain)
 		#state.add_child(terrain, new_parent, self)
 		# Traditional instanced scene case: It only requires calling instantiate() and setting the filename.
-		var packed_scene: PackedScene = meta.get_godot_resource(keys.get("m_TerrainData", [null,0,null,null]))
+		var packed_scene: PackedScene = meta.get_godot_resource(keys.get("m_TerrainData", [null, 0, null, null]))
 		if packed_scene == null:
 			return null
 		var instanced_terrain: Node3D = packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
@@ -4397,10 +5132,12 @@ class UnityTerrain extends UnityBehaviour:
 		var outdict = self.convert_properties_component(node, uprops)
 		return outdict
 
-class UnityMonoBehaviour extends UnityBehaviour:
+
+class UnityMonoBehaviour:
+	extends UnityBehaviour
 	var monoscript: Array:
 		get:
-			return keys.get("m_Script", [null,0,null,null])
+			return keys.get("m_Script", [null, 0, null, null])
 
 	# No need yet to override create_godot_node...
 	func create_godot_resource() -> Resource:
@@ -4414,13 +5151,16 @@ class UnityMonoBehaviour extends UnityBehaviour:
 		for setting in keys.get("settings"):
 			var sobj = meta.lookup(setting)
 			match str(sobj.monoscript[2]):
-				"adb84e30e02715445aeb9959894e3b4d": # Tonemap
+				"adb84e30e02715445aeb9959894e3b4d":  # Tonemap
 					env.set_meta("glow", sobj.keys)
-				"48a79b01ea5641d4aa6daa2e23605641": # Glow
+				"48a79b01ea5641d4aa6daa2e23605641":  # Glow
 					env.set_meta("glow", sobj.keys)
 		return env
 
-class UnityAnimation extends UnityBehaviour:
+
+class UnityAnimation:
+	extends UnityBehaviour
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var animplayer: AnimationPlayer = AnimationPlayer.new()
 		state.add_child(animplayer, new_parent, self)
@@ -4460,7 +5200,9 @@ class UnityAnimation extends UnityBehaviour:
 		print(outdict)
 		return outdict
 
-class UnityAnimator extends UnityBehaviour:
+
+class UnityAnimator:
+	extends UnityBehaviour
 
 	func assign_controller(anim_player: AnimationPlayer, anim_tree: AnimationTree, controller_ref: Array):
 		var main_library: AnimationLibrary = null
@@ -4503,9 +5245,11 @@ class UnityAnimator extends UnityBehaviour:
 		var animtree: AnimationTree = node
 		var animplayer: AnimationPlayer = animtree.get_node(animtree.anim_player)
 		var anim_controller_meta: Resource = meta.lookup_meta(keys["m_Controller"])
-		var virtual_unity_object: UnityRuntimeAnimatorController = meta.lookup_or_instantiate(keys["m_Controller"], "RuntimeAnimatorController")
+		var virtual_unity_object: UnityRuntimeAnimatorController = meta.lookup_or_instantiate(
+			keys["m_Controller"], "RuntimeAnimatorController"
+		)
 		if virtual_unity_object == null:
-			return # couldn't find meta. this means it probably won't work.
+			return  # couldn't find meta. this means it probably won't work.
 		virtual_unity_object.adapt_animation_player_at_node(self, animplayer)
 		#if anim_controller != null:
 		#	animplayer.add_animation_library(&"", anim_controller.create_animation_library_at_node(self, node.get_parent()))
@@ -4518,13 +5262,17 @@ class UnityAnimator extends UnityBehaviour:
 				assign_controller(node.get_node(node.anim_player), node, uprops["m_Controller"])
 		return outdict
 
+
 ### ================ IMPORTER TYPES ================
-class UnityAssetImporter extends UnityObject:
+class UnityAssetImporter:
+	extends UnityObject
+
 	func get_main_object_id() -> int:
-		return 0 # Unknown
+		return 0  # Unknown
+
 	var main_object_id: int:
 		get:
-			return get_main_object_id() # Unknown
+			return get_main_object_id()  # Unknown
 
 	func get_external_objects() -> Dictionary:
 		var eo: Dictionary = {}.duplicate()
@@ -4532,10 +5280,10 @@ class UnityAssetImporter extends UnityObject:
 		if typeof(extos) != TYPE_ARRAY:
 			return eo
 		for srcAssetIdent in extos:
-			var type_str: String = srcAssetIdent.get("first", {}).get("type","")
+			var type_str: String = srcAssetIdent.get("first", {}).get("type", "")
 			var type_key: String = type_str.split(":")[-1]
-			var key: Variant = srcAssetIdent.get("first", {}).get("name","") # FIXME: Returns null sometimes????
-			var val: Array = srcAssetIdent.get("second", [null,0,"",null]) # UnityRef
+			var key: Variant = srcAssetIdent.get("first", {}).get("name", "")  # FIXME: Returns null sometimes????
+			var val: Array = srcAssetIdent.get("second", [null, 0, "", null])  # UnityRef
 			if typeof(key) != TYPE_NIL and not key.is_empty() and type_str.begins_with("UnityEngine"):
 				if not eo.has(type_key):
 					eo[type_key] = {}.duplicate()
@@ -4606,8 +5354,7 @@ class UnityAssetImporter extends UnityObject:
 		# legacyGenerateAnimations = 4 ??
 		# animationType = 3 ??
 		get:
-			return (keys.get("importAnimation") and
-				keys.get("animationType") != 0)
+			return keys.get("importAnimation") and keys.get("animationType") != 0
 
 	var fileIDToRecycleName: Dictionary:
 		get:
@@ -4624,30 +5371,38 @@ class UnityAssetImporter extends UnityObject:
 	# 0: No compression; 1: keyframe reduction; 2: keyframe reduction and compress
 	# 3: all of the above and choose best curve for runtime memory.
 	func animation_optimizer_settings() -> Dictionary:
-		var rotError: float = keys.get("animations").get("animationRotationError", 0.5) # Degrees
-		var rotErrorHalfRevs: float = rotError / 180 # p_alowed_angular_err is defined this way (divides by PI)
+		var rotError: float = keys.get("animations").get("animationRotationError", 0.5)  # Degrees
+		var rotErrorHalfRevs: float = rotError / 180  # p_alowed_angular_err is defined this way (divides by PI)
 		return {
 			"enabled": keys.get("animations").get("animationCompression") != 0,
 			"max_linear_error": keys.get("animations").get("animationPositionError", 0.5),
-			"max_angular_error": rotErrorHalfRevs, # Godot defaults this value to 
+			"max_angular_error": rotErrorHalfRevs,  # Godot defaults this value to
 		}
 
-class UnityModelImporter extends UnityAssetImporter:
-	func get_main_object_id() -> int:
-		return 100100000 # a model is a type of Prefab
 
-class UnityShaderImporter extends UnityAssetImporter:
-	func get_main_object_id() -> int:
-		return 4800000 # Shader
+class UnityModelImporter:
+	extends UnityAssetImporter
 
-class UnityTextureImporter extends UnityAssetImporter:
+	func get_main_object_id() -> int:
+		return 100100000  # a model is a type of Prefab
+
+
+class UnityShaderImporter:
+	extends UnityAssetImporter
+
+	func get_main_object_id() -> int:
+		return 4800000  # Shader
+
+
+class UnityTextureImporter:
+	extends UnityAssetImporter
 	var textureShape: int:
 		get:
 			# 1: Texture2D
 			# 2: Cubemap
 			# 3: Texture2DArray (Unity 2020)
 			# 4: Texture3D (Unity 2020)
-			return keys.get("textureShape", 0) # Some old files do not have this
+			return keys.get("textureShape", 0)  # Some old files do not have this
 
 	# TODO: implement textureType. Currently unused
 	var textureType: int:
@@ -4664,41 +5419,59 @@ class UnityTextureImporter extends UnityAssetImporter:
 	func get_main_object_id() -> int:
 		match textureShape:
 			0, 1:
-				return 2800000 # "Texture2D",
+				return 2800000  # "Texture2D",
 			2:
-				return 8900000 # "Cubemap",
+				return 8900000  # "Cubemap",
 			3:
-				return 18700000 # "Texture2DArray",
+				return 18700000  # "Texture2DArray",
 			4:
-				return 11700000 # "Texture3D",
+				return 11700000  # "Texture3D",
 			_:
 				return 0
 
-class UnityTrueTypeFontImporter extends UnityAssetImporter:
-	func get_main_object_id() -> int:
-		return 12800000 # Font
 
-class UnityNativeFormatImporter extends UnityAssetImporter:
+class UnityTrueTypeFontImporter:
+	extends UnityAssetImporter
+
+	func get_main_object_id() -> int:
+		return 12800000  # Font
+
+
+class UnityNativeFormatImporter:
+	extends UnityAssetImporter
+
 	func get_main_object_id() -> int:
 		var ret: int = keys.get("mainObjectFileID", 0)
 		if ret == -1:
 			return 0
 		return ret
 
-class UnityPrefabImporter extends UnityAssetImporter:
+
+class UnityPrefabImporter:
+	extends UnityAssetImporter
+
 	func get_main_object_id() -> int:
 		# PrefabInstance is 1001. Multiply by 100000 to create default ID.
-		return 100100000 # Always should be this ID.
+		return 100100000  # Always should be this ID.
 
-class UnityTextScriptImporter extends UnityAssetImporter:
+
+class UnityTextScriptImporter:
+	extends UnityAssetImporter
+
 	func get_main_object_id() -> int:
-		return 4900000 # TextAsset
+		return 4900000  # TextAsset
 
-class UnityAudioImporter extends UnityAssetImporter:
+
+class UnityAudioImporter:
+	extends UnityAssetImporter
+
 	func get_main_object_id() -> int:
-		return 8300000 # AudioClip
+		return 8300000  # AudioClip
 
-class UnityDefaultImporter extends UnityAssetImporter:
+
+class UnityDefaultImporter:
+	extends UnityAssetImporter
+
 	# Will depend on filetype or file extension?
 	# Check file extension from `meta.path`???
 	func get_main_object_id() -> int:
@@ -4713,14 +5486,18 @@ class UnityDefaultImporter extends UnityAssetImporter:
 				return 1
 			"txt", "html", "htm", "xml", "bytes", "json", "csv", "yaml", "fnt":
 				# Supported file extensions for text (.bytes is special)
-				return 4900000 # TextAsset
+				return 4900000  # TextAsset
 			_:
 				# Folder, or unsupported type.
-				return 102900000 # DefaultAsset
+				return 102900000  # DefaultAsset
 
-class DiscardUnityComponent extends UnityComponent:
+
+class DiscardUnityComponent:
+	extends UnityComponent
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
+
 
 var _type_dictionary: Dictionary = {
 	# "AimConstraint": UnityAimConstraint,
@@ -5338,10 +6115,12 @@ var utype_to_classname = {
 	208985858483: "ScriptedImporter",
 }
 
+
 func invert_hashtable(ht: Dictionary) -> Dictionary:
 	var outd: Dictionary = Dictionary()
 	for key in ht:
 		outd[ht[key]] = key
 	return outd
+
 
 var classname_to_utype: Dictionary = invert_hashtable(utype_to_classname)

@@ -59,10 +59,26 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 	#      - _Outline_Color: {r: 1, g: 1, b: 1, a: 1}
 	str(str(line.substr(0, 1)).begins_with(str(line.substr(0, 1))))
 	# User must decode this as desired.
-	var force_string = keyname == "_typelessdata" or keyname == "m_IndexBuffer" or keyname == "Hash" or parent_key == "fileIDToRecycleName" or parent_key == "internalIDToNameTable"
-	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 24 and line.is_valid_int():
+	var force_string = (
+		keyname == "_typelessdata"
+		or keyname == "m_IndexBuffer"
+		or keyname == "Hash"
+		or parent_key == "fileIDToRecycleName"
+		or parent_key == "internalIDToNameTable"
+	)
+	if (
+		not force_string
+		and not object_adapter_class.STRING_KEYS.has(keyname)
+		and len(line) < 24
+		and line.is_valid_int()
+	):
 		return line.to_int()
-	if not force_string and not object_adapter_class.STRING_KEYS.has(keyname) and len(line) < 32 and line.is_valid_float():
+	if (
+		not force_string
+		and not object_adapter_class.STRING_KEYS.has(keyname)
+		and len(line) < 32
+		and line.is_valid_float()
+	):
 		return line.to_float()
 	if not force_string and line == "[]":
 		return [].duplicate()
@@ -215,7 +231,10 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 	if value_start < len(line_plain) and not has_brace_line and not has_single_quote_line and not has_double_quote_line:
 		missing_brace = line_plain.substr(value_start, 1) == "{" and not line_plain.ends_with("}")
 		missing_double_quote = line_plain.substr(value_start, 1) == '"' and not line_plain.ends_with('"')
-		missing_single_quote = line_plain.substr(value_start, 1) == "'" and ending_single_quotes % 2 == (1 if ending_single_quotes + value_start == len(line_plain) else 0)
+		missing_single_quote = (
+			line_plain.substr(value_start, 1) == "'"
+			and ending_single_quotes % 2 == (1 if ending_single_quotes + value_start == len(line_plain) else 0)
+		)
 	var new_indentation_level = len(line) - len(line_plain)
 	var object_to_return: Object = null
 	if line.begins_with("--- ") or (line == "" and single_quote_line == ""):
@@ -257,7 +276,9 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 		if current_obj != null:
 			push_error("Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
-		current_obj = object_adapter.instantiate_unity_object(meta, current_obj_fileID, current_obj_utype, current_obj_type)
+		current_obj = object_adapter.instantiate_unity_object(
+			meta, current_obj_fileID, current_obj_utype, current_obj_type
+		)
 		if current_obj_stripped:
 			current_obj.is_stripped = true
 	elif line == "" and has_single_quote_line:
@@ -280,13 +301,23 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 		has_brace_line = true
 		continuation_line_indentation_level = new_indentation_level
 		#print("Missing brace start")
-	elif has_single_quote_line and new_indentation_level > continuation_line_indentation_level and (ending_single_quotes % 2) == 0:
+	elif (
+		has_single_quote_line
+		and new_indentation_level > continuation_line_indentation_level
+		and (ending_single_quotes % 2) == 0
+	):
 		single_quote_line += line_plain
 		#print("Missing single mid: " + brace_line)
-	elif has_double_quote_line and new_indentation_level > continuation_line_indentation_level and not ending_double_quotes:
+	elif (
+		has_double_quote_line
+		and new_indentation_level > continuation_line_indentation_level
+		and not ending_double_quotes
+	):
 		double_quote_line += " " + line_plain
 		#print("Missing double mid: " + brace_line)
-	elif has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with("}"):
+	elif (
+		has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with("}")
+	):
 		brace_line += " " + line_plain
 		push_error("Missing brace mid: " + brace_line)  # Never seen structs big enough to wrap twice.
 	else:
@@ -318,7 +349,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 					this_key = obj_key_match.get_string(1)
 		if (
 			new_indentation_level > indentation_level
-			or (new_indentation_level == indentation_level and line_plain.begins_with("- ") and typeof(current_obj_tree.back()) != TYPE_ARRAY)
+			or (
+				new_indentation_level == indentation_level
+				and line_plain.begins_with("- ")
+				and typeof(current_obj_tree.back()) != TYPE_ARRAY
+			)
 		):
 			if line_plain.begins_with("- ") or line_plain == "data:":
 				current_indent_tree.push_back(indentation_level)
@@ -341,7 +376,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 				prev_key = ""
-			if typeof(current_obj_tree.back()) == TYPE_ARRAY and not line_plain.begins_with("- ") and not line_plain.begins_with("data:"):
+			if (
+				typeof(current_obj_tree.back()) == TYPE_ARRAY
+				and not line_plain.begins_with("- ")
+				and not line_plain.begins_with("data:")
+			):
 				current_indent_tree.pop_back()
 				current_obj_tree.pop_back()
 
@@ -360,7 +399,12 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 					prev_complex_key = this_key
 			else:
 				var parsed_val = parse_value(line_plain.substr(obj_key_match.get_end()), this_key, prev_complex_key)
-				if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
+				if (
+					typeof(parsed_val) == TYPE_ARRAY
+					and len(parsed_val) >= 3
+					and parsed_val[0] == null
+					and typeof(parsed_val[2]) == TYPE_STRING
+				):
 					match this_key:
 						# m_SourcePrefab (new), m_ParentPrefab (legacy) used in prefabs and scenes.
 						# prefab (trees) and prototype (details) are used in Terrain
@@ -372,7 +416,12 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 				current_obj_tree.back()[this_key] = parsed_val
 		elif line_plain.begins_with("- ") or line_plain == "data:":
 			var parsed_val = parse_value(line_plain.substr(2), "", prev_complex_key)
-			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
+			if (
+				typeof(parsed_val) == TYPE_ARRAY
+				and len(parsed_val) >= 3
+				and parsed_val[0] == null
+				and typeof(parsed_val[2]) == TYPE_STRING
+			):
 				meta.dependency_guids[parsed_val[2]] = 1
 			current_obj_tree.back().push_back(parsed_val)
 	return object_to_return
