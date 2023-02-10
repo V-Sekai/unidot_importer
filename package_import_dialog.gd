@@ -589,7 +589,7 @@ func _scan_sources_complete(useless: Variant = null):
 	import_step_timer = Timer.new()
 	import_step_timer.wait_time = 0.1
 	import_step_timer.autostart = true
-	import_step_timer.process_mode = Timer.TIMER_PROCESS_IDLE
+	import_step_timer.process_callback = Timer.TIMER_PROCESS_IDLE
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(import_step_timer, true)
 	import_step_timer.timeout.connect(self._do_import_step_tick)
 
@@ -629,7 +629,7 @@ func _asset_tree_window_confirmed():
 	preprocess_timer = Timer.new()
 	preprocess_timer.wait_time = 0.1
 	preprocess_timer.autostart = true
-	preprocess_timer.process_mode = Timer.TIMER_PROCESS_IDLE
+	preprocess_timer.process_callback = Timer.TIMER_PROCESS_IDLE
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(preprocess_timer, true)
 	preprocess_timer.timeout.connect(self._preprocess_wait_tick)
 	if num_processing == 0:
