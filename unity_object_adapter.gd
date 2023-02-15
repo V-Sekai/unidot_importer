@@ -1,9 +1,9 @@
 @tool
 extends RefCounted
 
-const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
-const monoscript: GDScript = preload("./monoscript.gd")
-const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
+const aligned_byte_buffer = preload("./aligned_byte_buffer.gd")
+const monoscript = preload("./monoscript.gd")
+const anim_tree_runtime = preload("./runtime/anim_tree.gd")
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -766,7 +766,7 @@ class UnityMesh:
 			#f.store_string(str(surface_arrays))
 			#f.flush()
 			#f = null
-			for i in range(ArrayMesh.ARRAY_MAX):
+			for i in range(int(Mesh.ARRAY_MAX)):
 				print(
 					(
 						"Array "
@@ -3342,10 +3342,10 @@ class UnityGameObject:
 			return false
 		if typeof(transform) == TYPE_NIL:
 			push_error(uniq_key + " has no transform in toplevel: " + str(transform))
-			return null
+			return false
 		if typeof(transform.parent_ref) != TYPE_ARRAY:
 			push_error(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
-			return null
+			return false
 		return transform.parent_ref[1] == 0
 
 	func get_gameObject() -> UnityGameObject:  # UnityGameObject:

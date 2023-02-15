@@ -81,6 +81,16 @@ class AssetHandler:
 		editor_interface = ep.get_editor_interface()
 		ep.queue_free()
 
+	func preprocess_asset(
+		pkgasset: Object,
+		tmpdir: String,
+		thread_subdir: String,
+		path: String,
+		data_buf: PackedByteArray,
+		unique_texture_map: Dictionary = {}
+	) -> String:
+		return ""
+
 	class ConfigFileCompare:
 		extends ConfigFile
 		var modified: bool = false

@@ -112,7 +112,8 @@ static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
 			n = -((1 << (8 * (xlen - 1))) - n)
 		return n
 	while idx < end and header[idx] != 0:
-		n = (n << 3) + (header[idx] - 48)
+		if header[idx] >= 48:
+			n = (n << 3) + (header[idx] - 48)
 		idx += 1
 	return n
 

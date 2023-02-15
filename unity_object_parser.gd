@@ -1,6 +1,6 @@
 extends RefCounted
 
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const object_adapter_class = preload("./unity_object_adapter.gd")
 
 ############ FIXME: This should be Array(fileId, guid, utype)
 #### WE CANNOT STORE Resource AS INNER CLASS!!

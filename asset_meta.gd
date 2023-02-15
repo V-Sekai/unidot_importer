@@ -772,7 +772,7 @@ func init_with_file(file: Object, path: String):
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj: Resource = yaml_parser.parse_line(lin, self, true)
+		var output_obj = yaml_parser.parse_line(lin, self, true)
 		# unity_object_adapter.UnityObject
 		if output_obj != null:
 			print("Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
