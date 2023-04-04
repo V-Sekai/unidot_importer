@@ -1,7 +1,5 @@
 extends RefCounted
 
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
-
 ############ FIXME: This should be Array(fileId, guid, utype)
 #### WE CANNOT STORE Resource AS INNER CLASS!!
 #class UnityRef extends Resource:
@@ -17,7 +15,20 @@ const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 #		ret += "}]"
 #		return ret
 
-var object_adapter = object_adapter_class.new()
+const STRING_KEYS: Dictionary = {
+	"value": 1,
+	"m_Name": 1,
+	"m_TagString": 1,
+	"name": 1,
+	"first": 1,
+	"propertyPath": 1,
+	"path": 1,
+	"attribute": 1,
+	"m_ShaderKeywords": 1,
+	"typelessdata": 1,  # Mesh m_VertexData; Texture image data
+	"m_IndexBuffer": 1,
+	"Hash": 1,
+}
 
 var debug_guid: String = ""
 var debug_path: String = ""
@@ -68,14 +79,14 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 	)
 	if (
 		not force_string
-		and not object_adapter_class.STRING_KEYS.has(keyname)
+		and not STRING_KEYS.has(keyname)
 		and len(line) < 24
 		and line.is_valid_int()
 	):
 		return line.to_int()
 	if (
 		not force_string
-		and not object_adapter_class.STRING_KEYS.has(keyname)
+		and not STRING_KEYS.has(keyname)
 		and len(line) < 32
 		and line.is_valid_float()
 	):
@@ -197,7 +208,8 @@ func xprint(s: String):
 	pass
 
 
-func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unity_object_adapter.UnityObject
+func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_object: Callable) -> Resource:  # unity_object_adapter.UnityObject
+	var instantiate_unity_object = xinstantiate_unity_object
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
 		print("guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
@@ -276,7 +288,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool) -> Resource:  # unit
 		if current_obj != null:
 			push_error("Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
-		current_obj = object_adapter.instantiate_unity_object(
+		current_obj = instantiate_unity_object.call(
 			meta, current_obj_fileID, current_obj_utype, current_obj_type
 		)
 		if current_obj_stripped:

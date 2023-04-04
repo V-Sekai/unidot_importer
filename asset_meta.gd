@@ -719,7 +719,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj = yaml_parser.parse_line(lin, self, false)
+		var output_obj = yaml_parser.parse_line(lin, self, false, object_adapter.instantiate_unity_object)
 		if output_obj != null:
 			if (
 				not BLACKLISTED_OBJECT_TYPES.has(output_obj.type)
@@ -772,7 +772,7 @@ func init_with_file(file: Object, path: String):
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj: Resource = yaml_parser.parse_line(lin, self, true)
+		var output_obj: RefCounted = yaml_parser.parse_line(lin, self, true, object_adapter.instantiate_unity_object)
 		# unity_object_adapter.UnityObject
 		if output_obj != null:
 			print("Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))

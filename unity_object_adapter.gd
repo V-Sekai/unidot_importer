@@ -1,6 +1,19 @@
 @tool
 extends RefCounted
 
+const FORMAT_FLOAT32: int = 0
+const FORMAT_FLOAT16: int = 1
+const FORMAT_UNORM8: int = 2
+const FORMAT_SNORM8: int = 3
+const FORMAT_UNORM16: int = 4
+const FORMAT_SNORM16: int = 5
+const FORMAT_UINT8: int = 6
+const FORMAT_SINT8: int = 7
+const FORMAT_UINT16: int = 8
+const FORMAT_SINT16: int = 9
+const FORMAT_UINT32: int = 10
+const FORMAT_SINT32: int = 11
+
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
 const monoscript: GDScript = preload("./monoscript.gd")
 const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
@@ -729,7 +742,7 @@ class UnityMesh:
 							)
 							+ ArrayMesh.ARRAY_FORMAT_CUSTOM0_SHIFT
 						)
-						if format == aligned_byte_buffer.FORMAT_UNORM8 or format == aligned_byte_buffer.FORMAT_SNORM8:
+						if format == FORMAT_UNORM8 or format == FORMAT_SNORM8:
 							# assert(dimension == 4) # Unity docs says always word aligned, so I think this means it is guaranteed to be 4.
 							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(
 								format, offset, 4 * vertexCount, stream_strides[stream], 4
@@ -737,12 +750,12 @@ class UnityMesh:
 							compress_flags |= (
 								(
 									ArrayMesh.ARRAY_CUSTOM_RGBA8_UNORM
-									if format == aligned_byte_buffer.FORMAT_UNORM8
+									if format == FORMAT_UNORM8
 									else ArrayMesh.ARRAY_CUSTOM_RGBA8_SNORM
 								)
 								<< custom_shift
 							)
-						elif format == aligned_byte_buffer.FORMAT_FLOAT16:
+						elif format == FORMAT_FLOAT16:
 							assert(dimension == 2 or dimension == 4)  # Unity docs says always word aligned, so I think this means it is guaranteed to be 2 or 4.
 							surface_arrays[godot_array_type] = vertex_buf.formatted_uint8_subarray(
 								format, offset, dimension * vertexCount * 2, stream_strides[stream], dimension * 2
@@ -3342,10 +3355,10 @@ class UnityGameObject:
 			return false
 		if typeof(transform) == TYPE_NIL:
 			push_error(uniq_key + " has no transform in toplevel: " + str(transform))
-			return null
+			return false
 		if typeof(transform.parent_ref) != TYPE_ARRAY:
 			push_error(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
-			return null
+			return false
 		return transform.parent_ref[1] == 0
 
 	func get_gameObject() -> UnityGameObject:  # UnityGameObject:

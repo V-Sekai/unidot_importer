@@ -169,10 +169,6 @@ class AssetHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		return ASSET_TYPE_UNKNOWN
 
-
-class DefaultHandler:
-	extends AssetHandler
-
 	func preprocess_asset(
 		pkgasset: Object,
 		tmpdir: String,
@@ -183,6 +179,10 @@ class DefaultHandler:
 	) -> String:
 		return ""
 
+
+class DefaultHandler:
+	extends AssetHandler
+	pass
 
 class ImageHandler:
 	extends AssetHandler
@@ -416,16 +416,16 @@ class YamlHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		var extn: String = pkgasset.orig_pathname.get_extension().to_lower()
 		if extn == "unity":
-			return self.ASSET_TYPE_SCENE
+			return ASSET_TYPE_SCENE
 		if extn == "prefab":
-			return self.ASSET_TYPE_PREFAB
+			return ASSET_TYPE_PREFAB
 		if extn == "anim":
 			# FIXME: need to find PPtr dependencies and toposort.
-			return self.ASSET_TYPE_ANIM
+			return ASSET_TYPE_ANIM
 		if pkgasset.parsed_meta.type_to_fileids.has("TerrainData"):
 			# TerrainData depends on prefab assets.
-			return self.ASSET_TYPE_PREFAB
-		return self.ASSET_TYPE_YAML
+			return ASSET_TYPE_PREFAB
+		return ASSET_TYPE_YAML
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.parsed_asset == null:
@@ -932,12 +932,12 @@ class FbxHandler:
 		var texture_name_list: PackedStringArray = PackedStringArray()
 		if is_binary:
 			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
-			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.useFileScale, importer.globalScale)
+			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8()  # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(
-				pkgasset, fbx_file, buffer_as_ascii, importer.useFileScale, importer.globalScale
+				pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1)
 			)
 		var outfile: FileAccess = FileAccess.open(temp_input_path, FileAccess.WRITE_READ)
 		outfile.store_buffer(fbx_file)

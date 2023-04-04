@@ -221,7 +221,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				scene_contents.remove_child(occlusion)
 				occlusion = null
 			else:
-				occlusion.occluder = Occluder3D.new()
+				occlusion.occluder = SphereOccluder3D.new() # wrong type
 		elif asset.type != "GameObject":
 			# alternatively, is it a subclass of UnityComponent?
 			parent = asset.gameObject
