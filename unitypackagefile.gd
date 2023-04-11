@@ -108,15 +108,6 @@ func external_tar_with_filename(source_file: String):
 		if fnparts[1] == "pathname":
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			pkgasset.orig_pathname = pkgasset.pathname
-			var path = pkgasset.pathname
-			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
-				#if path != "Assets":
-				push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
-				guids_to_remove.append(pkgasset.guid)
-			else:
-				# print("Asset " + pkgasset.guid + ": " + path)
-				path_to_pkgasset[path] = pkgasset
-				paths.push_back(path)
 		if fnparts[1] == "preview.png":
 			pkgasset.icon = ImageTexture.new()
 			var image = Image.new()
@@ -127,6 +118,20 @@ func external_tar_with_filename(source_file: String):
 			pkgasset.metadata_tar_header = header
 		if fnparts[1] == "asset":
 			pkgasset.asset_tar_header = header
+
+	for guid in guid_to_pkgasset:
+		var pkgasset = guid_to_pkgasset[guid]
+		var path = pkgasset.pathname
+		if not pkgasset.asset_tar_header:
+			guids_to_remove.append(pkgasset.guid)
+		elif path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
+			#if path != "Assets":
+			push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
+			guids_to_remove.append(pkgasset.guid)
+		else:
+			# print("Asset " + pkgasset.guid + ": " + path)
+			path_to_pkgasset[path] = pkgasset
+			paths.push_back(path)
 
 	for guid in guids_to_remove:
 		guid_to_pkgasset.erase(guid)
@@ -177,15 +182,6 @@ func init_with_filename(source_file: String):
 			# Some pathnames have newline followed by "00". no idea why
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			pkgasset.orig_pathname = pkgasset.pathname
-			var path = pkgasset.pathname
-			if path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
-				#if path != "Assets":
-				push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
-				guids_to_remove.append(pkgasset.guid)
-			else:
-				# print("Asset " + pkgasset.guid + ": " + path)
-				path_to_pkgasset[path] = pkgasset
-				paths.push_back(path)
 		if fnparts[1] == "preview.png":
 			pkgasset.icon = ImageTexture.new()
 			var image = Image.new()
@@ -196,6 +192,20 @@ func init_with_filename(source_file: String):
 			pkgasset.metadata_tar_header = header
 		if fnparts[1] == "asset":
 			pkgasset.asset_tar_header = header
+
+	for guid in guid_to_pkgasset:
+		var pkgasset = guid_to_pkgasset[guid]
+		var path = pkgasset.pathname
+		if not pkgasset.asset_tar_header:
+			guids_to_remove.append(pkgasset.guid)
+		elif path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
+			#if path != "Assets":
+			push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
+			guids_to_remove.append(pkgasset.guid)
+		else:
+			# print("Asset " + pkgasset.guid + ": " + path)
+			path_to_pkgasset[path] = pkgasset
+			paths.push_back(path)
 
 	for guid in guids_to_remove:
 		guid_to_pkgasset.erase(guid)

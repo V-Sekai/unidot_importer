@@ -38,6 +38,9 @@ func save():
 func insert_meta(meta: Resource):  # asset_meta
 	if meta.get_database_int() == null:
 		meta.initialize(self)
+	if meta.path.is_empty():
+		printerr("meta " + str(meta) + " " + str(meta.guid) + " inserted with empty path")
+		return
 	if guid_to_path.has(meta.guid):
 		var old_path = guid_to_path[meta.guid]
 		if old_path != meta.path:
@@ -73,6 +76,9 @@ func insert_meta(meta: Resource):  # asset_meta
 
 
 func rename_meta(meta: Resource, new_path: String):
+	if new_path.is_empty():
+		printerr("meta " + str(meta) + " " + str(meta.guid) + " renamed to empty")
+		return
 	if path_to_meta[meta.path] != meta:
 		printerr("Renaming file not at the correct path")
 	if guid_to_path[meta.guid] != meta.path:

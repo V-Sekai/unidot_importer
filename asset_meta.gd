@@ -705,6 +705,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 	if not magic.begins_with("%YAML"):
 		return null
 
+	print("Path " + self.path  +": " + str(self.main_object_id))
 	var parsed = ParsedAsset.new()
 
 	var yaml_parser = yaml_parser_class.new()
@@ -723,6 +724,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 		if output_obj != null:
 			if (
 				not BLACKLISTED_OBJECT_TYPES.has(output_obj.type)
+				and self.main_object_id == 0
 				and output_obj.fileID > 0
 				and (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0
 				and (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000)
@@ -779,7 +781,8 @@ func init_with_file(file: Object, path: String):
 			self.importer_keys = output_obj.keys
 			self.importer_type = output_obj.type
 			self.importer = output_obj
-			self.main_object_id = self.importer.main_object_id
+			self.main_object_id = self.importer.get_main_object_id()
+			print("Main object id for " + path + ": " + str(self.main_object_id))
 		if file.get_error() == ERR_FILE_EOF:
 			break
 	assert(not self.guid.is_empty())
