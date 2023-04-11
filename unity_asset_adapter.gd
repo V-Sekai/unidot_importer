@@ -65,14 +65,6 @@ func write_sentinel_png(sentinel_filename: String):
 
 
 class AssetHandler:
-	# WORKAROUND GDScript 4.0 BUG
-	# THIS MUST BE COPIED AND PASTED FROM ABOVE.
-	var ASSET_TYPE_YAML = 1
-	var ASSET_TYPE_MODEL = 2
-	var ASSET_TYPE_TEXTURE = 3
-	var ASSET_TYPE_PREFAB = 4
-	var ASSET_TYPE_SCENE = 5
-	var ASSET_TYPE_UNKNOWN = 6
 
 	var editor_interface: EditorInterface = null
 
@@ -263,7 +255,7 @@ class ImageHandler:
 		return full_output_path
 
 	func get_asset_type(pkgasset: Object) -> int:
-		return self.ASSET_TYPE_TEXTURE
+		return ASSET_TYPE_TEXTURE
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
@@ -363,7 +355,7 @@ class AudioHandler:
 		return cfile.was_modified()
 
 	func get_asset_type(pkgasset: Object) -> int:
-		return self.ASSET_TYPE_TEXTURE
+		return ASSET_TYPE_TEXTURE
 
 
 class YamlHandler:
@@ -460,7 +452,8 @@ class YamlHandler:
 			if created_res != null:
 				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext  # ".skin.tres"
 				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
-				created_res.take_over_path(new_pathname)
+				if FileAccess.file_exists(new_pathname):
+					created_res.take_over_path(new_pathname)
 				ResourceSaver.save(created_res, new_pathname)
 				#created_res = load(new_pathname)
 				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
@@ -470,7 +463,8 @@ class YamlHandler:
 
 		if godot_resource != null:
 			# Save main resource at end, so that it can reference extra resources.
-			godot_resource.take_over_path(pkgasset.pathname)
+			if FileAccess.file_exists(pkgasset.pathname):
+				godot_resource.take_over_path(pkgasset.pathname)
 			ResourceSaver.save(godot_resource, pkgasset.pathname)
 		else:
 			var rpa = raw_parsed_asset.new()
@@ -481,7 +475,8 @@ class YamlHandler:
 				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
-			rpa.take_over_path(pkgasset.pathname + ".raw.tres")
+			if FileAccess.file_exists(pkgasset.pathname + ".raw.tres"):
+				rpa.take_over_path(pkgasset.pathname + ".raw.tres")
 			ResourceSaver.save(rpa, pkgasset.pathname + ".raw.tres")
 		return true
 
@@ -505,8 +500,24 @@ class SceneHandler:
 		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
-			packed_scene.take_over_path(pkgasset.pathname)
-			ResourceSaver.save(packed_scene, pkgasset.pathname)
+			if FileAccess.file_exists(pkgasset.pathname):
+				packed_scene.take_over_path(pkgasset.pathname)
+			else:
+				# Godot is giving an error in ResourceSaver.save() that it can't read the uid from the file while it's writing (get_uid)
+				# Why and how?!
+				# Let's experiment with manual UID generation...
+				# pkgasset.parsed_meta.
+				# ResourceUID.id_to_text(calc_md5(pkgasset.guid))
+				var new_uid = ResourceUID.create_id()
+				print(ResourceUID.id_to_text(new_uid))
+				ResourceUID.add_id(new_uid, "res://" + pkgasset.pathname)
+				var fa: FileAccess = FileAccess.open("res://" + pkgasset.pathname, FileAccess.WRITE)
+				fa.store_string("[gd_scene format=3 uid=\"" + ResourceUID.id_to_text(new_uid) + "\"]\n\n[node name=\"Node3D\" type=\"Node3D\"]\n")
+				fa.flush()
+				fa = null
+				EditorPlugin.new().get_editor_interface().get_resource_filesystem().update_file("res://" + pkgasset.pathname)
+			packed_scene.resource_path = "res://" + pkgasset.pathname
+			ResourceSaver.save(packed_scene, "res://" + pkgasset.pathname)
 			return true
 		return false
 
@@ -557,7 +568,7 @@ class BaseModelHandler:
 		return ""
 
 	func get_asset_type(pkgasset: Object) -> int:
-		return self.ASSET_TYPE_MODEL
+		return ASSET_TYPE_MODEL
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
@@ -1280,6 +1291,25 @@ class DisabledHandler:
 		return false
 
 
+func get_class_name(obj):
+	if obj is DisabledHandler:
+		return "DisabledHandler"
+	if obj is FbxHandler:
+		return "FbxHandler"
+	if obj is BaseModelHandler:
+		return "BaseModelHandler"
+	if obj is SceneHandler:
+		return "SceneHandler"
+	if obj is YamlHandler:
+		return "YamlHandler"
+	if obj is AudioHandler:
+		return "AudioHandler"
+	if obj is ImageHandler:
+		return "ImageHandler"
+	if obj is AssetHandler:
+		return "AssetHandler"
+	return obj.get_class()
+
 var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
 var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
 var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_PNG_FILE)
@@ -1343,6 +1373,7 @@ func create_temp_dir() -> String:
 func get_asset_type(pkgasset: Object) -> int:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	print("get_asset_type " + path + ", " + pkgasset.pathname + ", " + str(get_class_name(file_handlers.get("default"))) + ", " + str(get_class_name(asset_handler)) + ", " + str(asset_handler.get_asset_type(pkgasset)))
 	var typ: int = asset_handler.get_asset_type(pkgasset)
 	return typ
 

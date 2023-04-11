@@ -471,7 +471,8 @@ class ParseState:
 					if anim != null:
 						adjust_animation(anim)
 						var respath: String = get_resource_path(godot_anim_name, ".tres")
-						anim.take_over_path(respath)
+						if FileAccess.file_exists(respath):
+							anim.take_over_path(respath)
 						ResourceSaver.save(anim, respath)
 						anim = load(respath)
 				if anim != null:
@@ -628,7 +629,8 @@ class ParseState:
 									+ str(mat.normal_texture.resource_path)
 								)
 							)
-						mat.take_over_path(respath)
+						if FileAccess.file_exists(respath):
+							mat.take_over_path(respath)
 						ResourceSaver.save(mat, respath)
 						mat = load(respath)
 						print(
@@ -679,14 +681,16 @@ class ParseState:
 					if mesh != null:
 						adjust_mesh_scale(mesh)
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
-						mesh.take_over_path(respath)
+						if FileAccess.file_exists(respath):
+							mesh.take_over_path(respath)
 						ResourceSaver.save(mesh, respath)
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
 						adjust_skin_scale(skin)
 						var respath: String = get_resource_path(godot_mesh_name, ".skin.tres")
-						skin.take_over_path(respath)
+						if FileAccess.file_exists(respath):
+							skin.take_over_path(respath)
 						ResourceSaver.save(skin, respath)
 						skin = load(respath)
 				if mesh != null:

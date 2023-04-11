@@ -2392,7 +2392,8 @@ class UnityAnimationClip:
 			else:
 				res_path = meta.path.get_basename() + (".%d.tres" % [self.fileID])
 			res_path = "res://" + res_path
-			anim.take_over_path(res_path)
+			if FileAccess.file_exists(res_path):
+				anim.take_over_path(res_path)
 			ResourceSaver.save(anim, res_path)
 			meta.insert_resource(self.fileID, anim)
 		else:
@@ -2963,7 +2964,7 @@ shader_type spatial;
 
 			var shader_code: String = "shader_type spatial;\n"
 			for i in range(len(terrain_layers)):
-				shader_code += "uniform sampler2D albedo%d: hint%s_albedo;\n" % [i, "" if i == 0 else "_black"]
+				shader_code += "uniform sampler2D albedo%d: source_color, hint_default_%s;\n" % [i, "white" if i == 0 else "black"]
 			for i in range(len(terrain_layers)):
 				if normal_enabled[i]:
 					shader_code += "uniform sampler2D normal%d: hint_normal;\n" % [i]
