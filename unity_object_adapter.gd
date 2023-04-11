@@ -960,7 +960,6 @@ class UnityMaterial:
 		# FIXME: Kinda hacky since transparent stuff doesn't always draw depth in Unity
 		# But it seems to workaround a problem with some materials for now.
 		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
-		ret.albedo_tex_force_srgb = true  # Nothing works if this isn't set to true explicitly. Stupid default.
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
 		ret.albedo_texture = get_texture(texProperties, "_MainTex2")  ### ONLY USED IN ONE SHADER. This case should be removed.
 		if ret.albedo_texture == null:
@@ -1305,22 +1304,22 @@ class UnityAnimatorController:
 		blended_layers.set_meta(&"guid_fileid_to_animation_name", animation_guid_fileid_to_name)
 		return blended_layers
 
-	func allows_dupe_transitions() -> bool:
-		var sm = AnimationNodeStateMachine.new()
-		var n1 = AnimationNodeAnimation.new()
-		var n2 = AnimationNodeAnimation.new()
-		var t1 = AnimationNodeStateMachineTransition.new()
-		var t2 = AnimationNodeStateMachineTransition.new()
-		sm.add_node(&"test1", n1)
-		sm.add_node(&"test2", n2)
-		sm.add_transition(&"test1", &"test2", t1)
-		sm.add_transition(&"test1", &"test2", t2)
-		var has_dupe_transitions: bool = sm.get_transition(0) == t1 && sm.get_transition(1) == t2
-		sm.remove_transition_by_index(1)
-		sm.remove_transition_by_index(0)
-		sm.remove_node(&"test1")
-		sm.remove_node(&"test2")
-		return has_dupe_transitions
+#	func allows_dupe_transitions() -> bool:
+#		var sm = AnimationNodeStateMachine.new()
+#		var n1 = AnimationNodeAnimation.new()
+#		var n2 = AnimationNodeAnimation.new()
+#		var t1 = AnimationNodeStateMachineTransition.new()
+#		var t2 = AnimationNodeStateMachineTransition.new()
+#		sm.add_node(&"test1", n1)
+#		sm.add_node(&"test2", n2)
+#		sm.add_transition(&"test1", &"test2", t1)
+#		sm.add_transition(&"test1", &"test2", t2)
+#		var has_dupe_transitions: bool = sm.get_transition(0) == t1 && sm.get_transition(1) == t2
+#		sm.remove_transition_by_index(1)
+#		sm.remove_transition_by_index(0)
+#		sm.remove_node(&"test1")
+#		sm.remove_node(&"test2")
+#		return has_dupe_transitions
 
 	func get_parameter_uniq_name(param_name: String) -> StringName:
 		if not self.parameters.has(param_name):
@@ -1357,7 +1356,7 @@ class UnityAnimatorController:
 		sm.set_node_position(&"Start", Vector2(tmppos.x, tmppos.y))
 		tmppos = STATE_MACHINE_OFFSET + keys.get("m_ExitPosition", Vector3()) * STATE_MACHINE_SCALE
 		sm.set_node_position(&"End", Vector2(tmppos.x, tmppos.y))
-		var allow_dupe_transitions: bool = allows_dupe_transitions()
+		var allow_dupe_transitions: bool = false # allows_dupe_transitions()
 
 		var transition_count = {}.duplicate()
 		var state_count = {}.duplicate()
@@ -1480,7 +1479,7 @@ class UnityAnimatorController:
 		if def_state != null and state_data.has(def_state.uniq_key):
 			if sm.get_node(&"Start") != null:
 				var trans = AnimationNodeStateMachineTransition.new()
-				trans.auto_advance = true
+				trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
 				sm.add_transition(&"Start", state_data[def_state.uniq_key]["name"], trans)
 			else:
 				sm.set_start_node(state_data[def_state.uniq_key]["name"])
@@ -1532,13 +1531,11 @@ class UnityAnimatorController:
 		else:
 			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_IMMEDIATE
 		if conditions == "":
-			trans.auto_advance = true
+			trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
 		else:
-			if typeof(trans.get("advance_expression")) == TYPE_STRING:
-				trans.advance_expression = conditions
-			else:
-				trans.advance_condition = conditions
-		trans.disabled = is_muted
+			trans.advance_expression = conditions
+		if is_muted:
+			trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_DISABLED
 		# TODO: Solo is not implemented yet. It requires knowledge of all sibling transitions at each stage of state machine.
 		# Not too hard to do if someone uses the Solo feature for something.
 
