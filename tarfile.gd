@@ -112,6 +112,13 @@ static func nti(header: PackedByteArray, offset: int, xlen: int) -> int:
 			n = -((1 << (8 * (xlen - 1))) - n)
 		return n
 	while idx < end and header[idx] != 0:
+		if header[idx] <= 32:
+			idx += 1
+			continue # ignore whitespace characters and symbols.
+		if header[idx] < 48 or header[idx] >= 56:
+			push_error("Tar header: invalid length at offset " + str(idx))
+			print(header.slice(idx, idx+32).get_string_from_ascii())
+			return n
 		n = (n << 3) + (header[idx] - 48)
 		idx += 1
 	return n
