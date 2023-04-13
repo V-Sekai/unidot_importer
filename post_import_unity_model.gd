@@ -110,7 +110,7 @@ class ParseState:
 			objtype_to_next_id[type] = next_obj_id + 2
 			used_ids[next_obj_id] = true
 			if type != "Material":
-				push_error("Generating id " + str(next_obj_id) + " for " + str(name) + " type " + str(type))
+				metaobj.log_warn(next_obj_id, "Generating id " + str(next_obj_id) + " for " + str(name) + " type " + str(type))
 			return next_obj_id
 
 	func get_orig_name(obj_gltf_type: String, obj_name: String) -> String:
@@ -461,7 +461,7 @@ class ParseState:
 			print("Process ANIM " + str(godot_anim_name))
 			#if not has_obj_id("AnimationClip", get_orig_name("animations", anim_name))
 			#if fileId == 0:
-			#	push_error("Missing fileId for Animation " + str(anim_name))
+			#	metaobj.log_fail(0, "Missing fileId for Animation " + str(anim_name))
 			#else:
 			var fileId = get_obj_id("AnimationClip", PackedStringArray(), anim_name)
 			if fileId != 0:
@@ -486,9 +486,9 @@ class ParseState:
 	func process_mesh_instance(node: MeshInstance3D):
 		print("Process mesh instance: " + str(node.name))
 		if node.skin == null and node.skeleton != NodePath():
-			push_error("A Skeleton exists for MeshRenderer " + str(node.name))
+			metaobj.log_fail(0, "A Skeleton exists for MeshRenderer " + str(node.name))
 		if node.skin != null and node.skeleton == NodePath():
-			push_error("No Skeleton exists for SkinnedMeshRenderer " + str(node.name))
+			metaobj.log_fail(0, "No Skeleton exists for SkinnedMeshRenderer " + str(node.name))
 		var mesh: Mesh = node.mesh
 		if mesh == null:
 			return
@@ -537,7 +537,7 @@ class ParseState:
 				if not importMaterials:
 					mat = default_material
 				elif not extractLegacyMaterials and fileId == 0 and not use_new_names:
-					push_error("Missing fileId for Material " + str(mat_name))
+					metaobj.log_fail(0, "Missing fileId for Material " + str(mat_name))
 				else:
 					var new_mat: Material = null
 					if external_objects_by_id.has(fileId):
@@ -670,7 +670,7 @@ class ParseState:
 			# print("Looking up " + str(mesh_name) + " in " + str(objtype_to_name_to_id.get("Mesh", {})))
 			var fileId: int = get_obj_id("Mesh", PackedStringArray(), mesh_name)
 			if fileId == 0:
-				push_error("Missing fileId for Mesh " + str(mesh_name))
+				metaobj.log_fail(0, "Missing fileId for Mesh " + str(mesh_name))
 			else:
 				var skin: Skin = node.skin
 				if external_objects_by_id.has(fileId):
@@ -849,21 +849,24 @@ func _post_import(p_scene: Node) -> Object:
 	var godot_import_config: ConfigFile = ConfigFile.new()
 	if godot_import_config.load(source_file_path + ".import") != OK:
 		push_error("Running _post_import script for " + str(source_file_path) + " but cannot load .import")
+
+	var rel_path = source_file_path.replace("res://", "")
+	print("Parsing meta at " + source_file_path)
+	var asset_database: asset_database_class = asset_database_class.new().get_singleton()
+	default_material = asset_database.default_material_reference
+	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
+
 	var apply_root_scale: bool = godot_import_config.get_value("params", "nodes/apply_root_scale", false)
 	var godot_root_scale: float = godot_import_config.get_value("params", "nodes/root_scale", 1.0)
 	if not (godot_root_scale > 0):
-		push_error("Invalid root_scale: " + str(godot_root_scale))
+		if metaobj != null:
+			metaobj.log_warn(0, "Invalid root_scale: " + str(godot_root_scale))
 		godot_root_scale = 1.0
 	if p_scene is Node3D:
 		if not apply_root_scale:
 			p_scene.scale /= godot_root_scale
 	#print ("todo post import replace " + str(source_file_path))
-	var rel_path = source_file_path.replace("res://", "")
-	print("Parsing meta at " + source_file_path)
-	var asset_database: asset_database_class = asset_database_class.new().get_singleton()
-	default_material = asset_database.default_material_reference
 
-	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
 	var f: FileAccess
 	if metaobj == null:
 		push_warning("Asset database missing entry for " + str(source_file_path))
@@ -892,7 +895,7 @@ func _post_import(p_scene: Node) -> Object:
 	if metaobj.internal_data.has("scale_correction_factor"):
 		var scf: float = metaobj.internal_data.get("scale_correction_factor")
 		if godot_root_scale != scf:
-			push_warning(
+			metaobj.log_warn(0,
 				"Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf)
 			)
 	ps.scale_correction_factor = godot_root_scale  # metaobj.internal_data.get("scale_correction_factor", 1.0)

@@ -212,7 +212,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 	var instantiate_unity_object = xinstantiate_unity_object
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
-		print("guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
+		meta.log_debug(current_obj_fileID, "guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
 	str(str(typeof(line)) + "/" + str(line))
 	line = line.replace("\r", "")
 	while line.ends_with("\r"):
@@ -238,8 +238,8 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 		while line_plain.substr(idx, 1) == "\\":
 			idx -= 1
 			ending_double_quotes = not ending_double_quotes
-	#print("st=" + str(value_start) + " < " + str(len(line_plain)) + ":" + line_plain)
-	#print(JSON.print(line))
+	#meta.log_debug(current_obj_fileID, "st=" + str(value_start) + " < " + str(len(line_plain)) + ":" + line_plain)
+	#meta.log_debug(current_obj_fileID, JSON.print(line))
 	if value_start < len(line_plain) and not has_brace_line and not has_single_quote_line and not has_double_quote_line:
 		missing_brace = line_plain.substr(value_start, 1) == "{" and not line_plain.ends_with("}")
 		missing_double_quote = line_plain.substr(value_start, 1) == '"' and not line_plain.ends_with('"')
@@ -251,15 +251,15 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 	var object_to_return: Object = null
 	if line.begins_with("--- ") or (line == "" and single_quote_line == ""):
 		if current_obj != null:
-			#print("line " + str(line) + ": Returning object of type " + str(current_obj.type))
+			#meta.log_debug(current_obj_fileID, "line " + str(line) + ": Returning object of type " + str(current_obj.type))
 			object_to_return = current_obj
-			# print("returning " + str(current_obj) + " at line " + str(line_number)+":" + str(single_quote_line))
+			# meta.log_debug(current_obj_fileID, "returning " + str(current_obj) + " at line " + str(line_number)+":" + str(single_quote_line))
 		indentation_level = 0
 		if line.begins_with("--- "):
 			current_obj = null
 			var parts = line.split(" ")
 			if !parts[1].begins_with("!u!"):
-				push_error("Separator line not starting with --- !u!: " + line.substr(128))
+				meta.log_fail(current_obj_fileID, "Separator line not starting with --- !u!: " + line.substr(128))
 			current_obj_utype = parts[1].substr(3).to_int()
 			current_obj_fileID = parts[2].substr(1).to_int()
 			current_obj_stripped = line.ends_with(" stripped")
@@ -286,7 +286,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 		meta.guid = line.split(":")[1].strip_edges()
 	elif new_indentation_level == 0 and line.ends_with(":"):
 		if current_obj != null:
-			push_error("Creating toplevel object without header")
+			meta.log_fail(current_obj_fileID, "Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
 		current_obj = instantiate_unity_object.call(
 			meta, current_obj_fileID, current_obj_utype, current_obj_type
@@ -295,43 +295,43 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 			current_obj.is_stripped = true
 	elif line == "" and has_single_quote_line:
 		single_quote_line += "\n"
-		#print("Missing single start "  + str(single_quote_line))
+		#meta.log_debug(current_obj_fileID, "Missing single start "  + str(single_quote_line))
 	elif new_indentation_level == 0 and not end_single_multiline:
-		push_error("Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r", "").substr(128))
+		meta.log_fail(current_obj_fileID, "Invalid toplevel line @" + str(line_number) + ": " + line.replace("\r", "").substr(128))
 	elif missing_single_quote:
 		single_quote_line = line_plain
 		has_single_quote_line = true
 		continuation_line_indentation_level = new_indentation_level
-		#print("Missing single start "  + str(single_quote_line))
+		#meta.log_debug(current_obj_fileID, "Missing single start "  + str(single_quote_line))
 	elif missing_double_quote:
 		double_quote_line = line_plain
 		has_double_quote_line = true
 		continuation_line_indentation_level = new_indentation_level
-		#print("Missing double start")
+		#meta.log_debug(current_obj_fileID, "Missing double start")
 	elif missing_brace:
 		brace_line = line_plain
 		has_brace_line = true
 		continuation_line_indentation_level = new_indentation_level
-		#print("Missing brace start")
+		#meta.log_debug(current_obj_fileID, "Missing brace start")
 	elif (
 		has_single_quote_line
 		and new_indentation_level > continuation_line_indentation_level
 		and (ending_single_quotes % 2) == 0
 	):
 		single_quote_line += line_plain
-		#print("Missing single mid: " + brace_line)
+		#meta.log_debug(current_obj_fileID, "Missing single mid: " + brace_line)
 	elif (
 		has_double_quote_line
 		and new_indentation_level > continuation_line_indentation_level
 		and not ending_double_quotes
 	):
 		double_quote_line += " " + line_plain
-		#print("Missing double mid: " + brace_line)
+		#meta.log_debug(current_obj_fileID, "Missing double mid: " + brace_line)
 	elif (
 		has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with("}")
 	):
 		brace_line += " " + line_plain
-		push_error("Missing brace mid: " + brace_line)  # Never seen structs big enough to wrap twice.
+		meta.log_fail(current_obj_fileID, "Missing brace mid: " + brace_line)  # Never seen structs big enough to wrap twice.
 	else:
 		if new_indentation_level > continuation_line_indentation_level or end_single_multiline:
 			var endcontinuation: bool = false
@@ -340,19 +340,19 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 				brace_line = ""
 				has_brace_line = false
 				endcontinuation = true
-				#print("Missing brace end: " + line_plain)
+				#meta.log_debug(current_obj_fileID, "Missing brace end: " + line_plain)
 			if has_single_quote_line and (ending_single_quotes % 2) != 0:
 				line_plain = single_quote_line + line_plain
 				single_quote_line = ""
 				has_single_quote_line = false
 				endcontinuation = true
-				#print("Missing single end")
+				#meta.log_debug(current_obj_fileID, "Missing single end")
 			if has_double_quote_line and ending_double_quotes:
 				line_plain = double_quote_line + " " + line_plain
 				double_quote_line = ""
 				has_double_quote_line = false
 				endcontinuation = true
-				#print("Missing double end")
+				#meta.log_debug(current_obj_fileID, "Missing double end")
 			if endcontinuation:
 				new_indentation_level = continuation_line_indentation_level
 				obj_key_match = arr_obj_key_regex.search(line_plain)
@@ -401,7 +401,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 			indentation_level = new_indentation_level + 2
 			var new_obj = {}.duplicate()
 			if typeof(current_obj_tree.back()) != TYPE_ARRAY:
-				push_error("Invalid obj tree type @" + str(debug_guid) + ":" + str(debug_path) + ":" + str(line_number))
+				meta.log_fail(current_obj_fileID, "Invalid obj tree type @" + str(debug_guid) + ":" + str(debug_path) + ":" + str(line_number))
 			current_obj_tree.back().push_back(new_obj)
 			current_obj_tree.push_back(new_obj)
 		if obj_key_match != null:
@@ -422,7 +422,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 						# prefab (trees) and prototype (details) are used in Terrain
 						# other Object->Prefab/GameObject/Transform references need to be added here:
 						"m_SourcePrefab", "m_ParentPrefab", "prefab", "prototype":
-							# print(" Possible Ref " + str(this_key))
+							# meta.log_debug(current_obj_fileID, " Possible Ref " + str(this_key))
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val

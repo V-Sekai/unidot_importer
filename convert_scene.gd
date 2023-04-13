@@ -23,13 +23,13 @@ func smallestTransform(a, b):
 		return b.fileID < a.fileID
 
 
-func recursive_print(node: Node, indent: String = ""):
+func recursive_print(pkgasset, node: Node, indent: String = ""):
 	var fnstr = "" if str(node.scene_file_path) == "" else (" (" + str(node.scene_file_path) + ")")
-	print(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
-	#print(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
+	pkgasset.log_debug(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
+	#pkgasset.log_debug(indent + str(node.name) + str(node) + ": owner=" + str(node.owner.name if node.owner != null else "") + str(node.owner) + fnstr)
 	var new_indent: String = indent + "  "
 	for c in node.get_children():
-		recursive_print(c, new_indent)
+		recursive_print(pkgasset, c, new_indent)
 
 
 func pack_scene(pkgasset, is_prefab) -> PackedScene:
@@ -44,7 +44,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if asset.is_non_stripped_prefab_reference:
 				continue  # We don't want these.
 			if asset.is_stripped:
-				push_error(
+				asset.log_fail(
 					(
 						"Stripped object "
 						+ asset.type
@@ -65,7 +65,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			arr.push_back(asset)
 
 	if arr.is_empty():
-		push_error("Scene " + pkgasset.pathname + " has no nodes.")
+		pkgasset.log_fail("Scene " + pkgasset.pathname + " has no nodes.")
 		return
 	var env: Environment = null
 	var bakedlm: LightmapGI = null
@@ -76,7 +76,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	var node_map: Dictionary = {}
 	if is_prefab:
 		if len(arr) > 1:
-			push_error("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
+			pkgasset.log_warn("Prefab " + pkgasset.pathname + " has multiple roots. picking lowest.")
 		arr.sort_custom(smallestTransform)
 		arr = [arr[0]]
 	else:
@@ -245,7 +245,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	elif len(skelleys_with_no_parent) > 1:
 		# assert(not is_prefab)
 		if scene_contents == null:
-			push_error("Not able to handle multiple skeletons with no parent in a prefab")
+			pkgasset.log_fail("Not able to handle multiple skeletons with no parent in a prefab")
 		else:
 			for noparskel in skelleys_with_no_parent:
 				scene_contents.add_child(noparskel.godot_skeleton, true)
@@ -262,7 +262,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	arr.sort_custom(customComparison)
 	for asset in arr:
 		if asset.is_stripped:
-			push_error(
+			asset.log_fail(
 				"Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID)
 			)
 		var skel: RefCounted = null
@@ -276,7 +276,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				skel.owner = scene_contents
 			asset.create_skeleton_bone(node_state, skel)
 		else:
-			# print(str(asset) + " position " + str(asset.transform.godot_transform))
+			# asset.log_debug(str(asset) + " position " + str(asset.transform.godot_transform))
 			var new_root: Node3D = asset.create_godot_node(node_state, scene_contents)
 			if scene_contents == null:
 				assert(is_prefab)
@@ -284,7 +284,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				node_state = node_state.state_with_owner(scene_contents)
 			else:
 				if is_prefab:
-					push_warning("May be a prefab with multiple roots, or hit unusual case.")
+					asset.log_fail("May be a prefab with multiple roots, or hit unusual case.")
 				pass
 				# assert(not is_prefab)
 			if asset.type == "PrefabInstance":
@@ -292,14 +292,14 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	# scene_contents = node_state.owner
 	if scene_contents == null:
-		push_error("Failed to parse scene " + pkgasset.pathname)
+		pkgasset.log_fail("Failed to parse scene " + pkgasset.pathname)
 		return null
 
 	for asset in pkgasset.parsed_asset.assets.values():
 		if str(asset.type) == "SkinnedMeshRenderer":
 			var ret: Node = asset.create_skinned_mesh(node_state)
 			if ret != null:
-				print(
+				asset.log_debug(
 					(
 						"Finally added SkinnedMeshRenderer "
 						+ str(asset.uniq_key)
@@ -353,19 +353,19 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				if ((1 << go.keys.get("m_Layer")) & pp_layer_bits) != 0:
 					# Enabled PostProcessingVolume with matching layer.
 					if mono.keys.get("isGlobal", 0) == 1 and mono.keys.get("weight", 0) > 0.0:
-						print("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
+						mono.log_debug("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
 
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
-	print("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
-	recursive_print(scene_contents)
+	pkgasset.log_debug("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
+	recursive_print(pkgasset, scene_contents)
 	var editable_hack: Dictionary = packed_scene._bundled
 	for ecpath in ps.prefab_instance_paths:
-		print(str(editable_hack.keys()))
+		pkgasset.log_debug(str(editable_hack.keys()))
 		editable_hack.get("editable_instances").push_back(str(ecpath))
 	packed_scene._bundled = editable_hack
 	packed_scene.pack(scene_contents)
-	#print(packed_scene)
+	#pkgasset.log_debug(packed_scene)
 	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
-	#print(pi.get_child_count())
+	#pkgasset.log_debug(pi.get_child_count())
 	return packed_scene

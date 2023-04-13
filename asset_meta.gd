@@ -13,6 +13,7 @@ class DatabaseHolder:
 
 var object_adapter: RefCounted = object_adapter_class.new()
 var database_holder
+var log_database_holder
 @export var path: String = ""
 @export var guid: String = ""
 @export var importer_keys: Dictionary = {}
@@ -84,22 +85,47 @@ func get_database_int() -> Resource:
 	return null if database_holder == null else database_holder.database
 
 
+func set_log_database(log_database: Object):
+	log_database_holder = DatabaseHolder.new()
+	log_database_holder.database = log_database
+
+# Log messages related to this asset
+func log_debug(fileid: int, msg: String):
+	log_database_holder.database.log_debug([null, fileid, self.guid, 0], msg)
+
+# Anything that is unexpected but does not necessarily imply corruption.
+# For example, successfully loaded a resource with default fileid
+func log_warn(fileid: int, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var xref: Array = remote_ref
+	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
+		xref = [null, xref[1], self.guid, xref[3]]
+	log_database_holder.database.log_warn([null, fileid, self.guid, 0], msg, field, xref)
+
+# Anything that implies the asset will be corrupt / lost data.
+# For example, some reference or field could not be assigned.
+func log_fail(fileid: int, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var xref: Array = remote_ref
+	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
+		xref = [null, xref[1], self.guid, xref[3]]
+	log_database_holder.database.log_fail([null, fileid, self.guid, 0], msg, field, xref)
+
+
 func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 	for target_guid in meta.prefab_dependency_guids:
 		if not tt.visited.has(target_guid):
 			tt.visited[target_guid] = true
 			var child_meta: Resource = lookup_meta_by_guid_noinit(tt.database, target_guid)
 			if child_meta == null:
-				push_error(
+				log_fail(0,
 					(
 						"Unable to find dependency "
 						+ str(target_guid)
 						+ " of type "
 						+ str(meta.dependency_guids.get(target_guid, ""))
-					)
+					), "prefab", [null,-1,target_guid,-1]
 				)
 			else:
-				print(
+				log_debug(0,
 					(
 						"toposort inner guid "
 						+ str(child_meta.guid)
@@ -112,6 +138,7 @@ func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 					)
 				)
 				child_meta.database_holder = database_holder
+				child_meta.log_database_holder = database_holder
 				toposort_prefab_recurse(child_meta, tt)
 	tt.output.push_back(meta)
 
@@ -123,7 +150,7 @@ func toposort_prefab_dependency_guids() -> Array:
 	return tt.output
 
 
-static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
+func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 	var tt: TopsortTmp = TopsortTmp.new()
 	tt.database = database
 	for target_guid in guid_to_meta:
@@ -131,9 +158,9 @@ static func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 			tt.visited[target_guid] = true
 			var child_meta: Resource = guid_to_meta.get(target_guid)
 			if child_meta == null:
-				push_error("Unable to find dependency " + str(target_guid))
+				log_fail(0, "Unable to find dependency " + str(target_guid), "prefab", [null,-1,target_guid,-1])
 			else:
-				print(
+				log_debug(0,
 					(
 						"toposort toplevel guid "
 						+ str(target_guid)
@@ -157,7 +184,7 @@ func remap_prefab_gameobject_names_inner(
 	var ret: Dictionary = {}.duplicate()
 	var my_id: int = gameobject_id ^ prefab_id
 	if new_map.has(my_id):
-		#push_error("remap_prefab_gameobject_names_inner: Avoided infinite recursion: " + str(prefab_id) + "/" + str(gameobject_id))
+		#log_fail(prefab_id, "remap_prefab_gameobject_names_inner: Avoided infinite recursion: " + str(prefab_id) + "/" + str(gameobject_id))
 		#return prefab_main_gameobject_id
 		ret = new_map[my_id]
 	#new_map[my_id] = {}
@@ -193,13 +220,13 @@ func remap_prefab_gameobject_names_inner(
 
 
 func remap_prefab_gameobject_names_update(prefab_id: int, original_map: Dictionary, new_map: Dictionary):
-	#print("Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
+	#log_debug(prefab_id, "Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	for key in original_map:
 		if not new_map.has(key):
-			#print("REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
+			#log_debug(prefab_id, "REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
 			remap_prefab_gameobject_names_inner(prefab_id, original_map, key, new_map)
-			#print("REMAP OUT %s" % [str(new_map)])
-	#print("Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
+			#log_debug(prefab_id, "REMAP OUT %s" % [str(new_map)])
+	#log_debug(prefab_id, "Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	return new_map
 
 
@@ -217,13 +244,13 @@ func calculate_prefab_nodepaths(database: Resource):
 			database, self.prefab_id_to_guid.get(prefab_fileid)
 		)
 		if target_prefab_meta == null:
-			push_error(
+			log_fail(0,
 				(
 					"Failed to lookup prefab fileid "
 					+ str(prefab_fileid)
 					+ " guid "
 					+ str(self.prefab_id_to_guid.get(prefab_fileid))
-				)
+				), "prefab", 
 			)
 			continue
 		if target_prefab_meta.get_database() == null:
@@ -286,10 +313,7 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 
 
 func calculate_prefab_nodepaths_recursive():
-	var toposorted: Variant = toposort_prefab_dependency_guids()
-	if typeof(toposorted) != TYPE_ARRAY:
-		push_error("BLEH BLEH")
-		return
+	var toposorted: Array = toposort_prefab_dependency_guids()
 	var database: Resource = get_database()
 	for process_meta in toposorted:
 		if (
@@ -342,6 +366,7 @@ func get_main_object_name():
 func initialize(database: Resource):
 	self.database_holder = DatabaseHolder.new()
 	self.database_holder.database = database
+	self.log_database_holder = self.database_holder
 	self.prefab_fileid_to_nodepath = {}
 	self.prefab_fileid_to_skeleton_bone = {}
 	self.prefab_fileid_to_utype = {}
@@ -372,9 +397,9 @@ func lookup_meta_by_guid(target_guid: String) -> Resource:  # returns asset_meta
 
 func lookup_meta(unityref: Array) -> Resource:  # returns asset_meta type
 	if unityref.is_empty() or len(unityref) != 4:
-		push_error("UnityRef in wrong format: " + str(unityref))
+		log_fail(0, "UnityRef in wrong format: " + str(unityref), "ref", unityref)
 		return null
-	# print("LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
+	# log_debug(0, "LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
 	var local_id: int = unityref[1]
 	if local_id == 0:
 		return null
@@ -394,7 +419,7 @@ func lookup(unityref: Array, silent: bool = false) -> RefCounted:
 	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
 	if found_meta.parsed == null:
 		if not silent:
-			push_error(
+			log_fail(0, 
 				(
 					"Target ref "
 					+ found_meta.path
@@ -408,13 +433,13 @@ func lookup(unityref: Array, silent: bool = false) -> RefCounted:
 					+ " ("
 					+ guid
 					+ ")"
-				)
+				), "ref", unityref
 			)
 		return null
 	var ret: RefCounted = found_meta.parsed.assets.get(local_id)
 	if ret == null:
 		if not silent:
-			push_error(
+			log_fail(0,
 				(
 					"Target ref "
 					+ found_meta.path
@@ -428,7 +453,7 @@ func lookup(unityref: Array, silent: bool = false) -> RefCounted:
 					+ " ("
 					+ guid
 					+ ")"
-				)
+				), "ref", unityref
 			)
 		return null
 	ret.meta = found_meta
@@ -439,7 +464,7 @@ func lookup_or_instantiate(unityref: Array, type: String) -> RefCounted:
 	var found_object: RefCounted = lookup(unityref, true)
 	if found_object != null:
 		#if found_object.type != type: # Too hard to verify because it could be a subclass.
-		#	push_warning("lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type))
+		#	log_warn(0, "lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type), "ref", unityref)
 		return found_object
 	var found_meta: Resource = lookup_meta(unityref)
 	if found_meta == null:
@@ -465,17 +490,17 @@ func get_godot_node(unityref: Array) -> Node:
 		var node: Node = root_node
 		var local_id: int = unityref[1]
 		if local_id == 100100000:
-			push_warning("Looking up prefab " + str(unityref) + " in loaded scene " + ps.resource_name)
+			log_warn(0, "Looking up prefab " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
 			return node
 		var np: NodePath = found_meta.fileid_to_nodepath.get(
 			local_id, found_meta.prefab_fileid_to_nodepath.get(local_id, NodePath())
 		)
 		if np == NodePath():
-			push_error("Could not find node " + str(unityref) + " in loaded scene " + ps.resource_name)
+			log_fail(0, "Could not find node " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
 			return null
 		node = node.get_node(np)
 		if node == null:
-			push_error("Path " + str(np) + " was missing in " + str(unityref) + " in loaded scene " + ps.resource_name)
+			log_fail(0, "Path " + str(np) + " was missing in " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
 			return null
 		if node is Skeleton3D:
 			var bone_to_reroot: String = found_meta.fileid_to_skeleton_bone.get(
@@ -536,11 +561,11 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 		if len(unityref) == 4 and unityref[1] != 0:
 			var found_path: String = get_database().guid_to_path.get(unityref[2], "")
 			if not silent:
-				push_error("Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path)
+				log_warn(0, "Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path, "ref", unityref)
 			return load("res://" + found_path)
 		return null
 	var local_id: int = unityref[1]
-	# print("guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
+	# log_debug(0, "guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
 	if found_meta.fileid_to_nodepath.has(local_id) or found_meta.prefab_fileid_to_nodepath.has(local_id):
 		local_id = found_meta.main_object_id
 	if found_meta.main_object_id != 0 and found_meta.main_object_id == local_id:
@@ -553,9 +578,7 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 			return ret
 	if found_meta.parsed == null:
 		if not silent:
-			push_error(
-				(
-					"Failed to find Resource at "
+			log_fail(0, ("Failed to find Resource at "
 					+ found_meta.path
 					+ ":"
 					+ str(local_id)
@@ -567,12 +590,10 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 					+ " ("
 					+ guid
 					+ ")"
-				)
-			)
+				), "ref", unityref)
 		return null
 	if not silent:
-		push_error(
-			(
+		log_fail(0, (
 				"Target ref "
 				+ found_meta.path
 				+ ":"
@@ -585,7 +606,7 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 				+ " ("
 				+ guid
 				+ ")"
-			)
+			), "ref", unityref
 		)
 	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
 	#found_meta.godot_resources[local_id] = res
@@ -648,9 +669,9 @@ const BLACKLISTED_OBJECT_TYPES: Dictionary = {
 
 func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 	var parsed = ParsedAsset.new()
-	print("Parsing " + str(guid))
+	log_debug(0, "Parsing " + str(guid))
 	var bin_parser = bin_parser_class.new(self, bytearray)
-	print(
+	log_debug(0,
 		(
 			"Parsed "
 			+ str(guid)
@@ -674,14 +695,14 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 			if BLACKLISTED_OBJECT_TYPES.has(output_obj.type) or (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) != 0:
 				continue
 			if (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000) and output_obj.fileID > 0:
-				push_error("We have no main_object_id but found a nice round number " + str(output_obj.fileID))
+				log_warn(output_obj.fileID, "We have no main_object_id but found a nice round number " + str(output_obj.fileID))
 				self.main_object_id = output_obj.fileID
 	var i = 0
 	for output_obj in bin_parser.objs:
 		i += 1
 		if self.main_object_id == 0:
 			if (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0:
-				push_error("We have no main_object_id but it should be " + str(output_obj.fileID))
+				log_warn(output_obj.fileID, "We have no main_object_id but it should be " + str(output_obj.fileID))
 				self.main_object_id = output_obj.fileID
 		parsed.assets[output_obj.fileID] = output_obj
 		fileid_to_utype[output_obj.fileID] = output_obj.utype
@@ -695,17 +716,17 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 		parsed.local_id_alias[new_basic_id] = output_obj.fileID
 
 	self.parsed = parsed
-	print("Done parsing!")
+	log_debug(0, "Done parsing!")
 	return parsed
 
 
 func parse_asset(file: Object) -> ParsedAsset:
 	var magic = file.get_line()
-	print("Parsing " + self.guid + " : " + file.get_path())
+	log_debug(0, "Parsing " + self.guid + " : " + file.get_path())
 	if not magic.begins_with("%YAML"):
 		return null
 
-	print("Path " + self.path  +": " + str(self.main_object_id))
+	log_debug(0, "Path " + self.path  +": " + str(self.main_object_id))
 	var parsed = ParsedAsset.new()
 
 	var yaml_parser = yaml_parser_class.new()
@@ -729,7 +750,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 				and (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0
 				and (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000)
 			):
-				push_error("We have no main_object_id but found a nice round number " + str(output_obj.fileID))
+				log_warn(output_obj.fileID, "We have no main_object_id but found a nice round number " + str(output_obj.fileID))
 				self.main_object_id = output_obj.fileID
 			parsed.assets[output_obj.fileID] = output_obj
 			fileid_to_utype[output_obj.fileID] = output_obj.utype
@@ -747,7 +768,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 	if self.main_object_id == 0:
 		for fileID in parsed.assets:
 			if (parsed.assets[fileID].keys.get("m_ObjectHideFlags", 0) & 1) == 0:
-				push_error("We have no main_object_id but it should be " + str(fileID))
+				log_warn(fileID, "We have no main_object_id but it should be " + str(fileID))
 				self.main_object_id = fileID
 
 	return parsed
@@ -765,7 +786,7 @@ func init_with_file(file: Object, path: String):
 		return  # Dummy meta object
 
 	var magic = file.get_line()
-	print("Parsing meta file! " + file.get_path())
+	log_debug(0, "Parsing meta file! " + file.get_path())
 	if not magic.begins_with("fileFormatVersion:"):
 		return
 
@@ -777,12 +798,12 @@ func init_with_file(file: Object, path: String):
 		var output_obj: RefCounted = yaml_parser.parse_line(lin, self, true, object_adapter.instantiate_unity_object)
 		# unity_object_adapter.UnityObject
 		if output_obj != null:
-			print("Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
+			log_debug(output_obj.fileID, "Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
 			self.importer_keys = output_obj.keys
 			self.importer_type = output_obj.type
 			self.importer = output_obj
 			self.main_object_id = self.importer.get_main_object_id()
-			print("Main object id for " + path + ": " + str(self.main_object_id))
+			log_debug(output_obj.fileID, "Main object id for " + path + ": " + str(self.main_object_id))
 		if file.get_error() == ERR_FILE_EOF:
 			break
 	assert(not self.guid.is_empty())

@@ -38,6 +38,31 @@ class UnityPackageAsset:
 	var parsed_resource: Resource  # For specific assets which do work in the thread.
 	var packagefile: Resource  # outer class
 
+	# Log messages related to this asset
+	func log_debug(msg: String):
+		parsed_meta.log_debug(0, msg)
+
+	# Anything that is unexpected but does not necessarily imply corruption.
+	# For example, successfully loaded a resource with default fileid
+	func log_warn(msg: String, field: String="", remote_ref: Variant=[null,0,"",null]):
+		if typeof(remote_ref) == TYPE_ARRAY:
+			parsed_meta.log_warn(0, msg, field, remote_ref)
+		elif typeof(remote_ref) == TYPE_OBJECT and remote_ref:
+			parsed_meta.log_warn(0, msg, field, [null, remote_ref.fileID, remote_ref.meta.guid, 0])
+		else:
+			parsed_meta.log_warn(0, msg, field)
+
+	# Anything that implies the asset will be corrupt / lost data.
+	# For example, some reference or field could not be assigned.
+	func log_fail(msg: String, field: String="", remote_ref: Variant=[null,0,"",null]):
+		if typeof(remote_ref) == TYPE_ARRAY:
+			parsed_meta.log_fail(0, msg, field, remote_ref)
+		elif typeof(remote_ref) == TYPE_OBJECT and remote_ref:
+			parsed_meta.log_fail(0, msg, field, [null, remote_ref.fileID, remote_ref.meta.guid, 0])
+		else:
+			parsed_meta.log_fail(0, msg, field)
+
+
 
 var paths: Array = [].duplicate()
 var path_to_pkgasset: Dictionary = {}.duplicate()

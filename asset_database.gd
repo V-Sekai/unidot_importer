@@ -35,11 +35,36 @@ func save():
 	ResourceSaver.save(self, ASSET_DATABASE_PATH)
 
 
+# Log messages related to this asset
+func log_debug(local_ref: Array, msg: String):
+	print(".unidot. " + str(local_ref[2]) + ":" + str(local_ref[1]) + " : "+ msg)
+
+# Anything that is unexpected but does not necessarily imply corruption.
+# For example, successfully loaded a resource with default fileid
+func log_warn(local_ref: Array, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var fieldstr = ""
+	if not field.is_empty():
+		fieldstr = "." + field
+	if remote_ref:
+		push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
+	push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : "+ msg)
+
+# Anything that implies the asset will be corrupt / lost data.
+# For example, some reference or field could not be assigned.
+func log_fail(local_ref: Array, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var fieldstr = ""
+	if not field.is_empty():
+		fieldstr = "." + field
+	if remote_ref:
+		push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
+	push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : "+ msg)
+
+
 func insert_meta(meta: Resource):  # asset_meta
 	if meta.get_database_int() == null:
 		meta.initialize(self)
 	if meta.path.is_empty():
-		printerr("meta " + str(meta) + " " + str(meta.guid) + " inserted with empty path")
+		log_fail([null,-1,meta.guid,-1], "meta " + str(meta) + " " + str(meta.guid) + " inserted with empty path")
 		return
 	if guid_to_path.has(meta.guid):
 		var old_path = guid_to_path[meta.guid]
@@ -77,12 +102,12 @@ func insert_meta(meta: Resource):  # asset_meta
 
 func rename_meta(meta: Resource, new_path: String):
 	if new_path.is_empty():
-		printerr("meta " + str(meta) + " " + str(meta.guid) + " renamed to empty")
+		log_fail([null,-1,meta.guid,-1], "meta " + str(meta) + " " + str(meta.guid) + " renamed to empty")
 		return
 	if path_to_meta[meta.path] != meta:
-		printerr("Renaming file not at the correct path")
+		log_fail([null,-1,meta.guid,-1], "Renaming file not at the correct path")
 	if guid_to_path[meta.guid] != meta.path:
-		printerr("Renaming guid not at the correct path")
+		log_fail([null,-1,meta.guid,-1], "Renaming guid not at the correct path")
 	path_to_meta.erase(meta.path)
 	guid_to_path[meta.guid] = new_path
 	path_to_meta[new_path] = meta
@@ -108,8 +133,9 @@ func guid_to_asset_path(guid: String) -> String:
 	return guid_to_path.get(guid, "")
 
 
-static func create_dummy_meta(asset_path: String) -> Resource:  # asset_meta
+func create_dummy_meta(asset_path: String) -> Resource:  # asset_meta
 	var meta = asset_meta_class.new()
+	meta.set_log_database(self)
 	meta.init_with_file(null, asset_path)
 	meta.path = asset_path
 	var hc: HashingContext = HashingContext.new()
@@ -120,8 +146,9 @@ static func create_dummy_meta(asset_path: String) -> Resource:  # asset_meta
 	return meta
 
 
-static func parse_meta(file: Object, path: String) -> Resource:  # asset_meta
+func parse_meta(file: Object, path: String) -> Resource:  # asset_meta
 	var ret: Resource = asset_meta_class.new()
+	ret.set_log_database(self)
 	ret.init_with_file(file, path)
 	return ret
 

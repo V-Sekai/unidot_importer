@@ -1,7 +1,6 @@
 @tool
 extends Resource
 
-const asset_database_class: GDScript = preload("./asset_database.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
 const convert_scene: GDScript = preload("./convert_scene.gd")
@@ -56,9 +55,7 @@ var STUB_DAE_FILE: PackedByteArray = (
 
 
 func write_sentinel_png(sentinel_filename: String):
-	print(sentinel_filename)
 	var f: FileAccess = FileAccess.open(sentinel_filename, FileAccess.WRITE)
-	print(f)
 	f.store_buffer(STUB_PNG_FILE)
 	f.flush()
 	f = null
@@ -76,16 +73,20 @@ class AssetHandler:
 	class ConfigFileCompare:
 		extends ConfigFile
 		var modified: bool = false
+		var pkgasset: RefCounted = null
+		
+		func _init(pkgasset: RefCounted):
+			self.pkgasset = pkgasset
 
 		func set_value_compare(section: String, key: String, value: Variant) -> bool:
 			var ret: bool = false
 			if not self.has_section_key(section, key):
-				print("Added new section:" + section + " key:" + key + " : " + str(value))
+				pkgasset.log_debug("Added new section:" + section + " key:" + key + " : " + str(value))
 				ret = true
 			else:
 				var existing_val = self.get_value(section, key)
 				if typeof(existing_val) != typeof(value):
-					print(
+					pkgasset.log_debug(
 						(
 							"Modified type section:"
 							+ section
@@ -99,7 +100,7 @@ class AssetHandler:
 					)
 					ret = true
 				elif existing_val != value:
-					print(
+					pkgasset.log_debug(
 						"Modified section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value)
 					)
 					ret = true
@@ -144,7 +145,7 @@ class AssetHandler:
 				outfile.flush()
 				outfile = null
 			output_path = pkgasset.pathname
-		print("Updating file at " + output_path)
+		pkgasset.log_debug("Updating file at " + output_path)
 		return output_path
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
@@ -153,7 +154,7 @@ class AssetHandler:
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
 			var dres = DirAccess.open("res://")
-			print("Renaming " + temp_path + " to " + pkgasset.pathname)
+			pkgasset.log_debug("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
 			return true
 		return false
@@ -203,12 +204,12 @@ class ImageHandler:
 		)
 		var full_output_path: String = pkgasset.pathname
 		if not is_png and path.get_extension().to_lower() == "png":
-			print("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
+			pkgasset.log_debug("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".jpg"
 		elif is_png and path.get_extension().to_lower() != "png":
-			print("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
+			pkgasset.log_debug("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".png"
-		print(
+		pkgasset.log_debug(
 			(
 				"PREPROCESS_IMAGE "
 				+ str(is_tiff)
@@ -233,7 +234,7 @@ class ImageHandler:
 			)
 			if addon_path.begins_with("res://"):
 				if not d.file_exists(addon_path):
-					push_warning("Not converting tiff to png because convert.exe is not present.")
+					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
 					return ""
 				addon_path = addon_path.substr(6)
 			var ret = OS.execute(addon_path, [temp_output_path.get_basename() + ".tif", temp_output_path], stdout)
@@ -259,9 +260,9 @@ class ImageHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFileCompare.new()
+		var cfile = ConfigFileCompare.new(pkgasset)
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			print("Failed to load .import config file for " + pkgasset.pathname)
+			pkgasset.log_debug("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 			cfile.set_value("remap", "type", "CompressedTexture2D")
 		if force_keep:
@@ -333,9 +334,9 @@ class AudioHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFileCompare.new()
+		var cfile = ConfigFileCompare.new(pkgasset)
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			print("Failed to load .import config file for " + pkgasset.pathname)
+			pkgasset.log_debug("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 		if force_keep:
 			cfile.set_value("remap", "importer", "keep")
@@ -376,8 +377,8 @@ class YamlHandler:
 			sf.init(buf.get_string_from_utf8())
 			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
 		if pkgasset.parsed_asset == null:
-			push_error("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
-		print("Done with " + temp_path + "/" + pkgasset.guid)
+			pkgasset.log_fail("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
+		pkgasset.log_debug("Done with " + temp_path + "/" + pkgasset.guid)
 		return preprocess_asset(pkgasset, tmpdir, thread_subdir, pkgasset.pathname, buf)
 
 	func preprocess_asset(
@@ -389,7 +390,7 @@ class YamlHandler:
 		unique_texture_map: Dictionary = {}
 	) -> String:
 		if pkgasset.parsed_asset == null:
-			push_error(
+			pkgasset.log_fail(
 				"Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML"
 			)
 			return ""
@@ -399,7 +400,7 @@ class YamlHandler:
 		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		else:
-			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 		var new_pathname: String = pkgasset.pathname
 		if main_asset != null:
 			new_pathname = pkgasset.pathname.get_basename() + main_asset.get_godot_extension()  # ".mat.tres"
@@ -421,7 +422,7 @@ class YamlHandler:
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.parsed_asset == null:
-			push_error(
+			pkgasset.log_fail(
 				"Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML"
 			)
 			return false
@@ -431,7 +432,7 @@ class YamlHandler:
 		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		else:
-			push_error("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 
 		var extra_resources: Dictionary = {}
 		if main_asset != null:
@@ -439,7 +440,7 @@ class YamlHandler:
 		for extra_asset_fileid in extra_resources:
 			var file_ext: String = extra_resources.get(extra_asset_fileid)
 			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
-			print(
+			pkgasset.log_debug(
 				(
 					"Creating "
 					+ str(extra_asset_fileid)
@@ -509,7 +510,7 @@ class SceneHandler:
 				# pkgasset.parsed_meta.
 				# ResourceUID.id_to_text(calc_md5(pkgasset.guid))
 				var new_uid = ResourceUID.create_id()
-				print(ResourceUID.id_to_text(new_uid))
+				pkgasset.log_debug(ResourceUID.id_to_text(new_uid))
 				ResourceUID.add_id(new_uid, "res://" + pkgasset.pathname)
 				var fa: FileAccess = FileAccess.open("res://" + pkgasset.pathname, FileAccess.WRITE)
 				fa.store_string("[gd_scene format=3 uid=\"" + ResourceUID.id_to_text(new_uid) + "\"]\n\n[node name=\"Node3D\" type=\"Node3D\"]\n")
@@ -572,9 +573,9 @@ class BaseModelHandler:
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
 		var importer = pkgasset.parsed_meta.importer
-		var cfile = ConfigFileCompare.new()
+		var cfile = ConfigFileCompare.new(pkgasset)
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
-			print("Failed to load .import config file for " + pkgasset.pathname)
+			pkgasset.log_debug("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 			cfile.set_value("remap", "importer_version", 1)
 		if force_keep:
@@ -641,7 +642,7 @@ class BaseModelHandler:
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
 			var dres = DirAccess.open("res://")
-			print("Renaming " + temp_path + " to " + pkgasset.pathname)
+			pkgasset.log_debug("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
 			if temp_path.ends_with(".gltf"):
 				dres.rename(temp_path.get_basename() + ".bin", pkgasset.pathname.get_basename() + ".bin")
@@ -670,7 +671,7 @@ class FbxHandler:
 			while j < src_len:
 				var read_pos: int = i + j
 				if read_pos >= xlen:
-					push_error("read_pos>=len")
+					push_error("FBX fail read_pos>=len")
 					return -1
 				if p_buf[read_pos] != p_str[j]:
 					found = false
@@ -780,7 +781,7 @@ class FbxHandler:
 				nextpos = buffer_as_ascii.find('"', nextpos + 1)
 			var lastquote: int = buffer_as_ascii.find('"', nextpos + 1)
 			if lastquote > newlinepos:
-				push_warning("Failed to parse texture from " + buffer_as_ascii.substr(nextpos, newlinepos - nextpos))
+				pkgasset.log_warn("Failed to parse texture from " + buffer_as_ascii.substr(nextpos, newlinepos - nextpos))
 			else:
 				strlist.append(buffer_as_ascii.substr(nextpos + 1, lastquote - nextpos - 1))
 		return strlist
@@ -789,7 +790,7 @@ class FbxHandler:
 		pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float
 	) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
-			print(
+			pkgasset.log_debug(
 				"TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early."
 			)
 			#return fbx_file_binary
@@ -800,7 +801,7 @@ class FbxHandler:
 		needle_buf[6] = 0
 		var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
 		if scale_factor_pos == -1:
-			push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
 			return fbx_file_binary
 
 		# TODO: If any Model has Visibility == 0.0, then the mesh gets lost in FBX2glTF
@@ -813,11 +814,11 @@ class FbxHandler:
 		spb.seek(scale_factor_pos + len(needle_buf))
 		var datatype: String = spb.get_string(spb.get_32())
 		if spb.get_8() != ("S").to_ascii_buffer()[0]:  # ord() is broken?!
-			push_error(filename + ": not a string, or datatype invalid " + datatype)
+			pkgasset.log_fail(filename + ": not a string, or datatype invalid " + datatype)
 			return fbx_file_binary
 		var subdatatype: String = spb.get_string(spb.get_32())
 		if spb.get_8() != ("S").to_ascii_buffer()[0]:
-			push_error(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
+			pkgasset.log_fail(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
 			return fbx_file_binary
 		var extratype: String = spb.get_string(spb.get_32())
 		var number_type = spb.get_8()
@@ -829,10 +830,10 @@ class FbxHandler:
 			scale = spb.get_double()
 			is_double = true
 		else:
-			push_error(filename + ": not a float or double " + str(number_type))
+			pkgasset.log_fail(filename + ": not a float or double " + str(number_type))
 			return fbx_file_binary
 		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-		print(
+		pkgasset.log_debug(
 			(
 				filename
 				+ ": Binary FBX: UnitScaleFactor="
@@ -848,11 +849,11 @@ class FbxHandler:
 		)
 		if is_double:
 			spb.seek(spb.get_position() - 8)
-			print("double - Seeked to " + str(spb.get_position()))
+			pkgasset.log_debug("double - Seeked to " + str(spb.get_position()))
 			spb.put_double(new_scale)
 		else:
 			spb.seek(spb.get_position() - 4)
-			print("float - Seeked to " + str(spb.get_position()))
+			pkgasset.log_debug("float - Seeked to " + str(spb.get_position()))
 			spb.put_float(new_scale)
 		return spb.data_array
 
@@ -864,7 +865,7 @@ class FbxHandler:
 		globalScale: float
 	) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
-			print(
+			pkgasset.log_debug(
 				"TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early."
 			)
 			#return fbx_file_binary
@@ -872,23 +873,23 @@ class FbxHandler:
 		var output_buf: PackedByteArray = fbx_file_binary
 		var scale_factor_pos: int = buffer_as_ascii.find('"UnitScaleFactor"')
 		if scale_factor_pos == -1:
-			push_error(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
 			return output_buf
 		var newline_pos: int = buffer_as_ascii.find("\n", scale_factor_pos)
 		var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
 		if newline_pos == -1 or comma_pos == -1:
-			push_error(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
 			return output_buf
 
 		var scale_string: Variant = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
-		print("Scale as string is " + str(scale_string))
+		pkgasset.log_debug("Scale as string is " + str(scale_string))
 		var scale: float = convert_to_float(str(scale_string + str(NodePath())))
-		print("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
-		print(str(scale_string + str(NodePath())).to_float())
-		print("Scale is " + str(scale))
-		print("Also Scale is " + str(scale + 0.0))
+		pkgasset.log_debug("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
+		pkgasset.log_debug(str(scale_string + str(NodePath())).to_float())
+		pkgasset.log_debug("Scale is " + str(scale))
+		pkgasset.log_debug("Also Scale is " + str(scale + 0.0))
 		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-		print(
+		pkgasset.log_debug(
 			(
 				filename
 				+ ": ASCII FBX: UnitScaleFactor="
@@ -922,7 +923,7 @@ class FbxHandler:
 		retlist[texfn] = relpath + texfn
 		retlist["textures/" + texfn] = relpath + "textures/" + texfn
 		retlist["Textures/" + texfn] = relpath + "Textures/" + texfn
-		#print("Looking in directories " + str(retlist))
+		#pkgasset.log_debug("Looking in directories " + str(retlist))
 		return retlist
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
@@ -957,23 +958,23 @@ class FbxHandler:
 		var unique_texture_map: Dictionary = {}
 		var texture_dirname = full_tmpdir
 		var output_dirname = pkgasset.pathname.get_base_dir()
-		print("Referenced texture list: " + str(texture_name_list))
+		pkgasset.log_debug("Referenced texture list: " + str(texture_name_list))
 		for fn in texture_name_list:
 			var fn_filename: String = fn.get_file()
 			var replaced_extension = "png"
 			if fn_filename.get_extension().to_lower() == "jpg":
 				replaced_extension = "jpg"
 			unique_texture_map[fn_filename.get_basename() + "." + replaced_extension] = fn_filename
-		print("Referenced textures: " + str(unique_texture_map.keys()))
+		pkgasset.log_debug("Referenced textures: " + str(unique_texture_map.keys()))
 		var d = DirAccess.open("res://")
 		for fn in unique_texture_map.keys():
 			if not d.file_exists(texture_dirname + "/" + fn):
-				print("Creating dummy texture: " + str(texture_dirname + "/" + fn))
+				pkgasset.log_debug("Creating dummy texture: " + str(texture_dirname + "/" + fn))
 				var tmpf = FileAccess.open(texture_dirname + "/" + fn, FileAccess.WRITE_READ)
 				tmpf = null
 			var candidate_texture_dict = _get_parent_textures_paths(output_dirname + "/" + unique_texture_map[fn])
 			for candidate_fn in candidate_texture_dict:
-				#print("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
+				#pkgasset.log_debug("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
 				if pkgasset.packagefile.path_to_pkgasset.has(candidate_fn) or d.file_exists(candidate_fn):
 					unique_texture_map[fn] = candidate_texture_dict[candidate_fn]
 		var output_path: String = self.preprocess_asset(
@@ -984,7 +985,7 @@ class FbxHandler:
 		d.remove(temp_input_path)  # delete "input.fbx"
 		for fn in unique_texture_map.keys():
 			d.remove(texture_dirname + "/" + fn)
-		print("Updating file at " + output_path)
+		pkgasset.log_debug("Updating file at " + output_path)
 		return output_path
 
 	func assign_skinned_parents(p_out_map, gltf_nodes, parent_node_name, cur_children):
@@ -1081,7 +1082,7 @@ class FbxHandler:
 		unique_texture_map: Dictionary = {}
 	) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
-		print("I am an FBX " + str(path))
+		pkgasset.log_debug("I am an FBX " + str(path))
 		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
 		var gltf_output_path: String = full_output_path.get_basename() + ".gltf"
 		var bin_output_path: String = full_output_path.get_basename() + ".bin"
@@ -1098,7 +1099,7 @@ class FbxHandler:
 		)
 		if not addon_path.get_file().is_empty():
 			if not d.file_exists(addon_path):
-				push_warning("Not converting fbx to glb because FBX2glTF.exe is not present.")
+				pkgasset.log_warn("Not converting fbx to glb because FBX2glTF.exe is not present.")
 				return ""
 			if addon_path.begins_with("res://"):
 				addon_path = addon_path.substr(6)
@@ -1122,9 +1123,9 @@ class FbxHandler:
 			],
 			stdout
 		)
-		print("FBX2glTF returned " + str(ret) + " -----")
-		print(str(stdout))
-		print("-----------------------------")
+		pkgasset.log_debug("FBX2glTF returned " + str(ret) + " -----")
+		pkgasset.log_debug(str(stdout))
+		pkgasset.log_debug("-----------------------------")
 		d.rename(tmp_bin_output_path, bin_output_path)
 		d.rename(tmp_gltf_output_path, gltf_output_path)
 		var f: FileAccess = FileAccess.open(gltf_output_path, FileAccess.READ)
@@ -1373,7 +1374,7 @@ func create_temp_dir() -> String:
 func get_asset_type(pkgasset: Object) -> int:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
-	print("get_asset_type " + path + ", " + pkgasset.pathname + ", " + str(get_class_name(file_handlers.get("default"))) + ", " + str(get_class_name(asset_handler)) + ", " + str(asset_handler.get_asset_type(pkgasset)))
+	pkgasset.log_debug("get_asset_type " + path + ", " + pkgasset.pathname + ", " + str(get_class_name(file_handlers.get("default"))) + ", " + str(get_class_name(asset_handler)) + ", " + str(asset_handler.get_asset_type(pkgasset)))
 	var typ: int = asset_handler.get_asset_type(pkgasset)
 	return typ
 
@@ -1383,7 +1384,7 @@ func uses_godot_importer(pkgasset: Object) -> bool:
 	return asset_type == ASSET_TYPE_TEXTURE or asset_type == ASSET_TYPE_MODEL
 
 
-func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
+func preprocess_asset(asset_database: Object, pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 	var dres = DirAccess.open("res://")
@@ -1393,8 +1394,8 @@ func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -
 
 	if pkgasset.metadata_tar_header != null:
 		var sf = pkgasset.metadata_tar_header.get_stringfile()
-		pkgasset.parsed_meta = asset_database_class.new().parse_meta(sf, path)
-		print("Parsing " + path + ": " + str(pkgasset.parsed_meta))
+		pkgasset.parsed_meta = asset_database.parse_meta(sf, path)
+		pkgasset.log_debug("Parsing " + path + ": " + str(pkgasset.parsed_meta))
 	if pkgasset.asset_tar_header != null:
 		var ret_output_path = asset_handler.write_and_preprocess_asset(pkgasset, tmpdir, thread_subdir)
 		if not ret_output_path.is_empty():

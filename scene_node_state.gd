@@ -67,7 +67,7 @@ func add_component_map_to_prefabbed_gameobject(gameobject_fileid: int, component
 
 func add_prefab_rename(gameobject_fileid: int, new_name: String):
 	if meta.gameobject_fileid_to_rename.has(gameobject_fileid):
-		print(
+		meta.log_debug(gameobject_fileid,
 			(
 				"Duplicate rename for fileid "
 				+ str(gameobject_fileid)
@@ -173,18 +173,18 @@ class Skelley:
 		# reverse list
 		for i in range(len(tmp)):
 			bone0_parent_list.push_back(tmp[-1 - i])
-		# print("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
+		# bone0.log_debug("Initialized " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 
 	func add_bone(bone: RefCounted) -> Array:  # UnityTransform
 		if bone == null:
 			push_warning("Got null bone in add_bone")
 			return []
 		if bones_set.has(bone.uniq_key):
-			push_error("Already added bone " + str(bone.uniq_key))
+			bone.log_warn("Already added bone " + str(bone.uniq_key))
 			return []
 		bones.push_back(bone)
 		bones_set[bone.uniq_key] = true
-		# print("Adding a bone: " + str(bones))
+		# bone.log_debug("Adding a bone: " + str(bones))
 		var added_bones: Array = [].duplicate()
 		var current_parent: RefCounted = bone  #### UnityTransform or UnityPrefabInstance
 		intermediates[current_parent.uniq_key] = current_parent
@@ -193,30 +193,30 @@ class Skelley:
 		current_parent = current_parent.parent_no_stripped
 		while current_parent != null and not bone0_parents.has(current_parent.uniq_key):
 			if intermediates.has(current_parent.uniq_key):
-				# print("Already intermediate to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
+				# bone.log_debug("Already intermediate to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list))
 				return added_bones
 			intermediates[current_parent.uniq_key] = current_parent
 			intermediate_bones.push_back(current_parent)
 			added_bones.push_back(current_parent)
 			current_parent = current_parent.parent_no_stripped
 		if current_parent == null:
-			printerr("Warning: No common ancestor for skeleton " + bone.uniq_key + ": assume parented at root")
+			bone.log_warn("Warning: No common ancestor for skeleton " + bone.uniq_key + ": assume parented at root")
 			bone0_parents.clear()
 			bone0_parent_list.clear()
 			return added_bones
 		#if current_parent.parent_no_stripped == null:
 		#	bone0_parents.clear()
 		#	bone0_parent_list.clear()
-		#	printerr("Warning: Skeleton parented at root " + bone.uniq_key + " at " + current_parent.uniq_key)
+		#	bone.log_warn("Warning: Skeleton parented at root " + bone.uniq_key + " at " + current_parent.uniq_key)
 		#	return added_bones
 		if bone0_parent_list.is_empty():
-			# print("b0pl is empty to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
+			# bone.log_debug("b0pl is empty to add " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
 			return added_bones
 		while bone0_parent_list[-1] != current_parent:
 			bone0_parents.erase(bone0_parent_list[-1].uniq_key)
 			bone0_parent_list.pop_back()
 			if bone0_parent_list.is_empty():
-				printerr("Assertion failure " + bones[0].uniq_key + "/" + current_parent.uniq_key)
+				bone.log_fail("Assertion failure " + bones[0].uniq_key + "/" + current_parent.uniq_key, "parent", current_parent)
 				return []
 			if not intermediates.has(bone0_parent_list[-1].uniq_key):
 				intermediates[bone0_parent_list[-1].uniq_key] = bone0_parent_list[-1]
@@ -229,7 +229,7 @@ class Skelley:
 		#	found_prefab_instance = current_parent.parent_no_stripped
 		#	if found_prefab_instance != null:
 		#		added_bones.push_back(found_prefab_instance)
-		# print("success added " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
+		# bone.log_debug("success added " + str(bone) + "/" + str(current_parent) + " " + str(self)+ " ints " + str(intermediates) + " intbones " + str(intermediate_bones) + " b0ps " + str(bone0_parents) + " b0pl " + str(bone0_parent_list) +": " + str(added_bones))
 		return added_bones
 
 	# if null, this is not mixed with a prefab's nodes
@@ -258,10 +258,10 @@ class Skelley:
 		skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary, bone_transform: RefCounted
 	):
 		if bone_transform.is_stripped:
-			#printerr("Not able to add skeleton nodes from a stripped transform!")
+			#bone_transform.log_warn("Not able to add skeleton nodes from a stripped transform!")
 			for child in child_transforms_by_stripped_id.get(bone_transform.fileID, []):
 				if not intermediates.has(child.uniq_key):
-					print(
+					child.log_debug(
 						(
 							"Adding child bone "
 							+ str(child)
@@ -278,11 +278,11 @@ class Skelley:
 						add_nodes_recursively(skel_parents, child_transforms_by_stripped_id, child)
 			return
 		for child_ref in bone_transform.children_refs:
-			# print("Try child " + str(child_ref))
 			var child: RefCounted = bone_transform.meta.lookup(child_ref)  # UnityTransform
+			# child.log_debug("Try child " + str(child_ref))
 			# not skel_parents.has(child.uniq_key):
 			if not intermediates.has(child.uniq_key):
-				print(
+				child.log_debug(
 					(
 						"Adding child bone "
 						+ str(child)
@@ -301,7 +301,7 @@ class Skelley:
 	func construct_final_bone_list(skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary):
 		var par_transform: RefCounted = bone0_parent_list[-1]  # UnityTransform or UnityPrefabInstance
 		if par_transform == null:
-			printerr("Final bone list transform is null!")
+			push_error("Final bone list transform is null!")
 			return
 		var par_key: String = par_transform.uniq_key
 		var contains_stripped_bones: bool = false
@@ -311,9 +311,9 @@ class Skelley:
 				continue
 			if bone.parent_no_stripped == null or bone.parent_no_stripped.uniq_key == par_key:
 				root_bones.push_back(bone)
-		# print("Construct final bone list bones: " + str(bones))
+		# par_transform.log_debug("Construct final bone list bones: " + str(bones))
 		for bone in bones.duplicate():
-			print("Skelley " + str(par_transform.uniq_key) + " has root bone " + str(bone.uniq_key))
+			bone.log_debug("Skelley " + str(par_transform.uniq_key) + " has root bone " + str(bone.uniq_key))
 			self.add_nodes_recursively(skel_parents, child_transforms_by_stripped_id, bone)
 		# Keep original bone list in order; migrate intermediates in.
 		for bone in bones:
@@ -325,7 +325,7 @@ class Skelley:
 				continue
 			if intermediates.has(bone.uniq_key):
 				if bones_set.has(bone.uniq_key):
-					push_error("Already added intermediate bone " + str(bone.uniq_key))
+					bone.log_warn("Already added intermediate bone " + str(bone.uniq_key))
 				else:
 					bones_set[bone.uniq_key] = true
 					bones.push_back(bone)
@@ -334,7 +334,7 @@ class Skelley:
 			if bone.is_stripped_or_prefab_instance():
 				# We do not know yet the full extent of the skeleton
 				uniq_key_to_bone[bone.uniq_key] = -1
-				print(
+				bone.log_debug(
 					(
 						"bone "
 						+ bone.uniq_key
@@ -367,7 +367,7 @@ class Skelley:
 					if not dedupe_dict.has(bone_name):
 						dedupe_dict[bone_name] = bone
 				godot_skeleton.add_bone(bone_name)
-				print(
+				bone.log_debug(
 					(
 						"Adding bone "
 						+ bone_name
@@ -410,7 +410,7 @@ func add_child(child: Node, new_parent: Node3D, unityobj: RefCounted):
 	# meta. # FIXME???
 	if owner != null:
 		if new_parent == null:
-			push_error("Trying to add child " + str(child) + " named " + str(child.name) + " to null parent")
+			meta.log_warn(0, "Trying to add child " + str(child) + " named " + str(child.name) + " to null parent", "parent", unityobj)
 		assert(new_parent != null)
 		new_parent.add_child(child, true)
 		child.owner = owner
@@ -434,7 +434,7 @@ func remove_fileID_to_skeleton_bone(fileID: int):
 
 func add_fileID(child: Node, unityobj: RefCounted):
 	if owner != null:
-		print(
+		unityobj.log_debug(
 			(
 				"Add fileID "
 				+ str(unityobj.fileID)
@@ -501,7 +501,7 @@ func initialize_skelleys(assets: Array) -> Array:
 				continue
 			var orig_bones: Array = asset.bones
 			var bones: Array = []
-			print("Importing model " + asset.meta.guid + " at " + asset.meta.path + ": " + str(orig_bones))
+			asset.log_debug("Importing model " + asset.meta.guid + " at " + asset.meta.path + ": " + str(orig_bones))
 			for b in orig_bones:
 				if asset.meta.lookup(b) == null:
 					continue
@@ -515,7 +515,7 @@ func initialize_skelleys(assets: Array) -> Array:
 			var bone0_obj: RefCounted = asset.meta.lookup(bones[0])  # UnityTransform
 			# TODO: what about meshes with bones but without skin? Can this even happen?
 			if bone0_obj == null:
-				print(
+				asset.log_warn(
 					(
 						"ERROR: Importing model "
 						+ asset.meta.guid
@@ -541,17 +541,17 @@ func initialize_skelleys(assets: Array) -> Array:
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnityTransform
 				var added_bones = this_skelley.add_bone(bone_obj)
-				# print("Told skelley " + str(this_id) + " to add bone " + bone_obj.uniq_key + ": " + str(added_bones))
+				# asset.log_debug("Told skelley " + str(this_id) + " to add bone " + bone_obj.uniq_key + ": " + str(added_bones))
 				for added_bone in added_bones:
 					var uniq_key: String = added_bone.uniq_key
 					if skel_ids.get(uniq_key, this_id) != this_id:
 						# We found a match! Let's merge the Skelley objects.
 						var new_id: int = skel_ids[uniq_key]
-						# print("migrating from " + str(skelleys[this_id].bones))
+						# asset.log_debug("migrating from " + str(skelleys[this_id].bones))
 						for inst in skelleys[this_id].bones:
-							# print("Loop " + str(inst.uniq_key) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.uniq_key, -1)))
+							# asset.log_debug("Loop " + str(inst.uniq_key) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.uniq_key, -1)))
 							if skel_ids.get(inst.uniq_key, -1) == this_id:  # FIXME: This seems to be missing??
-								# print("Telling skelley " + str(new_id) + " to merge bone " + inst.uniq_key)
+								# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + inst.uniq_key)
 								skelleys[new_id].add_bone(inst)
 						for i in skel_ids:
 							if skel_ids.get(str(i)) == this_id:
@@ -560,7 +560,7 @@ func initialize_skelleys(assets: Array) -> Array:
 						this_id = new_id
 						this_skelley = skelleys[this_id]
 					skel_ids[uniq_key] = this_id
-					# print("Skel ids now " + str(skel_ids))
+					# asset.log_debug("Skel ids now " + str(skel_ids))
 
 	var skelleys_with_no_parent = [].duplicate()
 
@@ -593,7 +593,7 @@ func initialize_skelleys(assets: Array) -> Array:
 		skelley.construct_final_bone_list(skelley_parents, child_transforms_by_stripped_id)
 		for uniq_key in skelley.uniq_key_to_bone:
 			uniq_key_to_skelley[uniq_key] = skelley
-			print("ADDING uniq key " + str(uniq_key) + " skelley " + str(skelley))
+			meta.log_debug(0, "ADDING uniq key " + str(uniq_key) + " skelley " + str(skelley))
 
 	return skelleys_with_no_parent
 
@@ -610,7 +610,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				# We are iterating through bones array because root_bones was not reliable.
 				# So we will hit both types of bones. Let's just ignore non-prefab bones for now.
 				# FIXME: Should we try to fix the root_bone logic so we can detect bad Skeletons?
-				# printerr("Skeleton parented to prefab contains root bone not rooted within prefab.")
+				# bone.log_warn("Skeleton parented to prefab contains root bone not rooted within prefab.")
 				continue
 			var source_obj_ref = bone.prefab_source_object
 			var target_skelley: NodePath = target_prefab_meta.fileid_to_nodepath.get(
@@ -619,19 +619,19 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
 				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], "")
 			)
-			# print("Parented prefab root bone : " + str(bone.uniq_key) + " for " + str(target_skelley) + ":" + str(target_skel_bone))
+			# bone.log_debug("Parented prefab root bone : " + str(bone.uniq_key) + " for " + str(target_skelley) + ":" + str(target_skel_bone))
 			if godot_skeleton_nodepath == NodePath() and target_skelley != NodePath():
 				godot_skeleton_nodepath = target_skelley
 				skelley.godot_skeleton = instanced_scene.get_node(godot_skeleton_nodepath)
 			if target_skelley != godot_skeleton_nodepath:
-				printerr("Skeleton child of prefab spans multiple Skeleton objects in source prefab.")
+				bone.log_fail("Skeleton child of prefab spans multiple Skeleton objects in source prefab.", "bones", source_obj_ref)
 			fileid_to_skeleton_nodepath[bone.fileID] = target_skelley
 			fileid_to_bone_name[bone.fileID] = target_skel_bone
 			if skelley.godot_skeleton != null:
 				bone.skeleton_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
 			# if fileid_to_skeleton_nodepath.has(source_obj_ref[1]):
 			# 	if fileid_to_skeleton_nodepath.get(source_obj_ref[1]) != target_skelley:
-			# 		printerr("Skeleton spans multiple ")
+			# 		bone.log_warn("Skeleton spans multiple ")
 			# WE ARE NOT REQUIRED TO create a new skelley object for each Skeleton3D instance in the inflated scene.
 			# NO! THIS IS STUPID Then, the skelley objects with parent=scene should be dissolved and replaced with extended versions of the prefab's skelley
 			# For every skelley in this prefab, go find the corresponding Skeleton3D object and add the missing nodes. that's it.
@@ -639,7 +639,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			# FINALLY! We did all this. now let's add the skins and proper bone index arrays into the skins!
 		# Add all the bones
 		if skelley.godot_skeleton == null:
-			printerr("Skelley " + str(skelley) + " in prefab " + uniq_key + " could not find source godot skeleton!")
+			meta.log_fail(0, "Skelley " + str(skelley) + " in prefab " + uniq_key + " could not find source godot skeleton!", "prefab", [null,-1,target_prefab_meta.guid,-1])
 			continue
 		var dedupe_dict = {}.duplicate()
 		for idx in range(skelley.godot_skeleton.get_bone_count()):
@@ -666,7 +666,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				if not dedupe_dict.has(bone_name):
 					dedupe_dict[bone_name] = bone
 			skelley.godot_skeleton.add_bone(bone_name)
-			print(
+			bone.log_debug(
 				(
 					"Prefab adding bone "
 					+ bone.name
@@ -694,7 +694,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				parent_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
 			else:
 				parent_bone_index = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.parent.fileID, ""))
-			print("Parent bone index: " + str(bone.name) + " / " + str(bone.uniq_key) + " / " + str(parent_bone_index))
+			bone.log_debug("Parent bone index: " + str(bone.name) + " / " + str(bone.uniq_key) + " / " + str(parent_bone_index))
 			skelley.godot_skeleton.set_bone_parent(idx, parent_bone_index)
 			# skelley.godot_skeleton.set_bone_rest(idx, bone.godot_transform) # Set later on.
 			fileid_to_skeleton_nodepath[bone.fileID] = godot_skeleton_nodepath
