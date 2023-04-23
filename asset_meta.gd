@@ -57,6 +57,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 
 @export var dependency_guids: Dictionary = {}
 @export var prefab_dependency_guids: Dictionary = {}
+@export var autodetected_bone_map_dict: Dictionary = {}
 
 
 class ParsedAsset:

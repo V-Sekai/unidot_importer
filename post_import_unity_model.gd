@@ -32,6 +32,7 @@ class ParseState:
 
 	var skinned_parent_to_node: Dictionary = {}.duplicate()
 	var godot_sanitized_to_orig_remap: Dictionary = {}.duplicate()
+	var bone_map: BoneMap = null
 	var external_objects_by_id: Dictionary = {}.duplicate()  # fileId -> UnityRef Array
 	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate()  # for Extract Legacy Materials / By Base Texture Name
@@ -113,7 +114,14 @@ class ParseState:
 				metaobj.log_warn(next_obj_id, "Generating id " + str(next_obj_id) + " for " + str(name) + " type " + str(type))
 			return next_obj_id
 
-	func get_orig_name(obj_gltf_type: String, obj_name: String) -> String:
+	func get_orig_name(obj_gltf_type: String, p_obj_name: String) -> String:
+		var obj_name = p_obj_name
+		if obj_gltf_type == "nodes" and p_obj_name == "Skeleton3D" and bone_map != null:
+			obj_name = "GeneralSkeleton"
+		if obj_gltf_type == "bone_name":
+			var bone_mapped = bone_map.get_skeleton_bone_name(p_obj_name)
+			if bone_mapped != "":
+				obj_name = bone_mapped
 		return self.godot_sanitized_to_orig_remap.get(obj_gltf_type, {}).get(obj_name, obj_name)
 
 	func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary) -> Dictionary:
@@ -892,6 +900,8 @@ func _post_import(p_scene: Node) -> Object:
 	ps.HACK_outer_scope_generate_object_hash = generate_object_hash
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
+	if metaobj.importer.keys.get("animationType", 2) == 3:
+		ps.bone_map = metaobj.importer.generate_bone_map_from_human()
 	if metaobj.internal_data.has("scale_correction_factor"):
 		var scf: float = metaobj.internal_data.get("scale_correction_factor")
 		if godot_root_scale != scf:

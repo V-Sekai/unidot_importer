@@ -5,6 +5,7 @@ const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
 const convert_scene: GDScript = preload("./convert_scene.gd")
 const raw_parsed_asset: GDScript = preload("./raw_parsed_asset.gd")
+const bone_map_editor_plugin: GDScript = preload("./bone_map_editor_plugin.gd")
 
 const ASSET_TYPE_YAML = 1
 const ASSET_TYPE_MODEL = 2
@@ -591,21 +592,10 @@ class BaseModelHandler:
 		# I think these are the default settings now?? The option no longer exists???
 		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value_compare("params", "animation/fps", 30)
+		cfile.set_value_compare("params", "animation/fps", 30) # FIXME: This may fail in files whose FBX framerate is not 30
+		# Due to passing bake30 to FBX2glTF, it may ignore the original framerate...
+		# Unity seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
-		#var anim_clips: Array = importer.get_animation_clips()
-		## animation/clips don't seem to work at least in 4.0.... why even bother?
-		## We should use an import script I guess.
-		#cfile.set_value("params", "animation/clips/amount", len(anim_clips))
-		#var idx: int = 0
-		#for anim_clip in anim_clips:
-		#	idx += 1 # 1-indexed
-		#	var prefix: String = "animation/clip_" + str(idx)
-		#	cfile.set_value("params", prefix + "/name", anim_clip.get("name"))
-		#	cfile.set_value("params", prefix + "/start_frame", anim_clip.get("start_frame"))
-		#	cfile.set_value("params", prefix + "/end_frame", anim_clip.get("end_frame"))
-		#	cfile.set_value("params", prefix + "/loops", anim_clip.get("loops"))
-		#	# animation/import
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
@@ -621,10 +611,40 @@ class BaseModelHandler:
 
 		# ??? animation/optimizer setting seems to be missing?
 		var subresources: Dictionary = cfile.get_value("params", "_subresources", {})
+		var anim_clips: Dictionary = importer.get_animation_clips()
+		## animation/clips don't seem to work at least in 4.0.... why even bother?
+		## We should use an import script I guess.
+		#cfile.set_value("params", "animation/clips/amount", len(anim_clips))
+		#var idx: int = 0
+		subresources["animations"] = {}
+
+		for take_name in anim_clips:
+			var anim_clip: Dictionary = anim_clips[take_name]
+			if not subresources["animations"].has(take_name):
+				subresources["animations"][take_name] = {}
+			var take: Dictionary = subresources["animations"][take_name]
+			var idx: int = take.get("slices/amount", 0) + 1 # 1-indexed
+			var prefix: String = "slice_" + str(idx)
+			take[prefix + "/name"] = anim_clip.get("name")
+			take[prefix + "/start_frame"] = anim_clip.get("start_frame")
+			take[prefix + "/end_frame"] = anim_clip.get("end_frame")
+			take[prefix + "/loop_mode"] = anim_clip.get("loop_mode")
+			take[prefix + "/save_to_file/enabled"] = false # TODO
+			take[prefix + "/save_to_file/keep_custom_tracks"] = true # TODO
+			take[prefix + "/save_to_file/path"] = "" # TODO
+			take["slices/amount"] = idx # 1-indexed
+			# animation/import
+
 		if not subresources.has("nodes"):
 			subresources["nodes"] = {}
 		if not subresources["nodes"].has("PATH:AnimationPlayer"):
 			subresources["nodes"]["PATH:AnimationPlayer"] = {}
+		if importer.keys.get("animationType", 2) == 3:
+			if not subresources["nodes"].has("PATH:Skeleton3D"):
+				subresources["nodes"]["PATH:Skeleton3D"] = {}
+			var bone_map: BoneMap = importer.generate_bone_map_from_human()
+			# TODO: Allow generating BoneMap from Avatar object, too.
+			subresources["nodes"]["PATH:Skeleton3D"]["retarget/bone_map"] = bone_map
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
@@ -1197,6 +1217,79 @@ class FbxHandler:
 						var image_name: String = json.get("images", [])[image_index].get("name", "")
 						material_to_texture_name[mat.name] = image_name
 			pkgasset.parsed_meta.internal_data["material_to_texture_name"] = material_to_texture_name
+
+		var importer = pkgasset.parsed_meta.importer
+		var humanoid_original_transforms: Dictionary = {}
+		var human_skin_nodes: Array = []
+		if importer.keys.get("animationType", 2) == 3 and json.has("nodes"):
+			if len(importer.keys.get("humanDescription", {}).get("human", [])):
+				var skel: Skeleton3D = Skeleton3D.new()
+				for node in json["nodes"]:
+					var node_name = node.get("name", "")
+					skel.add_bone(node_name)
+				var i: int = 0
+				for node in json["nodes"]:
+					var node_name = node.get("name", "")
+					for chld in node.get("children", ""):
+						skel.set_bone_parent(chld, i)
+					i += 1
+				i = 0
+				for node in json["nodes"]:
+					var xform: Transform3D = gltf_to_transform3d(node)
+					skel.set_bone_rest(i, xform)
+					skel.set_bone_pose_position(i, xform.origin)
+					skel.set_bone_pose_rotation(i, xform.basis.get_rotation_quaternion())
+					skel.set_bone_pose_scale(i, xform.basis.get_scale())
+					i += 1
+				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
+				skel.free()
+
+			pkgasset.log_debug("AAAA set to humanoid and has nodes")
+			var bone_map_dict: Dictionary = importer.generate_bone_map_dict_from_human()
+			var node_idx = 0
+			var hips_node_idx = -1
+			for node in json["nodes"]:
+				var node_name = node.get("name", "")
+				print("AAAA node name " + str(node_name))
+				if bone_map_dict.has(node_name):
+					var godot_human_name: String = bone_map_dict[node_name]
+					if godot_human_name == "Hips":
+						hips_node_idx = node_idx
+					humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
+					human_skin_nodes.push_back(node_idx)
+				node_idx += 1
+			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
+			for i in range(3):
+				if hips_node_idx == -1:
+					break
+				node_idx = 0
+				var new_root_idx = -1
+				for node in json["nodes"]:
+					if node["name"] == "root":
+						print(hips_node_idx)
+						print(json["nodes"][1])
+						print(node)
+					if node["name"] == "RootNode":
+						continue
+					for child in node.get("children", []):
+						if child == hips_node_idx:
+							print("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
+							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
+							humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
+							new_root_idx = node_idx
+							human_skin_nodes.push_back(new_root_idx)
+							break
+					if new_root_idx != -1:
+						break
+					node_idx += 1
+				hips_node_idx = new_root_idx
+		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
+		if not human_skin_nodes.is_empty():
+			if not json.has("skins"):
+				json["skins"] = []
+			json["skins"].append({"joints": human_skin_nodes})
+
+
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents(
 			{}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"]
 		)
@@ -1233,6 +1326,8 @@ class FbxHandler:
 						pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"]["bone_name"][sanitized_bone_try_name] = orig_name
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
+
+
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
 		var full_output: PackedByteArray = out_json_data
 		if SHOULD_CONVERT_TO_GLB:
