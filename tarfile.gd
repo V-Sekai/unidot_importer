@@ -49,7 +49,6 @@ class StringFile:
 	func get_line() -> String:
 		if _lines_cache.is_empty():
 			_lines_cache = _s.split("\n", true)
-			print("------- SPLITTING STRING TO " + str(len(_lines_cache)) + " LINES")
 		_line_offset += 1
 		if _line_offset >= len(_lines_cache):
 			_eof = true

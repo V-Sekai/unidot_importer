@@ -10,10 +10,32 @@ class DatabaseHolder:
 	extends RefCounted
 	var database: Resource = null
 
+class LogMessageHolder:
+	extends RefCounted
+	var all_logs: PackedStringArray = PackedStringArray()
+	var warnings_fails: PackedStringArray = PackedStringArray()
+	var fails: PackedStringArray = PackedStringArray()
+
+	func get_all_logs() -> String:
+		return "\n".join(all_logs)
+
+	func get_warnings_fails() -> String:
+		return "\n".join(warnings_fails)
+
+	func get_fail_logs() -> String:
+		return "\n".join(fails)
+
+	func has_warnings():
+		return not warnings_fails.is_empty()
+
+	func has_fails():
+		return not fails.is_empty()
+
 
 var object_adapter: RefCounted = object_adapter_class.new()
 var database_holder
 var log_database_holder
+var log_message_holder = LogMessageHolder.new()
 @export var path: String = ""
 @export var guid: String = ""
 @export var importer_keys: Dictionary = {}
@@ -90,13 +112,30 @@ func set_log_database(log_database: Object):
 	log_database_holder = DatabaseHolder.new()
 	log_database_holder.database = log_database
 
+func clear_logs():
+	log_message_holder = LogMessageHolder.new()
+
 # Log messages related to this asset
 func log_debug(fileid: int, msg: String):
+	var fileidstr = ""
+	if fileid != 0:
+		fileidstr = " @" + str(fileid)
+	log_message_holder.all_logs.append(msg + fileidstr)
 	log_database_holder.database.log_debug([null, fileid, self.guid, 0], msg)
 
 # Anything that is unexpected but does not necessarily imply corruption.
 # For example, successfully loaded a resource with default fileid
 func log_warn(fileid: int, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var fieldstr = ""
+	if not field.is_empty():
+		fieldstr = "." + field + ": "
+	var fileidstr = ""
+	if remote_ref[1] != 0:
+		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
+	if fileid != 0:
+		fileidstr += " @" + str(fileid)
+	log_message_holder.all_logs.append(fieldstr + msg + fileidstr)
+	log_message_holder.warnings_fails.append(fieldstr + msg + fileidstr)
 	var xref: Array = remote_ref
 	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]
@@ -105,6 +144,17 @@ func log_warn(fileid: int, msg: String, field: String="", remote_ref: Array=[nul
 # Anything that implies the asset will be corrupt / lost data.
 # For example, some reference or field could not be assigned.
 func log_fail(fileid: int, msg: String, field: String="", remote_ref: Array=[null,0,"",null]):
+	var fieldstr = ""
+	if not field.is_empty():
+		fieldstr = "." + field + ": "
+	var fileidstr = ""
+	if remote_ref[1] != 0:
+		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
+	if fileid != 0:
+		fileidstr += " @" + str(fileid)
+	log_message_holder.all_logs.append(fieldstr + msg + fileidstr)
+	log_message_holder.warnings_fails.append(fieldstr + msg + fileidstr)
+	log_message_holder.fails.append(fieldstr + msg + fileidstr)
 	var xref: Array = remote_ref
 	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]

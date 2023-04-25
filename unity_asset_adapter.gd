@@ -1250,7 +1250,7 @@ class FbxHandler:
 			var hips_node_idx = -1
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
-				print("AAAA node name " + str(node_name))
+				pkgasset.log_debug("AAAA node name " + str(node_name))
 				if bone_map_dict.has(node_name):
 					var godot_human_name: String = bone_map_dict[node_name]
 					if godot_human_name == "Hips":
@@ -1266,14 +1266,12 @@ class FbxHandler:
 				var new_root_idx = -1
 				for node in json["nodes"]:
 					if node["name"] == "root":
-						print(hips_node_idx)
-						print(json["nodes"][1])
-						print(node)
+						pkgasset.log_debug("Found root " + str(hips_node_idx) + " " + str(json["nodes"][1]) + " " + str(node))
 					if node["name"] == "RootNode":
 						continue
 					for child in node.get("children", []):
 						if child == hips_node_idx:
-							print("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
+							pkgasset.log_debug("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
 							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
 							humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
 							new_root_idx = node_idx

@@ -48,6 +48,7 @@ var force_reimport_models_checkbox: CheckBox = null
 var asset_work_waiting_write: Array = [].duplicate()
 var asset_work_waiting_scan: Array = [].duplicate()
 var asset_work_currently_importing: Array = [].duplicate()
+var asset_work_completed: Array = [].duplicate()
 
 var asset_all: Array = [].duplicate()
 var asset_textures: Array = [].duplicate()
@@ -257,14 +258,28 @@ func on_import_fully_completed():
 			main_dialog = null
 
 
+func update_task_color(tw: RefCounted):
+	var ti: TreeItem = tw.extra
+	if tw.asset.parsed_meta == null:
+		ti.set_custom_color(0, Color("#ddffbb"))
+	elif not tw.is_loaded:
+		ti.set_custom_color(0, Color("#ff4422"))
+	else:
+		var holder = tw.asset.parsed_meta.log_message_holder
+		if holder.has_fails():
+			ti.set_custom_color(0, Color("#ff8822"))
+		elif holder.has_warnings():
+			ti.set_custom_color(0, Color("#ccff22"))
+		else:
+			ti.set_custom_color(0, Color("#22ff44"))
+
+
 func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 	var ti: TreeItem = tw.extra
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
-	if loaded:
-		ti.set_custom_color(0, Color("#228822"))
-	else:
-		ti.set_custom_color(0, Color("#ff4422"))
+	update_task_color(tw)
+	asset_work_completed.append(tw)
 
 
 func do_import_step():
@@ -272,6 +287,9 @@ func do_import_step():
 		asset_database.log_fail([null,0,"",0], "Import step called during preprocess")
 		return
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+
+	for tw in asset_work_completed:
+		update_task_color(tw)
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
@@ -372,6 +390,7 @@ func do_import_step():
 	for tw in completed_scan:
 		tw.asset.log_debug("Asset " + tw.asset.pathname + "/" + tw.asset.guid + " completed import.")
 		var loaded_asset: Resource = ResourceLoader.load(tw.asset.pathname, "", ResourceLoader.CACHE_MODE_REPLACE)
+		tw.is_loaded = (loaded_asset != null)
 		#var loaded_asset: Resource = load(tw.asset.pathname)
 		if loaded_asset != null:
 			tw.asset.parsed_meta.insert_resource_path(tw.asset.parsed_meta.main_object_id, tw.asset.pathname)
@@ -451,7 +470,7 @@ func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
-	ti.set_custom_color(0, Color("#888822"))
+	ti.set_custom_color(0, Color("#44ffff"))
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
 	tw.asset.log_debug("Asset database object is now " + str(asset_database))
@@ -500,6 +519,8 @@ func _asset_processing_finished(tw: Object):
 func _asset_processing_started(tw: Object):
 	asset_database.log_debug([null,0,tw.asset.guid,0], "Started processing asset is " + str(tw.asset.pathname) + "/" + str(tw.asset.guid))
 	var ti: TreeItem = tw.extra
+	if tw.asset.parsed_meta != null:
+		tw.asset.parsed_meta.clear_logs()
 	ti.set_custom_color(0, Color("#228888"))
 
 

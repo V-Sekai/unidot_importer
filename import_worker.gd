@@ -24,6 +24,7 @@ class ThreadWork:
 	var tmpdir: String
 	var output_path: String
 	var extra: Variant
+	var is_loaded: bool
 
 
 signal asset_processing_started(tw: ThreadWork)
