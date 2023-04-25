@@ -11,9 +11,10 @@ const ASSET_TYPE_YAML = 1
 const ASSET_TYPE_MODEL = 2
 const ASSET_TYPE_TEXTURE = 3
 const ASSET_TYPE_ANIM = 4
-const ASSET_TYPE_PREFAB = 5
-const ASSET_TYPE_SCENE = 6
-const ASSET_TYPE_UNKNOWN = 7
+const ASSET_TYPE_YAML_POST_MODEL = 5
+const ASSET_TYPE_PREFAB = 6
+const ASSET_TYPE_SCENE = 7
+const ASSET_TYPE_UNKNOWN = 8
 
 const SHOULD_CONVERT_TO_GLB: bool = false
 
@@ -416,6 +417,8 @@ class YamlHandler:
 		if extn == "anim":
 			# FIXME: need to find PPtr dependencies and toposort.
 			return ASSET_TYPE_ANIM
+		if extn == "controller" or extn == "overridecontroller":
+			return ASSET_TYPE_YAML_POST_MODEL
 		if pkgasset.parsed_meta.type_to_fileids.has("TerrainData"):
 			# TerrainData depends on prefab assets.
 			return ASSET_TYPE_PREFAB
@@ -456,6 +459,7 @@ class YamlHandler:
 				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
 				if FileAccess.file_exists(new_pathname):
 					created_res.take_over_path(new_pathname)
+				created_res.resource_path = new_pathname
 				ResourceSaver.save(created_res, new_pathname)
 				#created_res = load(new_pathname)
 				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
@@ -467,6 +471,7 @@ class YamlHandler:
 			# Save main resource at end, so that it can reference extra resources.
 			if FileAccess.file_exists(pkgasset.pathname):
 				godot_resource.take_over_path(pkgasset.pathname)
+			godot_resource.resource_path = pkgasset.pathname
 			ResourceSaver.save(godot_resource, pkgasset.pathname)
 		else:
 			var rpa = raw_parsed_asset.new()
@@ -611,15 +616,15 @@ class BaseModelHandler:
 
 		# ??? animation/optimizer setting seems to be missing?
 		var subresources: Dictionary = cfile.get_value("params", "_subresources", {})
-		var anim_clips: Dictionary = importer.get_animation_clips()
+		var anim_clips: Array[Dictionary] = importer.get_animation_clips()
 		## animation/clips don't seem to work at least in 4.0.... why even bother?
 		## We should use an import script I guess.
 		#cfile.set_value("params", "animation/clips/amount", len(anim_clips))
 		#var idx: int = 0
 		subresources["animations"] = {}
 
-		for take_name in anim_clips:
-			var anim_clip: Dictionary = anim_clips[take_name]
+		for anim_clip in anim_clips:
+			var take_name = anim_clip["take_name"]
 			if not subresources["animations"].has(take_name):
 				subresources["animations"][take_name] = {}
 			var take: Dictionary = subresources["animations"][take_name]
@@ -1222,7 +1227,7 @@ class FbxHandler:
 		var humanoid_original_transforms: Dictionary = {}
 		var human_skin_nodes: Array = []
 		if importer.keys.get("animationType", 2) == 3 and json.has("nodes"):
-			if len(importer.keys.get("humanDescription", {}).get("human", [])):
+			if len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
 				var skel: Skeleton3D = Skeleton3D.new()
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")

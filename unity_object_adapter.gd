@@ -1130,11 +1130,13 @@ class UnityRuntimeAnimatorController:
 			var clip_name = animation_guid_fileid_to_name[key]
 			if not requested_clips.has(clip_name):
 				requested_clips[clip_name] = anim_ref
+				log_debug("Requesting clip " + str(clip_name) + " at " + str(anim_ref))
 
 		var anim_library = AnimationLibrary.new()
 		for clip_name in requested_clips:
 			var anim_clip_obj: UnityAnimationClip = meta.lookup(requested_clips[clip_name], true)  # TODO: What if this fails? What if animation in glb file?
 			var anim_res: Animation = meta.get_godot_resource(requested_clips[clip_name], true)
+			log_debug("clip " + str(clip_name) + " animation " + str(anim_res) + " obj " + str(anim_clip_obj))
 			if anim_res == null and anim_clip_obj == null:
 				meta.lookup(requested_clips[clip_name])
 				continue
@@ -5321,9 +5323,9 @@ class UnityAssetImporter:
 		get:
 			return keys.get("meshes", {}).get("addCollider") == 1
 
-	func get_animation_clips() -> Dictionary:
+	func get_animation_clips() -> Array[Dictionary]:
 		var unityClips = keys.get("animations", {}).get("clipAnimations", [])
-		var outClips = {}.duplicate()
+		var outClips: Array[Dictionary] = []
 		for unityClip in unityClips:
 			var clip = {}.duplicate()
 			clip["name"] = unityClip.get("name", "")
@@ -5331,7 +5333,8 @@ class UnityAssetImporter:
 			clip["end_frame"] = unityClip.get("lastFrame", 0.0)
 			# "loop" also exists but appears to be unused at least
 			clip["loop_mode"] = 0 if unityClip.get("loopTime", 0) == 0 else 1
-			outClips[unityClip.get("takeName", "default")] = clip
+			clip["take_name"] = unityClip.get("takeName", "default")
+			outClips.append(clip)
 			# TODO: Root motion?
 			#cycleOffset: -0
 			#loop: 0

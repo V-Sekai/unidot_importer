@@ -36,6 +36,7 @@ class ParseState:
 	var external_objects_by_id: Dictionary = {}.duplicate()  # fileId -> UnityRef Array
 	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate()  # for Extract Legacy Materials / By Base Texture Name
+	var animation_to_take_name: Dictionary = {}.duplicate()
 
 	var saved_materials_by_name: Dictionary = {}.duplicate()
 	var saved_meshes_by_name: Dictionary = {}.duplicate()
@@ -95,6 +96,8 @@ class ParseState:
 		if type == "PrefabInstance":
 			# May be based on hash in gltf docs, not sure. Anyway for fbx 100100000 seems ok
 			return 100100000  # I think we'll just hardcode this.
+		if type == "AnimationClip":
+			name = animation_to_take_name.get(name, name)
 		if self.is_dae and path == PackedStringArray():
 			name = name.replace(" ", "_")
 		if objtype_to_name_to_id.get(type, {}).has(name):
@@ -122,7 +125,8 @@ class ParseState:
 		var obj_name = p_obj_name
 		if obj_gltf_type == "nodes" and p_obj_name == "Skeleton3D" and bone_map != null:
 			obj_name = "GeneralSkeleton"
-		if obj_gltf_type == "bone_name":
+		if obj_gltf_type == "bone_name" and bone_map != null:
+			metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name))
 			var bone_mapped = bone_map.get_skeleton_bone_name(p_obj_name)
 			if bone_mapped != "":
 				obj_name = bone_mapped
@@ -1038,8 +1042,12 @@ func _post_import(p_scene: Node) -> Object:
 			if external_objects.get(type, {}).has(og_obj_name):
 				ps.external_objects_by_id[fileId] = external_objects.get(type).get(og_obj_name)
 
-	#print("Ext objs by id: "+ str(ps.external_objects_by_id))
-	#print("objtype name by id: "+ str(ps.objtype_to_name_to_id))
+	var animation_clips: Array[Dictionary] = metaobj.importer.get_animation_clips()
+	for key in animation_clips:
+		ps.animation_to_take_name[key["name"]] = key["take_name"]
+
+	#metaobj.log_debug(0, "Ext objs by id: "+ str(ps.external_objects_by_id))
+	#metaobj.log_debug(0, "objtype name by id: "+ str(ps.objtype_to_name_to_id))
 	ps.toplevel_node = p_scene
 	p_scene.name = source_file_path.get_file().get_basename()
 

@@ -17,9 +17,10 @@ const STATE_PREPROCESSING = 1
 const STATE_TEXTURES = 2
 const STATE_IMPORTING_MATERIALS_AND_ASSETS = 3
 const STATE_IMPORTING_MODELS = 4
-const STATE_IMPORTING_PREFABS = 5
-const STATE_IMPORTING_SCENES = 6
-const STATE_DONE_IMPORT = 7
+const STATE_IMPORTING_YAML_POST_MODEL = 5
+const STATE_IMPORTING_PREFABS = 6
+const STATE_IMPORTING_SCENES = 7
+const STATE_DONE_IMPORT = 8
 
 var import_worker = import_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
@@ -54,6 +55,7 @@ var asset_all: Array = [].duplicate()
 var asset_textures: Array = [].duplicate()
 var asset_materials_and_other: Array = [].duplicate()
 var asset_models: Array = [].duplicate()
+var asset_yaml_post_model: Array = [].duplicate()
 var asset_prefabs: Array = [].duplicate()
 var asset_scenes: Array = [].duplicate()
 
@@ -115,6 +117,7 @@ func _selected_package(p_path: String) -> void:
 	asset_textures = [].duplicate()
 	asset_materials_and_other = [].duplicate()
 	asset_models = [].duplicate()
+	asset_yaml_post_model = [].duplicate()
 	asset_prefabs = [].duplicate()
 	asset_scenes = [].duplicate()
 	pkg = unitypackagefile.new().init_with_filename(p_path)
@@ -320,6 +323,12 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_models = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MODELS:
+			tree_dialog_state = STATE_IMPORTING_YAML_POST_MODEL
+			for tw in asset_yaml_post_model:
+				asset_work_waiting_write.append(tw)
+			asset_work_waiting_write.reverse()
+			asset_yaml_post_model = [].duplicate()
+		elif tree_dialog_state == STATE_IMPORTING_YAML_POST_MODEL:
 			tree_dialog_state = STATE_IMPORTING_PREFABS
 			var guid_to_meta = {}.duplicate()
 			var guid_to_tw = {}.duplicate()
@@ -496,12 +505,15 @@ func _asset_processing_finished(tw: Object):
 		if asset_type == asset_adapter.ASSET_TYPE_TEXTURE or asset_type == asset_adapter.ASSET_TYPE_ANIM:
 			tw.asset.log_debug("Asset " + str(tw.output_path) + " is texture/anim")
 			asset_textures.push_back(tw)
-		elif asset_type == asset_adapter.ASSET_TYPE_MODEL:
-			tw.asset.log_debug("Asset " + str(tw.output_path) + " is model")
-			asset_models.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_YAML:
 			tw.asset.log_debug("Asset " + str(tw.output_path) + " is yaml")
 			asset_materials_and_other.push_back(tw)
+		elif asset_type == asset_adapter.ASSET_TYPE_MODEL:
+			tw.asset.log_debug("Asset " + str(tw.output_path) + " is model")
+			asset_models.push_back(tw)
+		elif asset_type == asset_adapter.ASSET_TYPE_YAML_POST_MODEL:
+			tw.asset.log_debug("Asset " + str(tw.output_path) + " is yaml")
+			asset_yaml_post_model.push_back(tw)
 		elif asset_type == asset_adapter.ASSET_TYPE_PREFAB:
 			tw.asset.log_debug("Asset " + str(tw.output_path) + " is prefab")
 			asset_prefabs.push_back(tw)
