@@ -9,7 +9,7 @@ const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
-const THREAD_COUNT = 0  # 10
+const THREAD_COUNT = 10
 const DISABLE_TEXTURES = false
 
 const STATE_DIALOG_SHOWING = 0

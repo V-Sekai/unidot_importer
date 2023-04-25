@@ -3594,21 +3594,23 @@ class UnityPrefabInstance:
 			var existing_node = instanced_scene.get_node(target_nodepath)
 			if uprops.get("m_Controller", [null, 0])[1] != 0:
 				var animtree: AnimationTree = null
-				if target_utype == 91 and existing_node != null and existing_node.get_class() == "AnimationPlayer":
-					animtree = AnimationTree.new()
-					animtree.name = "AnimationTree"
-					existing_node.get_parent().add_child(animtree, true)
-					animtree.anim_player = animtree.get_path_to(existing_node)
-					animtree.active = true
-					animtree.set_script(anim_tree_runtime)
-					# Weird special case, likely to break.
-					# The original file was a .glb and doesn't have an AnimationTree node.
-					# We add one and try to pretend it's ours.
-					# Maybe better to change glb post-import script to add one.
-					state.add_fileID(animtree, virtual_unity_object)
-				else:
-					animtree = existing_node
-				if target_utype == 91:
+				if target_utype == 95: # Animator component
+					if existing_node != null and existing_node.get_class() == "AnimationPlayer":
+						log_debug("Adding AnimationTree as sibling to existing AnimationPlayer component")
+						animtree = AnimationTree.new()
+						animtree.name = "AnimationTree"
+						existing_node.get_parent().add_child(animtree, true)
+						animtree.owner = state.owner
+						animtree.anim_player = animtree.get_path_to(existing_node)
+						animtree.active = true
+						animtree.set_script(anim_tree_runtime)
+						# Weird special case, likely to break.
+						# The original file was a .glb and doesn't have an AnimationTree node.
+						# We add one and try to pretend it's ours.
+						# Maybe better to change glb post-import script to add one.
+						state.add_fileID(animtree, virtual_unity_object)
+					else:
+						animtree = existing_node
 					virtual_unity_object.fileID = fileID ^ self.fileID
 					virtual_unity_object.keys = uprops
 					state.prefab_state.animator_node_to_object[animtree] = virtual_unity_object
