@@ -650,6 +650,7 @@ class BaseModelHandler:
 			var bone_map: BoneMap = importer.generate_bone_map_from_human()
 			# TODO: Allow generating BoneMap from Avatar object, too.
 			subresources["nodes"]["PATH:Skeleton3D"]["retarget/bone_map"] = bone_map
+			subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
