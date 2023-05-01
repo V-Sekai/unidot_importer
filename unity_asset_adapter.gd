@@ -21,39 +21,6 @@ const SHOULD_CONVERT_TO_GLB: bool = false
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg=="
 )
-var STUB_GLB_FILE: PackedByteArray = Marshalls.base64_to_raw(
-	(
-		"Z2xURgIAAACEAAAAcAAAAEpTT057ImFzc2V0Ijp7ImdlbmVyYXRvciI6IiIsInZlcnNpb24i"
-		+ "OiIyLjAifSwic2NlbmUiOjAsInNjZW5lcyI6W3sibmFtZSI6IlMiLCJub2RlcyI6WzBdfV0s"
-		+ "Im5vZGVzIjpbeyJuYW1lIjoiTiJ9XX0g"
-	)
-)
-var STUB_GLTF_FILE: PackedByteArray = (
-	(
-		'{"asset":{"generator":"","version":"2.0"},"scene":0,'
-		+ '"scenes":[{"name":"temp","nodes":[0]}],"nodes":[{"name":"temp"}]}'
-	)
-	. to_ascii_buffer()
-)
-var STUB_OBJ_FILE: PackedByteArray = "o a\nv 0 0 0\nf 1 1 1".to_ascii_buffer()
-var STUB_DAE_FILE: PackedByteArray = (
-	("""
-<?xml version="1.0" encoding="utf-8"?>
-<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4">
-  <library_visual_scenes>
-	<visual_scene id="A" name="A">
-	  <node id="a" name="a" type="NODE">
-		<matrix sid="transform">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</matrix>
-	  </node>
-	</visual_scene>
-  </library_visual_scenes>
-  <scene>
-	<instance_visual_scene url="#A"/>
-  </scene>
-</COLLADA>
-""")
-	. to_ascii_buffer()
-)  # vscode syntax hack: "#"
 
 
 func write_sentinel_png(sentinel_filename: String):
@@ -181,12 +148,6 @@ class DefaultHandler:
 
 class ImageHandler:
 	extends AssetHandler
-	var STUB_PNG_FILE: PackedByteArray = PackedByteArray([])
-
-	func create_with_constant(stub_file: PackedByteArray):
-		var ret = self
-		ret.STUB_PNG_FILE = stub_file
-		return ret
 
 	func preprocess_asset(
 		pkgasset: Object,
@@ -531,12 +492,6 @@ class SceneHandler:
 
 class BaseModelHandler:
 	extends AssetHandler
-	var stub_file: PackedByteArray = PackedByteArray([])
-
-	func create_with_constant(stub_file: PackedByteArray):
-		var ret = self
-		ret.stub_file = stub_file
-		return ret
 
 	func preprocess_asset(
 		pkgasset: Object,
@@ -1410,18 +1365,16 @@ func get_class_name(obj):
 		return "AssetHandler"
 	return obj.get_class()
 
-var obj_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_OBJ_FILE)
-var dae_handler: BaseModelHandler = BaseModelHandler.new().create_with_constant(STUB_DAE_FILE)
-var image_handler: ImageHandler = ImageHandler.new().create_with_constant(STUB_PNG_FILE)
+var image_handler: ImageHandler = ImageHandler.new()
 
 var file_handlers: Dictionary = {
-	"fbx": FbxHandler.new().create_with_constant(STUB_GLB_FILE if SHOULD_CONVERT_TO_GLB else STUB_GLTF_FILE),
-	"obj": obj_handler,
-	"dae": dae_handler,
+	"fbx": FbxHandler.new(),
+	"obj": BaseModelHandler.new(),
+	"dae": BaseModelHandler.new(),
 	#"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
 	#"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
-	"glb": FbxHandler.new().create_with_constant(STUB_GLB_FILE),
-	"gltf": FbxHandler.new().create_with_constant(STUB_GLTF_FILE),
+	"glb": FbxHandler.new(),
+	"gltf": FbxHandler.new(),
 	"jpg": image_handler,
 	"jpeg": image_handler,
 	"png": image_handler,
@@ -1491,7 +1444,7 @@ func preprocess_asset(asset_database: Object, pkgasset: Object, tmpdir: String, 
 	dres.make_dir_recursive(tmpdir + "/" + path.get_base_dir())
 	dres.make_dir_recursive(tmpdir + "/" + thread_subdir)
 
-	if pkgasset.metadata_tar_header != null:
+	if pkgasset.metadata_tar_header != null and pkgasset.parsed_meta == null:
 		var sf = pkgasset.metadata_tar_header.get_stringfile()
 		pkgasset.parsed_meta = asset_database.parse_meta(sf, path)
 		pkgasset.log_debug("Parsing " + path + ": " + str(pkgasset.parsed_meta))

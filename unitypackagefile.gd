@@ -236,3 +236,12 @@ func init_with_filename(source_file: String):
 		guid_to_pkgasset.erase(guid)
 	paths.sort()
 	return self
+
+func parse_all_meta(asset_database):
+	for path in path_to_pkgasset:
+		var pkgasset = path_to_pkgasset[path]
+		print("PATH: " + str(path) + "  PKGASSET " + str(pkgasset))
+		if pkgasset.metadata_tar_header != null:
+			var sf = pkgasset.metadata_tar_header.get_stringfile()
+			pkgasset.parsed_meta = asset_database.parse_meta(sf, path)
+			pkgasset.log_debug("Parsing " + path + ": " + str(pkgasset.parsed_meta))

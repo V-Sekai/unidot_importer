@@ -4,6 +4,7 @@ extends RefCounted
 const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
 const import_worker_class: GDScript = preload("./import_worker.gd")
+const meta_worker_class: GDScript = preload("./meta_worker.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
@@ -23,6 +24,7 @@ const STATE_IMPORTING_SCENES = 7
 const STATE_DONE_IMPORT = 8
 
 var import_worker = import_worker_class.new()
+var meta_worker = meta_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
 
 var main_dialog: AcceptDialog = null
@@ -81,7 +83,7 @@ func _resource_reloaded(resources: PackedStringArray):
 
 
 func _init():
-	import_worker.asset_failed.connect(self._asset_failed, CONNECT_DEFERRED)
+	meta_worker.asset_processing_finished.connect(self._meta_completed, CONNECT_DEFERRED)
 	import_worker.asset_processing_finished.connect(self._asset_processing_finished, CONNECT_DEFERRED)
 	import_worker.asset_processing_started.connect(self._asset_processing_started, CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
@@ -108,6 +110,14 @@ func _cell_selected() -> void:
 		var new_checked: bool = !ti.is_checked(0)
 		_check_recursively(ti, new_checked)
 
+func _meta_completed(tw: Object):
+	var pkgasset = tw.asset
+	var ti = tw.extra as TreeItem
+	var importer_type: String = ""
+	if pkgasset.parsed_meta != null:
+		importer_type = pkgasset.parsed_meta.importer_type
+	ti.set_text(1, importer_type)
+
 
 func _selected_package(p_path: String) -> void:
 	asset_work_waiting_write = [].duplicate()
@@ -120,15 +130,24 @@ func _selected_package(p_path: String) -> void:
 	asset_yaml_post_model = [].duplicate()
 	asset_prefabs = [].duplicate()
 	asset_scenes = [].duplicate()
+	asset_database = asset_database_class.new().get_singleton()
 	pkg = unitypackagefile.new().init_with_filename(p_path)
+	#pkg.parse_all_meta(asset_database)
+	meta_worker.asset_database = asset_database
+	asset_database.in_package_import = true
+	asset_database.log_debug([null,0,"",0], "Asset database object returned " + str(asset_database))
+	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
+
 	var tree_names = ["Assets"]
 	var ti: TreeItem = main_dialog_tree.create_item()
 	ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 	ti.set_text(0, "Assets")
 	ti.set_checked(0, true)
 	ti.set_icon_max_width(0, 24)
+	ti.set_text(1, "")
 	var tree_items = [ti]
 	for path in pkg.paths:
+		var pkgasset = pkg.path_to_pkgasset[path]
 		var path_names: Array = path.split("/")
 		var i: int = len(tree_names) - 1
 		while i >= 0 and (i >= len(path_names) or path_names[i] != tree_names[i]):
@@ -155,11 +174,16 @@ func _selected_package(p_path: String) -> void:
 				ti.set_tooltip_text(0, path)
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.DARK_BLUE)
-			var icon: Texture = pkg.path_to_pkgasset[path].icon
+			var icon: Texture = pkgasset.icon
 			if icon != null:
 				ti.set_icon(0, icon)
 				# ti.add_button(0, spinner_icon1, -1, true)
 			ti.set_text(0, path_names[i])
+			if i == len(path_names) - 1:
+				meta_worker.push_asset(pkgasset, ti)
+				ti.set_text(1, "")
+			else:
+				ti.set_text(1, "Directory")
 	main_dialog.popup_centered_ratio()
 	if file_dialog:
 		file_dialog.queue_free()
@@ -198,7 +222,10 @@ func _show_importer_common() -> void:
 	vbox.size_flags_vertical = Control.SIZE_FILL
 	vbox.size_flags_horizontal = Control.SIZE_FILL
 	main_dialog_tree = Tree.new()
-	main_dialog_tree.set_column_titles_visible(false)
+	main_dialog_tree.columns = 2
+	main_dialog_tree.set_column_titles_visible(true)
+	main_dialog_tree.set_column_title(0, "Path")
+	main_dialog_tree.set_column_title(1, "Importer")
 	main_dialog_tree.cell_selected.connect(self._cell_selected)
 	main_dialog_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_dialog_tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -416,17 +443,6 @@ func _done_preprocessing_assets():
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 
 
-func _asset_failed(tw: Object):
-	_currently_preprocessing_assets -= 1
-	tw.asset.log_fail(str(tw.asset) + " preprocess failed!")
-	var ti: TreeItem = tw.extra
-	ti.set_custom_color(0, Color("#222288"))
-	ti.erase_button(0, 0)
-	ti.add_button(0, fail_icon, -1, true, "Import Failed!")
-	if _currently_preprocessing_assets == 0:
-		_done_preprocessing_assets()
-
-
 func start_godot_import(tw: Object):
 	#var meta_data: PackedByteArray = tw.asset.metadata_tar_header.get_data()
 	#var metafil = FileAccess.open("res://" + tmpdir + "/" + tw.asset.pathname + ".meta", FileAccess.WRITE_READ)
@@ -469,12 +485,6 @@ func start_godot_import(tw: Object):
 	asset_work_waiting_scan.push_back(tw)
 
 
-#func start_godot_import_stub(tw: Object):
-#	tw.asset.pathname = tw.asset.pathname.get_basename() + "." + tw.output_path.get_extension()
-#	if asset_adapter.write_godot_stub(tw.asset):
-#		asset_work_waiting_scan.push_back(tw)
-
-
 func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
@@ -483,6 +493,15 @@ func _asset_processing_finished(tw: Object):
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
 	tw.asset.log_debug("Asset database object is now " + str(asset_database))
+	#
+	# func _asset_failed(tw: Object):
+	# _currently_preprocessing_assets -= 1
+	# tw.asset.log_fail(str(tw.asset) + " preprocess failed!")
+	# var ti: TreeItem = tw.extra
+	# ti.set_custom_color(0, Color("#222288"))
+	# ti.erase_button(0, 0)
+	# ti.add_button(0, fail_icon, -1, true, "Import Failed!")
+	#
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	tw.asset.log_debug("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
@@ -656,8 +675,11 @@ func _asset_tree_window_confirmed():
 		return
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
+
+	asset_database.log_debug([null,0,"",0], "Finishing meta.")
+	meta_worker.stop_all_threads_and_wait()
+	asset_database.log_debug([null,0,"",0], "Joined meta.")
 	tree_dialog_state = STATE_PREPROCESSING
-	asset_database = asset_database_class.new().get_singleton()
 	import_worker.asset_database = asset_database
 	asset_database.in_package_import = true
 	asset_database.log_debug([null,0,"",0], "Asset database object returned " + str(asset_database))
