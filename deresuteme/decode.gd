@@ -523,10 +523,10 @@ func _init(meta: RefCounted, file_contents: PackedByteArray):
 	self.version = self.s.read_str()
 	self.platform = s.get_32()
 	self.class_ids = []
-	# meta.log_debug(0, "table size " + str(table_size) + " data end " + str(data_end) + " file gen " + str(file_gen) + " data offset " + str(data_offset) + " version " + str(version) + " platform " + str(platform))
+	meta.log_debug(0, "table size " + str(table_size) + " data end " + str(data_end) + " file gen " + str(file_gen) + " data offset " + str(data_offset) + " version " + str(version) + " platform " + str(platform))
 	self.defs = self.decode_defs()
-	# meta.log_debug(0, str(defs))
-	# meta.log_debug(0, "After defs... NOW AT: " + str(self.s.tell()))
+	meta.log_debug(0, str(defs))
+	meta.log_debug(0, "After defs... NOW AT: " + str(self.s.tell()))
 	if self.file_gen < 10:
 		s.get_32()
 	var obj_headers: Array = self.decode_data_headers()
@@ -601,7 +601,7 @@ func decode_data_headers() -> Array:
 		meta.log_fail(0, "Invalid count " + str(count))
 		count = 0
 	var i: int = 0
-	meta.log_debug(0, self.class_ids)
+	meta.log_debug(0, "Class IDS: " + str(self.class_ids))
 	# meta.log_debug(0, "Doing " + str(count) + " data")
 	while i < count:
 		if self.file_gen >= 10:

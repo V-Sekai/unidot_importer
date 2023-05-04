@@ -43,6 +43,7 @@ var asset_database: Resource = null
 
 var tree_dialog_state: int = 0
 var _currently_preprocessing_assets: int = 0
+var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
 var import_finished: bool = false
@@ -120,6 +121,7 @@ func _meta_completed(tw: Object):
 
 
 func _selected_package(p_path: String) -> void:
+	_preprocessing_second_pass = [].duplicate()
 	asset_work_waiting_write = [].duplicate()
 	asset_work_waiting_scan = [].duplicate()
 	asset_work_currently_importing = [].duplicate()
@@ -544,7 +546,29 @@ func _asset_processing_finished(tw: Object):
 			asset_materials_and_other.push_back(tw)
 		# start_godot_import_stub(tw) # We now write it directly in the preprocess function.
 	if _currently_preprocessing_assets == 0:
-		_done_preprocessing_assets()
+		if not _preprocessing_second_pass.is_empty():
+			_preprocess_second_pass()
+			_preprocessing_second_pass = [].duplicate()
+		else:
+			_done_preprocessing_assets()
+
+func _preprocess_second_pass():
+	var second_pass = _preprocessing_second_pass
+	_preprocessing_second_pass = [].duplicate()
+	var pkgassets: Array = [].duplicate()
+	for ti2 in second_pass:
+		var path = ti2.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
+		var asset = pkg.path_to_pkgasset.get(path)
+		_currently_preprocessing_assets += 1
+		asset.meta_dependencies = {}.duplicate()
+		for dep in asset.parsed_meta.meta_dependency_guids:
+			if pkg.guid_to_pkgasset.has(dep):
+				asset.meta_dependencies[dep] = pkg.guid_to_pkgasset[dep].parsed_meta
+			else:
+				asset.meta_dependencies[dep] = asset_database.get_meta_by_guid(dep)
+		pkgassets.append(asset)
+	for i in range(len(second_pass)):
+		self.import_worker.push_asset(pkgassets[i], tmpdir, second_pass[i])
 
 
 func _asset_processing_started(tw: Object):
@@ -555,7 +579,7 @@ func _asset_processing_started(tw: Object):
 	ti.set_custom_color(0, Color("#228888"))
 
 
-func _preprocess_recursively(ti: TreeItem) -> int:
+func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Array) -> int:
 	var ret: int = 0
 	if ti.is_checked(0):
 		var path = ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
@@ -565,13 +589,17 @@ func _preprocess_recursively(ti: TreeItem) -> int:
 				asset_database.log_fail([null,0,"",0], "Path " + str(path) + " has null asset!")
 			else:
 				ret += 1
-				_currently_preprocessing_assets += 1
-				var tw: RefCounted = self.import_worker.push_asset(asset, tmpdir, ti)
+				if not asset.parsed_meta.meta_dependency_guids.is_empty():
+					asset.parsed_meta.log_debug(0, "Meta has dependencies " + str(asset.parsed_meta.dependency_guids))
+					second_pass.append(ti)
+				else:
+					_currently_preprocessing_assets += 1
+					var tw: RefCounted = self.import_worker.push_asset(asset, tmpdir, ti)
 				# ti.set_cell_mode(0, TreeItem.CELL_MODE_ICON)
 				if ti.get_button_count(0) <= 0:
 					ti.add_button(0, spinner_icon, -1, true, "Loading...")
 	for chld in ti.get_children():
-		ret += _preprocess_recursively(chld)
+		ret += _preprocess_recursively(chld, visited, second_pass)
 	return ret
 
 
@@ -628,12 +656,12 @@ func _scan_sources_complete(useless: Variant = null):
 		asset_database.log_debug([null,0,tw.asset.guid,0], filename + ":" + str(editor_filesystem.get_file_type(filename)))
 		var fs_dir: EditorFileSystemDirectory = editor_filesystem.get_filesystem_path(filename.get_base_dir())
 		if fs_dir == null:
-			asset_database.log_debug([null,0,tw.asset.guid,0], "BADBAD: Filesystem directory null for " + str(filename))
+			asset_database.log_fail([null,0,tw.asset.guid,0], "BADBAD: Filesystem directory null for " + str(filename))
 		else:
 			asset_database.log_debug([null,0,tw.asset.guid,0], "Dir " + str(filename.get_base_dir()) + " file count: " + str(fs_dir.get_file_count()))
 			var idx = fs_dir.find_file_index(filename.get_file())
 			if idx == -1:
-				asset_database.log_debug([null,0,tw.asset.guid,0], "BADBAD: Index is -1 for " + str(filename))
+				asset_database.log_fail([null,0,tw.asset.guid,0], "BADBAD: Index is -1 for " + str(filename))
 			else:
 				asset_database.log_debug([null,0,tw.asset.guid,0], "Import " + str(fs_dir.get_file(idx)) + " valid: " + str(fs_dir.get_file_import_is_valid(idx)))
 	asset_database.log_debug([null,0,"",0], "Ready to start import step ticks")
@@ -684,7 +712,13 @@ func _asset_tree_window_confirmed():
 	asset_database.in_package_import = true
 	asset_database.log_debug([null,0,"",0], "Asset database object returned " + str(asset_database))
 	import_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
-	var num_processing = _preprocess_recursively(main_dialog_tree.get_root())
+	var visited = {}.duplicate()
+	var second_pass: Array = [].duplicate()
+	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass)
+	_preprocessing_second_pass = second_pass
+	if _currently_preprocessing_assets == 0:
+		_preprocess_second_pass()
+		_preprocessing_second_pass = [].duplicate()
 	if preprocess_timer != null:
 		preprocess_timer.queue_free()
 	preprocess_timer = Timer.new()

@@ -424,6 +424,8 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 						"m_SourcePrefab", "m_ParentPrefab", "prefab", "prototype":
 							# meta.log_debug(current_obj_fileID, " Possible Ref " + str(this_key))
 							meta.prefab_dependency_guids[parsed_val[2]] = 1
+					if is_meta:
+						meta.meta_dependency_guids[parsed_val[2]] = 1
 					meta.dependency_guids[parsed_val[2]] = 1
 				current_obj_tree.back()[this_key] = parsed_val
 		elif line_plain.begins_with("- ") or line_plain == "data:":
@@ -434,6 +436,8 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 				and parsed_val[0] == null
 				and typeof(parsed_val[2]) == TYPE_STRING
 			):
+				if is_meta:
+					meta.meta_dependency_guids[parsed_val[2]] = 1
 				meta.dependency_guids[parsed_val[2]] = 1
 			current_obj_tree.back().push_back(parsed_val)
 	return object_to_return

@@ -1182,8 +1182,18 @@ class FbxHandler:
 		var importer = pkgasset.parsed_meta.importer
 		var humanoid_original_transforms: Dictionary = {}
 		var human_skin_nodes: Array = []
-		if importer.keys.get("animationType", 2) == 3 and json.has("nodes"):
-			if len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
+		if importer.keys.get("animationType", 2) == 3 and json.has("nodes") and importer.keys.get("avatarSetup", 0) >= 1:
+			var bone_map_dict: Dictionary
+			if importer.keys.get("avatarSetup", 0) == 2:
+				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null,0,"",0])
+				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
+				if src_ava_meta == null:
+					pkgasset.log_fail("Unable to lookup meta dependency", "lastHumanDescriptionAvatarSource", src_ava)
+				else:
+					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
+					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
+				
+			elif len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
 				var skel: Skeleton3D = Skeleton3D.new()
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")
@@ -1205,8 +1215,10 @@ class FbxHandler:
 				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
 				skel.free()
 
-			pkgasset.log_debug("AAAA set to humanoid and has nodes")
-			var bone_map_dict: Dictionary = importer.generate_bone_map_dict_from_human()
+			if importer.keys.get("avatarSetup", 0) == 1:
+				pkgasset.log_debug("AAAA set to humanoid and has nodes")
+				bone_map_dict = importer.generate_bone_map_dict_from_human()
+
 			var node_idx = 0
 			var hips_node_idx = -1
 			for node in json["nodes"]:
@@ -1216,7 +1228,10 @@ class FbxHandler:
 					var godot_human_name: String = bone_map_dict[node_name]
 					if godot_human_name == "Hips":
 						hips_node_idx = node_idx
-					humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
+					if importer.keys.get("avatarSetup", 0) == 2:
+						gltf_transform3d_into_json(node, humanoid_original_transforms[godot_human_name])
+					else:
+						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
 					human_skin_nodes.push_back(node_idx)
 				node_idx += 1
 			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
@@ -1234,7 +1249,10 @@ class FbxHandler:
 						if child == hips_node_idx:
 							pkgasset.log_debug("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
 							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
-							humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
+							if importer.keys.get("avatarSetup", 0) == 2:
+								gltf_transform3d_into_json(node, humanoid_original_transforms["Root"])
+							else:
+								humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
 							new_root_idx = node_idx
 							human_skin_nodes.push_back(new_root_idx)
 							break

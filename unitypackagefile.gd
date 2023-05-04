@@ -37,6 +37,7 @@ class UnityPackageAsset:
 	var parsed_asset: RefCounted
 	var parsed_resource: Resource  # For specific assets which do work in the thread.
 	var packagefile: Resource  # outer class
+	var meta_dependencies: Dictionary
 
 	# Log messages related to this asset
 	func log_debug(msg: String):
