@@ -576,8 +576,10 @@ func decode_guids() -> void:
 	# 02 00 00 00 01 00 00 00 5B 21 F1 AA FF FF FF FF 02 00 00 00 FA 19 14 BD FF FF FF FF
 	var unkcount: int = s.get_32()
 	s.skip(12 * unkcount)
+	if self.file_gen == 15:
+		s.skip(3) # Undo the previous skip. FIXME: Probably wrong
 	var count: int = s.get_32()
-	# meta.log_debug(0, "referenced guids count " + str(count) + " at " + str(s.tell()))
+	meta.log_debug(0, "referenced guids count " + str(count) + " at " + str(s.tell()))
 	# null GUID is implied!
 	referenced_guids.push_back(null)
 	referenced_reftypes.push_back(0)
@@ -592,6 +594,9 @@ func decode_guids() -> void:
 		var path: String = s.read_str()
 		referenced_guids.push_back(guid)
 		i += 1
+	if self.file_gen >= 20:
+		s.get_32() # Unknown ref type
+	s.read_str() # Seems to have an extra string here.
 
 
 func decode_data_headers() -> Array:
@@ -601,11 +606,11 @@ func decode_data_headers() -> Array:
 		meta.log_fail(0, "Invalid count " + str(count))
 		count = 0
 	var i: int = 0
-	meta.log_debug(0, "Class IDS: " + str(self.class_ids))
+	meta.log_debug(0, "Class IDS: " + str(self.class_ids) + " object count " + str(count))
 	# meta.log_debug(0, "Doing " + str(count) + " data")
+	if self.file_gen >= 10:
+		self.s.align(4, self.off)
 	while i < count:
-		if self.file_gen >= 10:
-			self.s.align(4, self.off)
 		var pathId: int = -1
 		var size: int = 0
 		var off: int = 0
@@ -626,10 +631,16 @@ func decode_data_headers() -> Array:
 			pathId = s.get_u64()
 			off = s.get_u32()
 			size = s.get_u32()
-			type_id = s.get_u32()
+			type_id = s.get_32()
 			class_id = s.get_u16()
-			s.get_u16()
-			unk = s.get_u8()
+			unk = s.get_u16()
+			s.get_u32()
+			if self.file_gen >= 13:
+				var found_idx: int = self.class_ids.find(type_id)
+				if found_idx >= 0:
+					if type_id < 0:
+						class_id = 114
+					type_id = found_idx
 		else:
 			pathId = s.get_u32()
 			off = s.get_u32()
@@ -644,6 +655,8 @@ func decode_data_headers() -> Array:
 		# meta.log_debug(0, "pathid " + str(pathId) + " " + str(type_id) + " " + str(class_id))
 		obj_headers.push_back([off + self.data_offset + self.off, class_id, pathId, type_id])
 		i += 1
+	if self.file_gen == 15:
+		s.skip(-3) # FIXME: Probably wrong
 	return obj_headers
 
 
@@ -658,6 +671,9 @@ func decode_data(obj_headers: Array) -> Array:
 		var class_id: int = obj_header[1]
 		var path_id: int = obj_header[2]
 		var type_id: int = obj_header[3]
+		if type_id < 0 or type_id >= len(self.defs):
+			meta.log_fail(path_id, "Missing defs for " + str(class_id) + " " + str(path_id) + " " + str(type_id))
+			continue
 		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes)
 		var type_name: String = self.defs[type_id].type_name
 		var is_stripped: bool = type_name == "EditorExtension"
@@ -704,13 +720,21 @@ func decode_attrtab() -> Def:
 	var attr_cnt: int = 0
 	var table_len: int = 0
 	var stab_len: int = 0
-	if self.file_gen >= 14:
+	# print("Before s.tell " + str(s.tell()))
+	if self.file_gen >= 17:
 		# hdr = self.s.read(31)
 		code = s.get_u32()
 		unk = s.get_u16()
 		unk2 = s.get_u8()
 		ident = s.read(16)
-		if unk2 == 0:
+		if code == 114: # unk2 == 0:
+			s.read(16)
+		attr_cnt = s.get_u32()
+		stab_len = s.get_u32()
+	elif self.file_gen >= 13:
+		code = s.get_32()
+		ident = s.read(16)
+		if code < 0:
 			s.read(16)
 		attr_cnt = s.get_u32()
 		stab_len = s.get_u32()
@@ -723,6 +747,8 @@ func decode_attrtab() -> Def:
 	else:
 		code = s.get_u32()
 		attr_cnt = 1
+	# print("After s.tell " + str(s.tell()))
+	# print("File gen is " + str(self.file_gen) + " attr cnt " + str(attr_cnt) + " code " + str(code) + " stab " + str(stab_len))
 	var size_per: int = 24
 	if self.file_gen >= 21:  # also 114?
 		size_per = 32
