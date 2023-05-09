@@ -86,7 +86,7 @@ func _thread_function(thread_subdir: String):
 	print("I'm a thread! Userdata is: ", thread_subdir)
 	while true:
 		var tw = thread_queue.pop()
-		print(tw)
+		#print(tw)
 		if tw == ShutdownSentinel:
 			print("I was told to shutdown")
 			break

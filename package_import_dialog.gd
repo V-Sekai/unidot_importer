@@ -116,8 +116,15 @@ func _meta_completed(tw: Object):
 	var ti = tw.extra as TreeItem
 	var importer_type: String = ""
 	if pkgasset.parsed_meta != null:
-		importer_type = pkgasset.parsed_meta.importer_type
-	ti.set_text(1, importer_type)
+		importer_type = pkgasset.parsed_meta.importer_type.replace("Importer", "")
+	ti.set_text(1, importer_type.replace("Default", "Scene"))
+	
+	var color = Color(
+		0.7 * fmod(importer_type.unicode_at(0)*173.0/255.0, 1.0),
+		0.7 * fmod(importer_type.unicode_at(1)*139.0/255.0, 1.0),
+		0.7 * fmod(importer_type.unicode_at(2)*157.0/255.0, 1.0),
+		1.0)
+	ti.set_custom_color(1, color)
 
 
 func _selected_package(p_path: String) -> void:
