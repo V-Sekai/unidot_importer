@@ -37,6 +37,10 @@ class ParseState:
 	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate()  # for Extract Legacy Materials / By Base Texture Name
 	var animation_to_take_name: Dictionary = {}.duplicate()
+	var humanoid_original_transforms: Dictionary = {}.duplicate()
+	var position_adjustment_by_id: Dictionary = {}.duplicate() # int -> Quaternion
+	var rotation_adjustment_by_id: Dictionary = {}.duplicate() # int -> Quaternion
+	var child_rotation_adjustment_by_id: Dictionary = {}.duplicate() # int -> Quaternion
 
 	var saved_materials_by_name: Dictionary = {}.duplicate()
 	var saved_meshes_by_name: Dictionary = {}.duplicate()
@@ -211,7 +215,7 @@ class ParseState:
 
 	func register_component(
 		node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int = 0, p_bone_idx: int = -1
-	):
+	) -> Array[int]:
 		#???
 		#if node == toplevel_node:
 		#	return # GameObject nodes always point to the toplevel node.
@@ -261,7 +265,7 @@ class ParseState:
 			if p_component == "Transform":
 				fileid_to_skeleton_bone[fileId_go] = og_bone_name
 		#metaobj.log_debug(0, "fileid_go:" + str(fileId_go) + '/ ' + str(all_name_map[fileId_go]))
-		return fileId_go
+		return [fileId_go, fileId_comp]
 
 	func register_resource(
 		p_resource: Resource, p_name: String, p_type: String, fileId_object: int, p_aux_resource: Variant = null
@@ -305,24 +309,37 @@ class ParseState:
 			)
 		return fileId_object
 
-	func iterate_skeleton(
-		node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary
-	):
+	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, parent_rotation_offset: Quaternion):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
+		var rest: Transform3D = node.get_bone_rest(p_skel_bone)
 		if scale_correction_factor != 1.0:
-			var rest: Transform3D = node.get_bone_rest(p_skel_bone)
 			node.set_bone_rest(p_skel_bone, Transform3D(rest.basis, scale_correction_factor * rest.origin))
 			node.set_bone_pose_position(p_skel_bone, scale_correction_factor * rest.origin)
 
 		assert(p_skel_bone != -1)
 
-		var fileId_go: int = register_component(node, p_path, "Transform", 0, p_skel_bone)
+		var fileId_vec: Array[int] = register_component(node, p_path, "Transform", 0, p_skel_bone)
+		var fileId_go: int = fileId_vec[0]
+		var fileId_transform: int = fileId_vec[1]
+		var rotation_adjust: Quaternion = parent_rotation_offset
+		var child_rotation_adjust: Quaternion = Quaternion.IDENTITY
+		if humanoid_original_transforms.has(node.get_bone_name(p_skel_bone)):
+			var orig_human_transform: Transform3D = humanoid_original_transforms[node.get_bone_name(p_skel_bone)]
+			rotation_adjust = rest.basis.get_rotation_quaternion().inverse() * orig_human_transform.basis.get_rotation_quaternion()
+			child_rotation_adjust = rotation_adjust.inverse()
+
+		if !parent_rotation_offset.is_equal_approx(Quaternion.IDENTITY):
+			position_adjustment_by_id[fileId_transform] = parent_rotation_offset
+		if !rotation_adjust.is_equal_approx(Quaternion.IDENTITY):
+			rotation_adjustment_by_id[fileId_transform] = rotation_adjust
+		if !child_rotation_adjust.is_equal_approx(Quaternion.IDENTITY):
+			child_rotation_adjustment_by_id[fileId_transform] = child_rotation_adjust
 
 		for child_bone in node.get_bone_children(p_skel_bone):
 			var orig_child_name: String = get_orig_name("bone_name", node.get_bone_name(child_bone))
 			p_path.push_back(orig_child_name)
-			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name)
+			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, child_rotation_adjust)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -352,23 +369,23 @@ class ParseState:
 					for child_child_bone in child.get_parentless_bones():
 						var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 						p_path.push_back(orig_child_name)
-						var new_id = self.iterate_skeleton(
-							child, p_path, child_child_bone, new_attachments_by_bone_name
-						)
+						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, child_rotation_adjust)
 						pop_back(p_path)
 						if new_id != 0:
 							self.all_name_map[fileId_go][orig_child_name] = new_id
 				else:
 					var orig_child_name: String = get_orig_name("nodes", child.name)
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false)
+					var new_id = self.iterate_node(child, p_path, false, child_rotation_adjust)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 
 		return fileId_go
 
-	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool):
+	# Parent_rotation_offset is the delta to the original_humanoid_transform which will be needed to offset positions of all child nodes.
+	# I think it also needs to be multiplied against the inverse of the parent rotation offset for rotation changes? not sure
+	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool, parent_rotation_offset: Quaternion):
 		metaobj.log_debug(0, "Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 		if node is MeshInstance3D:
 			if is_obj and node.mesh != null:
@@ -376,12 +393,23 @@ class ParseState:
 				node.name = default_obj_mesh_name  # Does this make sense?? For compatibility?
 		if node is Node3D:
 			node.position *= scale_correction_factor
-
+		
 		#for child in node.get_children():
 		#	iterate_node(child, p_path, false)
 		var fileId_go: int = 0
+		var fileId_transform: int = 0
+		var rotation_adjust: Quaternion = parent_rotation_offset.inverse()
+		var child_rotation_adjust: Quaternion = Quaternion.IDENTITY
+
 		if not (node is AnimationPlayer):
-			fileId_go = register_component(node, p_path, "Transform", 0)
+			var fileId_vec: Array[int] = register_component(node, p_path, "Transform", 0)
+			fileId_go = fileId_vec[0]
+			fileId_transform = fileId_vec[1]
+
+			if !parent_rotation_offset.is_equal_approx(Quaternion.IDENTITY):
+				position_adjustment_by_id[fileId_transform] = parent_rotation_offset
+			if !rotation_adjust.is_equal_approx(Quaternion.IDENTITY):
+				rotation_adjustment_by_id[fileId_transform] = rotation_adjust
 
 		if node is AnimationPlayer:
 			#var parent_node: Node3D = node.get_parent()
@@ -424,7 +452,7 @@ class ParseState:
 				for child_child_bone in child.get_parentless_bones():
 					var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name)
+					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, child_rotation_adjust)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -432,7 +460,7 @@ class ParseState:
 				if not (child is AnimationPlayer):
 					var orig_child_name: String = get_orig_name("nodes", child.name)
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false)
+					var new_id = self.iterate_node(child, p_path, false, child_rotation_adjust)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -444,7 +472,7 @@ class ParseState:
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			p_path.push_back(orig_child_name)
-			new_id = self.iterate_node(child, p_path, true)
+			new_id = self.iterate_node(child, p_path, true, Quaternion.IDENTITY)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -453,12 +481,12 @@ class ParseState:
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			p_path.push_back(orig_child_name)
-			new_id = self.iterate_node(child, p_path, true)
+			new_id = self.iterate_node(child, p_path, true, Quaternion.IDENTITY)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
 		if animplayer != null:
-			self.iterate_node(animplayer, p_path, false)
+			self.iterate_node(animplayer, p_path, false, Quaternion.IDENTITY)
 		return fileId_go
 
 	func process_animation_player(node: AnimationPlayer):
@@ -906,6 +934,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.metaobj = metaobj
 	ps.asset_database = asset_database
 	ps.HACK_outer_scope_generate_object_hash = generate_object_hash
+	ps.humanoid_original_transforms = metaobj.internal_data.get("humanoid_original_transforms", {})
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
 	if metaobj.importer.keys.get("animationType", 2) == 3:
@@ -1067,7 +1096,7 @@ func _post_import(p_scene: Node) -> Object:
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
 	toplevel_path.push_back("root")
-	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false)
+	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false, Quaternion.IDENTITY)
 	ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
 
@@ -1089,6 +1118,10 @@ func _post_import(p_scene: Node) -> Object:
 			root_go_id = new_root_go_id
 			metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
 			assert(root_go_id == ps.all_name_map[root_go_id][1])
+
+	metaobj.transform_fileid_to_position_adjust = ps.position_adjustment_by_id
+	metaobj.transform_fileid_to_rotation_adjust = ps.rotation_adjustment_by_id
+	metaobj.transform_fileid_to_child_rotation_adjust = ps.child_rotation_adjustment_by_id
 
 	var path = "//RootNode/root"
 

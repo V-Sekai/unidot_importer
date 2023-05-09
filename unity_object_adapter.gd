@@ -238,6 +238,16 @@ class UnityObject:
 		if ret != null:
 			ret.set_meta("unidot_keys", self.keys)
 
+	var position_adjust: Quaternion:
+		get:
+			return self.meta.transform_fileid_to_position_adjust.get(self.fileID,
+				self.meta.prefab_transform_fileid_to_position_adjust.get(self.fileID, Quaternion()))
+
+	var rotation_adjust: Quaternion:
+		get:
+			return self.meta.transform_fileid_to_rotation_adjust.get(self.fileID,
+				self.meta.prefab_transform_fileid_to_rotation_adjust.get(self.fileID, Quaternion()))
+
 	func configure_skeleton_bone(skel: Skeleton3D, bone_name: String):
 		configure_skeleton_bone_props(skel, bone_name, self.keys)
 
@@ -246,8 +256,8 @@ class UnityObject:
 		if props.has(bone_name):
 			var mat: Transform3D = props.get(bone_name)
 			skel.set_bone_rest(skel.find_bone(bone_name), mat)
-			skel.set_bone_pose_position(skel.find_bone(bone_name), mat.origin)
-			skel.set_bone_pose_rotation(skel.find_bone(bone_name), mat.basis.get_rotation_quaternion())
+			skel.set_bone_pose_position(skel.find_bone(bone_name), self.position_adjust * mat.origin)
+			skel.set_bone_pose_rotation(skel.find_bone(bone_name), self.rotation_adjust * mat.basis.get_rotation_quaternion())
 			skel.set_bone_pose_scale(skel.find_bone(bone_name), mat.basis.get_scale())
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
@@ -260,16 +270,16 @@ class UnityObject:
 		var has_trs: bool = false
 		if props.has("_quaternion"):
 			has_trs = true
-			quat = props.get("_quaternion")
+			quat = self.rotation_adjust * props.get("_quaternion")
 		elif props.has("rotation_degrees"):
 			has_trs = true
-			quat = Quaternion(props.get("rotation_degrees") * PI / 180.0)
+			quat = self.rotation_adjust * Quaternion(props.get("rotation_degrees") * PI / 180.0)
 		if props.has("scale"):
 			has_trs = true
 			scale = props.get("scale")
 		if props.has("position"):
 			has_trs = true
-			position = props.get("position")
+			position = self.position_adjust * props.get("position")
 
 		if not has_trs:
 			return props
@@ -298,7 +308,7 @@ class UnityObject:
 		# var transform_rotation: Quaternion = Quaternion()
 		# var transform_position: Vector3 = Vector3()
 		if props.has("_quaternion"):
-			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
+			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(self.rotation_adjust * props.get("_quaternion"))
 
 		var has_position_x: bool = props.has("position:x")
 		var has_position_y: bool = props.has("position:y")
@@ -311,7 +321,7 @@ class UnityObject:
 				per_axis_position.y = props.get("position:y")
 			if has_position_z:
 				per_axis_position.z = props.get("position:z")
-			node.position = per_axis_position
+			node.position = self.position_adjust * per_axis_position
 		var has_scale_x: bool = props.has("scale:x")
 		var has_scale_y: bool = props.has("scale:y")
 		var has_scale_z: bool = props.has("scale:z")
@@ -1968,9 +1978,9 @@ class UnityAnimationClip:
 			return NodePath(unipath)
 		return NodePath(unipath + "/" + adapter.to_classname(unicomp))
 
-	func resolve_gameobject_component_path(animator: Object, unipath: String, unicomp: Variant) -> NodePath:  # UnityAnimator
+	func resolve_gameobject_component_path(animator: Object, unipath: String, unicomp: Variant) -> Array: #[NodePath,int]:  # UnityAnimator
 		if animator == null:
-			return default_gameobject_component_path(unipath, unicomp)
+			return [default_gameobject_component_path(unipath, unicomp), 0]
 		var animator_go: UnityGameObject = animator.gameObject
 		var path_split: PackedStringArray = unipath.split("/")
 		var current_fileID: int = animator_go.fileID
@@ -2011,17 +2021,17 @@ class UnityAnimationClip:
 			log_debug("Returning default nodepath because some path failed to resolve.")
 			if typeof(unicomp) == TYPE_INT:
 				if unicomp == 1 or unicomp == 4:
-					return NodePath(unipath)
-				return NodePath(unipath + "/" + adapter.to_classname(unicomp))
-			return NodePath(unipath)
+					return [NodePath(unipath), current_fileID]
+				return [NodePath(unipath + "/" + adapter.to_classname(unicomp)), current_fileID]
+			return [NodePath(unipath), current_fileID]
 		if not extra_path.is_empty():
 			nodepath = NodePath(str(nodepath) + extra_path)
 		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(
 			current_fileID, animator.meta.fileid_to_skeleton_bone.get(current_fileID, "")
 		)
 		if not skeleton_bone.is_empty() and (typeof(unicomp) == TYPE_INT or unicomp == 4):
-			return NodePath(str(nodepath) + ":" + skeleton_bone)
-		return nodepath
+			return [NodePath(str(nodepath) + ":" + skeleton_bone), current_fileID]
+		return [nodepath, current_fileID]
 
 	class KeyframeIterator:
 		extends RefCounted
@@ -2115,23 +2125,31 @@ class UnityAnimationClip:
 			#var orig_path: String = NodePath().get_concatenated_subnames()
 			#var orig_pathname: String = orig_path
 			var new_path: NodePath = NodePath()
+			var new_fileid: int = 0
 			var new_resolved_key: String = ""
 			match typ:
 				Animation.TYPE_BLEND_SHAPE:
 					classID = 137
-					new_path = resolve_gameobject_component_path(animator, path, classID)
+					var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+					new_path = tmparr[0]
+					new_fileid = tmparr[1]
 					if new_path != NodePath():
 						new_path = NodePath(str(new_path) + ":" + str(NodePath().get_concatenated_subnames()))
 					new_resolved_key = "B" + str(new_path)
 				Animation.TYPE_VALUE:
-					new_path = resolve_gameobject_component_path(animator, path, classID)
+					var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)[0]
+					new_path = tmparr[0]
+					new_fileid = tmparr[1]
 					if new_path != NodePath():
 						new_path = NodePath(str(new_path) + ":" + str(NodePath().get_concatenated_subnames()))
 					new_resolved_key = "V" + str(new_path)
 				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
 					classID = 4
-					new_path = resolve_gameobject_component_path(animator, path, classID)
+					var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+					new_path = tmparr[0]
+					new_fileid = tmparr[1]
 					new_resolved_key = "T" + str(new_path)
+					# TODO: Rewrite position and rotation tracks with rotation/position_adjust
 			if new_path == NodePath():
 				log_warn(
 					(
@@ -2209,7 +2227,9 @@ class UnityAnimationClip:
 			if len(track["curve"].get("m_Curve", [])) == 0:
 				log_warn("Empty curve detected " + path + ":" + attr)
 				continue
-			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
+			var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+			var nodepath = NodePath(str(tmparr[0]))
+			var fileID: int = tmparr[1]
 			if classID == 95:
 				# Humanoid or Animator float parameters
 				pass
@@ -2282,12 +2302,16 @@ class UnityAnimationClip:
 		for track in keys["m_PositionCurves"]:
 			var path: String = track.get("path", "")
 			var classID: int = 4
-			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
+			var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+			var nodepath = NodePath(str(tmparr[0]))
+			var fileID: int = tmparr[1]
 			var postrack = anim.add_track(Animation.TYPE_POSITION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(postrack, nodepath)
 			anim.track_set_interpolation_type(postrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+			var position_adjust: Quaternion = self.meta.transform_fileid_to_position_adjust.get(self.fileID,
+				self.meta.prefab_transform_fileid_to_position_adjust.get(self.fileID, Quaternion()))
 			while not key_iter.is_eof:
 				var prev_slope: Vector3 = key_iter.prev_slope
 				var next_slope: Vector3 = key_iter.next_slope
@@ -2299,14 +2323,18 @@ class UnityAnimationClip:
 					|| is_inf(prev_slope.z)
 					|| is_inf(next_slope.z)
 				)
-				var value: Vector3 = key_iter.next()
+				var value: Vector3 = position_adjust * key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.position_track_insert_key(postrack, ts, value)
 
 		for track in keys["m_EulerCurves"]:
 			var path: String = track.get("path", "")
 			var classID: int = 4
-			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
+			var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+			var nodepath = NodePath(str(tmparr[0]))
+			var fileID: int = tmparr[1]
+			var rotation_adjust: Quaternion = self.meta.transform_fileid_to_rotation_adjust.get(self.fileID,
+				self.meta.prefab_transform_fileid_to_rotation_adjust.get(self.fileID, Quaternion()))
 			var rottrack = anim.add_track(Animation.TYPE_ROTATION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(rottrack, nodepath)
@@ -2342,20 +2370,24 @@ class UnityAnimationClip:
 						godot_euler_mode = EULER_ORDER_XYZ
 				# This is more complicated than this...
 				# The keys need to be baked out and sampled using this mode.
-				anim.rotation_track_insert_key(rottrack, ts, Basis.from_euler(value, godot_euler_mode))
+				anim.rotation_track_insert_key(rottrack, ts, Basis(rotation_adjust) * Basis.from_euler(value, godot_euler_mode))
 
 		for track in keys["m_RotationCurves"]:
 			var path: String = track.get("path", "")
 			var classID: int = 4
-			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
+			var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+			var nodepath = NodePath(str(tmparr[0]))
+			var fileID: int = tmparr[1]
+			var rotation_adjust: Quaternion = self.meta.transform_fileid_to_rotation_adjust.get(self.fileID,
+				self.meta.prefab_transform_fileid_to_rotation_adjust.get(self.fileID, Quaternion()))
 			var rottrack = anim.add_track(Animation.TYPE_ROTATION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(rottrack, nodepath)
 			anim.track_set_interpolation_type(rottrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 			while not key_iter.is_eof:
-				var prev_slope: Quaternion = key_iter.prev_slope
-				var next_slope: Quaternion = key_iter.next_slope
+				var prev_slope: Quaternion = rotation_adjust * key_iter.prev_slope
+				var next_slope: Quaternion = rotation_adjust * key_iter.next_slope
 				key_iter.is_constant = (
 					is_inf(prev_slope.x)
 					|| is_inf(next_slope.x)
@@ -2366,14 +2398,16 @@ class UnityAnimationClip:
 					|| is_inf(prev_slope.w)
 					|| is_inf(next_slope.w)
 				)
-				var value: Quaternion = key_iter.next()
+				var value: Quaternion = rotation_adjust * key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, value)
 
 		for track in keys["m_ScaleCurves"]:
 			var path: String = track.get("path", "")
 			var classID: int = 4
-			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
+			var tmparr: Array = resolve_gameobject_component_path(animator, path, classID)
+			var nodepath = NodePath(str(tmparr[0]))
+			var fileID: int = tmparr[1]
 			var scaletrack = anim.add_track(Animation.TYPE_SCALE_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(scaletrack, nodepath)
@@ -3108,18 +3142,33 @@ shader_type spatial;
 class UnityGameObject:
 	extends UnityObject
 
-	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> Array:  # prefab_fileID,prefab_name,go_fileID,node
-		if child_transform.type == "PrefabInstance":
-			# PrefabInstance child of stripped Transform part of another PrefabInstance
-			var prefab_instance: UnityPrefabInstance = child_transform
-			return prefab_instance.instantiate_prefab_node(state, new_parent)
-		elif child_transform.is_prefab_reference:
-			# PrefabInstance child of ordinary Transform
+	func recurse_to_child_transform(state: RefCounted, parent_transform_fileID: int, child_transform: UnityObject, new_parent: Node3D) -> Array:  # prefab_fileID,prefab_name,go_fileID,node
+		var prefab_instance: UnityObject = child_transform
+		if child_transform.type != "PrefabInstance" and child_transform.is_prefab_reference:
+			# PrefabInstance = prefab_instance.instantiate_prefab_node(state, parent_transform_fileID, new_parent)
 			if not child_transform.is_stripped:
-				log_debug("Expected a stripped transform for prefab root as child of transform")
-			var prefab_instance: UnityPrefabInstance = meta.lookup(child_transform.prefab_instance)
-			return prefab_instance.instantiate_prefab_node(state, new_parent)
+				log_warn("Expected a stripped transform for prefab root as child of transform")
+			prefab_instance = meta.lookup(child_transform.prefab_instance)
+			if prefab_instance == null:
+				log_fail("Unable to find prefab_instance", "", child_transform.prefab_instance)
+		if child_transform.type == "PrefabInstance" or child_transform.is_prefab_reference:
+			var target_prefab_meta = meta.lookup_meta(prefab_instance.source_prefab)
+			# PrefabInstance child of stripped Transform part of another PrefabInstance
+			var child_rotation_adjust: Quaternion = meta.transform_fileid_to_child_rotation_adjust.get(parent_transform_fileID,
+					meta.prefab_transform_fileid_to_child_rotation_adjust.get(parent_transform_fileID, Quaternion()))
+			if not child_rotation_adjust.is_equal_approx(Quaternion.IDENTITY):
+				meta.transform_fileid_to_rotation_adjust[target_prefab_meta.prefab_main_transform_id] = child_rotation_adjust
+				meta.transform_fileid_to_position_adjust[target_prefab_meta.prefab_main_transform_id] = child_rotation_adjust
+			var prefab_data = prefab_instance.instantiate_prefab_node(state, new_parent)
+			if prefab_data.length > 0 and prefab_data[0] != null:
+				state.add_prefab_to_parent_transform(parent_transform_fileID, prefab_data[0])
+			return prefab_data
 		else:
+			var child_rotation_adjust: Quaternion = meta.transform_fileid_to_child_rotation_adjust.get(parent_transform_fileID,
+					meta.prefab_transform_fileid_to_child_rotation_adjust.get(parent_transform_fileID, Quaternion()))
+			if not child_rotation_adjust.is_equal_approx(Quaternion.IDENTITY):
+				meta.transform_fileid_to_rotation_adjust[child_transform.fileID] = child_rotation_adjust
+				meta.transform_fileid_to_position_adjust[child_transform.fileID] = child_rotation_adjust
 			if child_transform.is_stripped:
 				log_fail(
 					(
@@ -3212,11 +3261,10 @@ class UnityGameObject:
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			var prefab_data: Array = recurse_to_child_transform(state, child_transform, ret)
+			var prefab_data: Array = recurse_to_child_transform(state, transform.fileID, child_transform, ret)
 			if len(prefab_data) == 4:
 				name_map[prefab_data[1]] = prefab_data[2]
 				prefab_name_map[prefab_data[1]] = prefab_data[2]
-				state.add_prefab_to_parent_transform(transform.fileID, prefab_data[0])
 			elif len(prefab_data) == 1:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
@@ -3290,11 +3338,10 @@ class UnityGameObject:
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
-			var prefab_data: Array = recurse_to_child_transform(state, child_transform, ret)
+			var prefab_data: Array = recurse_to_child_transform(state, transform.fileID, child_transform, ret)
 			if len(prefab_data) == 4:
 				name_map[prefab_data[1]] = prefab_data[2]
 				prefab_name_map[prefab_data[1]] = prefab_data[2]
-				state.add_prefab_to_parent_transform(transform.fileID, prefab_data[0])
 			elif len(prefab_data) == 1:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
@@ -3928,13 +3975,11 @@ class UnityPrefabInstance:
 				if child_transform.gameObject != null:
 					log_debug("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
-				var prefab_data: Array = recurse_to_child_transform(state, child_transform, attachment)
+				var prefab_data: Array = recurse_to_child_transform(state, transform_asset.fileID, child_transform, attachment)
 				if child_transform.gameObject != null:
 					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				if len(prefab_data) == 4:
 					name_map[prefab_data[1]] = prefab_data[2]
-					if gameobject_asset != null:
-						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_data[0])
 			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
 
 			state.body = orig_state_body

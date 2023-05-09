@@ -77,6 +77,13 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var transform_fileid_to_prefab_ids: Dictionary = {}  # {400000: PackedInt64Array(1, 2, 3)}
 @export var gameobject_fileid_to_rename: Dictionary = {}  # {400000: "CoolObject"}
 
+@export var transform_fileid_to_position_adjust: Dictionary = {} # int -> Quaternion
+@export var transform_fileid_to_rotation_adjust: Dictionary = {} # int -> Quaternion
+@export var transform_fileid_to_child_rotation_adjust: Dictionary = {} # int -> Quaternion
+var prefab_transform_fileid_to_position_adjust: Dictionary = {} # int -> Quaternion
+var prefab_transform_fileid_to_rotation_adjust: Dictionary = {} # int -> Quaternion
+var prefab_transform_fileid_to_child_rotation_adjust: Dictionary = {} # int -> Quaternion
+
 @export var dependency_guids: Dictionary = {}
 @export var prefab_dependency_guids: Dictionary = {}
 @export var meta_dependency_guids: Dictionary = {}
@@ -343,6 +350,30 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 	for target_fileid in target_prefab_meta.prefab_fileid_to_utype:
 		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = (
 			target_prefab_meta.prefab_fileid_to_utype.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.transform_fileid_to_position_adjust:
+		self.prefab_transform_fileid_to_position_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.transform_fileid_to_position_adjust.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_position_adjust:
+		self.prefab_transform_fileid_to_position_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.prefab_transform_fileid_to_position_adjust.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.transform_fileid_to_rotation_adjust:
+		self.prefab_transform_fileid_to_rotation_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.transform_fileid_to_rotation_adjust.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_rotation_adjust:
+		self.prefab_transform_fileid_to_rotation_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.prefab_transform_fileid_to_rotation_adjust.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.transform_fileid_to_child_rotation_adjust:
+		self.prefab_transform_fileid_to_child_rotation_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.transform_fileid_to_child_rotation_adjust.get(target_fileid)
+		)
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_child_rotation_adjust:
+		self.prefab_transform_fileid_to_child_rotation_adjust[int(target_fileid) ^ int(prefab_fileid)] = (
+			target_prefab_meta.prefab_transform_fileid_to_child_rotation_adjust.get(target_fileid)
 		)
 	for target_type in target_prefab_meta.type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
