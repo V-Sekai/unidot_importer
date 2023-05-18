@@ -565,7 +565,7 @@ class BaseModelHandler:
 		cfile.set_value_compare(
 			"params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0)
 		)
-		cfile.set_value_compare("params", "nodes/apply_root_scale", false)
+		cfile.set_value_compare("params", "nodes/apply_root_scale", true)
 		cfile.set_value_compare("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO
 

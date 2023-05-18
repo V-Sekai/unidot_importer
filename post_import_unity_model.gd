@@ -130,10 +130,11 @@ class ParseState:
 		if obj_gltf_type == "nodes" and p_obj_name == "Skeleton3D" and bone_map != null:
 			obj_name = "GeneralSkeleton"
 		if obj_gltf_type == "bone_name" and bone_map != null:
-			metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name))
-			var bone_mapped = bone_map.get_skeleton_bone_name(p_obj_name)
-			if bone_mapped != "":
-				obj_name = bone_mapped
+			if bone_map.profile.find_bone(p_obj_name) != -1:
+				metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name))
+				var bone_mapped = bone_map.get_skeleton_bone_name(p_obj_name)
+				if bone_mapped != "":
+					obj_name = bone_mapped
 		return self.godot_sanitized_to_orig_remap.get(obj_gltf_type, {}).get(obj_name, obj_name)
 
 	func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary) -> Dictionary:
@@ -723,11 +724,13 @@ class ParseState:
 						skin = metaobj.get_godot_resource(external_objects_by_id.get(-fileId))
 				else:
 					if mesh != null:
-						adjust_mesh_scale(mesh)
+						mesh = adjust_mesh_scale(mesh)
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
 						if FileAccess.file_exists(respath):
 							mesh.take_over_path(respath)
+						print("Before saving mesh " + str(respath))
 						ResourceSaver.save(mesh, respath)
+						print("After saving mesh " + str(respath))
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
@@ -754,18 +757,20 @@ class ParseState:
 			var transform = skin.get_bind_pose(i)
 			skin.set_bind_pose(i, Transform3D(transform.basis, transform.origin * scale_correction_factor))
 
-	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false):
+	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false) -> ArrayMesh:
 		if scale_correction_factor == 1.0:
-			return
+			return mesh
 		# MESH and SKIN data divide, to compensate for object position multiplying.
 		var surf_count: int = mesh.get_surface_count()
+		if surf_count == 0:
+			return mesh
 		var surf_data_by_mesh = [].duplicate()
 		for surf_idx in range(surf_count):
 			var prim: int = mesh.surface_get_primitive_type(surf_idx)
 			var fmt_compress_flags: int = mesh.surface_get_format(surf_idx)
 			var arr: Array = mesh.surface_get_arrays(surf_idx)
 			var name: String = mesh.surface_get_name(surf_idx)
-			var bsarr: Array = mesh.surface_get_blend_shape_arrays(surf_idx)
+			var bsarr: Array[Array] = mesh.surface_get_blend_shape_arrays(surf_idx)
 			var lods: Dictionary = {}  # mesh.surface_get_lods(surf_idx) # get_lods(mesh, surf_idx)
 			var mat: Material = mesh.surface_get_material(surf_idx)
 			#metaobj.log_debug(0, "About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
@@ -805,22 +810,39 @@ class ParseState:
 					"mat": mat
 				}
 			)
-		mesh.clear_surfaces()
+
+		var bsnames: PackedStringArray = PackedStringArray().duplicate()
+		for i in range(mesh.get_blend_shape_count()):
+			bsnames.append(mesh.get_blend_shape_name(i))
+		#mesh.clear_surfaces()
+		#mesh.clear_blend_shapes()
+		var new_mesh: ArrayMesh = ArrayMesh.new()
+		new_mesh.resource_path = mesh.resource_path
+		mesh.resource_path = ""
+		new_mesh.resource_name = mesh.resource_name
+		new_mesh.blend_shape_mode = mesh.blend_shape_mode
+		new_mesh.custom_aabb = mesh.custom_aabb
+		new_mesh.lightmap_size_hint = mesh.lightmap_size_hint
+		mesh = new_mesh
+		for bs in bsnames:
+			mesh.add_blend_shape(bs)
+
 		for surf_idx in range(surf_count):
 			var prim: int = surf_data_by_mesh[surf_idx].get("prim")
 			var arr: Array = surf_data_by_mesh[surf_idx].get("arr")
-			var bsarr: Array = surf_data_by_mesh[surf_idx].get("bsarr")
+			var bsarr: Array[Array] = surf_data_by_mesh[surf_idx].get("bsarr")
 			var lods: Dictionary = surf_data_by_mesh[surf_idx].get("lods")
 			var fmt_compress_flags: int = surf_data_by_mesh[surf_idx].get("fmt_compress_flags")
 			var name: String = surf_data_by_mesh[surf_idx].get("name")
 			var mat: Material = surf_data_by_mesh[surf_idx].get("mat")
-			#metaobj.log_debug(0, "Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
+			# metaobj.log_debug(0, "Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
 			mesh.add_surface_from_arrays(prim, arr, bsarr, lods, fmt_compress_flags)
 			mesh.surface_set_name(surf_idx, name)
 			mesh.surface_set_material(surf_idx, mat)
-			#metaobj.log_debug(0, "Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
+			# metaobj.log_debug(0, "Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
 		if not is_shadow and mesh.shadow_mesh != mesh and mesh.shadow_mesh != null:
-			adjust_mesh_scale(mesh.shadow_mesh, true)
+			mesh.shadow_mesh = adjust_mesh_scale(mesh.shadow_mesh, true)
+		return mesh
 
 	func adjust_animation_scale(anim: Animation):
 		if scale_correction_factor == 1.0:
