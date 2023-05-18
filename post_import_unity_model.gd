@@ -939,20 +939,19 @@ func _post_import(p_scene: Node) -> Object:
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 	ps.external_objects_by_type_name = external_objects
 
-	var skinned_name_to_node = ps.build_skinned_name_to_node_map(ps.scene, {}.duplicate())
-	var skinned_parents: Variant = metaobj.internal_data.get("skinned_parents", null)
-	var skinned_parent_to_node = {}.duplicate()
+	var skinned_name_to_node: Dictionary = ps.build_skinned_name_to_node_map(ps.scene, {}.duplicate())
+	var skinned_parents: Dictionary = metaobj.internal_data.get("skinned_parents", {})
+	var skinned_parent_to_node: Dictionary = {}.duplicate()
 	metaobj.log_debug(0, "Now skinning " + str(skinned_name_to_node) + " from parents " + str(skinned_parents))
-	if typeof(skinned_parents) == TYPE_DICTIONARY:
-		for par in skinned_parents:
-			var node_list = []
-			for skinned_name in skinned_parents[par]:
-				if skinned_name_to_node.has(skinned_name):
-					metaobj.log_debug(0, "Do skinned " + str(skinned_name) + " to " + str(skinned_name_to_node[skinned_name]))
-					node_list.append(skinned_name_to_node[skinned_name])
-				else:
-					metaobj.log_debug(0, "Missing skinned " + str(skinned_name) + " parent " + str(par))
-			skinned_parent_to_node[par] = node_list
+	for par in skinned_parents:
+		var node_list = []
+		for skinned_name in skinned_parents[par]:
+			if skinned_name_to_node.has(skinned_name):
+				metaobj.log_debug(0, "Do skinned " + str(skinned_name) + " to " + str(skinned_name_to_node[skinned_name]))
+				node_list.append(skinned_name_to_node[skinned_name])
+			else:
+				metaobj.log_debug(0, "Missing skinned " + str(skinned_name) + " parent " + str(par))
+		skinned_parent_to_node[par] = node_list
 	ps.skinned_parent_to_node = skinned_parent_to_node
 
 	ps.default_obj_mesh_name = "default"
@@ -1073,7 +1072,7 @@ func _post_import(p_scene: Node) -> Object:
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
 
 	var new_toplevel: Node3D = null
-	if not ps.preserve_hierarchy:
+	if not ps.preserve_hierarchy and skinned_parents.get("", {}).is_empty():
 		new_toplevel = ps.fold_root_transforms_into_only_child(ps.toplevel_node)
 	if new_toplevel != null:
 		metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
