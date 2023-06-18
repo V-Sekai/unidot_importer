@@ -167,19 +167,7 @@ class ParseState:
 		return get_materials_path_base(material_name, source_file_path.get_base_dir())
 
 	func sanitize_filename(sanitized_name: String) -> String:
-		return (
-			sanitized_name
-			. replace("/", "")
-			. replace(":", "")
-			. replace(".", "")
-			. replace("@", "")
-			. replace('"', "")
-			. replace("<", "")
-			. replace(">", "")
-			. replace("*", "")
-			. replace("|", "")
-			. replace("?", "")
-		)
+		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
 
 	func fold_root_transforms_into_only_child(root_node: Node3D) -> Node3D:
 		var is_foldable: bool = root_node.get_child_count() == 1
@@ -209,9 +197,7 @@ class ParseState:
 				return null
 		return null
 
-	func register_component(
-		node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int = 0, p_bone_idx: int = -1
-	):
+	func register_component(node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int = 0, p_bone_idx: int = -1):
 		#???
 		#if node == toplevel_node:
 		#	return # GameObject nodes always point to the toplevel node.
@@ -263,9 +249,7 @@ class ParseState:
 		#metaobj.log_debug(0, "fileid_go:" + str(fileId_go) + '/ ' + str(all_name_map[fileId_go]))
 		return fileId_go
 
-	func register_resource(
-		p_resource: Resource, p_name: String, p_type: String, fileId_object: int, p_aux_resource: Variant = null
-	):
+	func register_resource(p_resource: Resource, p_name: String, p_type: String, fileId_object: int, p_aux_resource: Variant = null):
 		# Using : Variant for argument 5 to workaround the following GDScript bug:
 		# SCRIPT ERROR: Invalid type in function 'register_resource' in base 'RefCounted (ParseState)'.
 		# The Object-derived class of argument 5 (null instance) is not a subclass of the expected argument class. (Resource)
@@ -275,39 +259,13 @@ class ParseState:
 		if p_type == "AnimationClip":
 			gltf_type = "animations"
 		metaobj.insert_resource(fileId_object, p_resource)
-		metaobj.log_debug(0,
-			(
-				"Register "
-				+ str(metaobj.guid)
-				+ ":"
-				+ str(fileId_object)
-				+ ": "
-				+ str(p_type)
-				+ " '"
-				+ str(p_name)
-				+ "' "
-				+ str(p_resource)
-			)
-		)
+		metaobj.log_debug(0, "Register " + str(metaobj.guid) + ":" + str(fileId_object) + ": " + str(p_type) + " '" + str(p_name) + "' " + str(p_resource))
 		if p_aux_resource != null:
 			metaobj.insert_resource(-fileId_object, p_aux_resource)  # Used for skin object.
-			metaobj.log_debug(0,
-				(
-					"Register aux "
-					+ str(metaobj.guid)
-					+ ":"
-					+ str(-fileId_object)
-					+ ": '"
-					+ str(p_name)
-					+ "' "
-					+ str(p_aux_resource)
-				)
-			)
+			metaobj.log_debug(0, "Register aux " + str(metaobj.guid) + ":" + str(-fileId_object) + ": '" + str(p_name) + "' " + str(p_aux_resource))
 		return fileId_object
 
-	func iterate_skeleton(
-		node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary
-	):
+	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
 		if scale_correction_factor != 1.0:
@@ -352,9 +310,7 @@ class ParseState:
 					for child_child_bone in child.get_parentless_bones():
 						var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 						p_path.push_back(orig_child_name)
-						var new_id = self.iterate_skeleton(
-							child, p_path, child_child_bone, new_attachments_by_bone_name
-						)
+						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name)
 						pop_back(p_path)
 						if new_id != 0:
 							self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -540,16 +496,7 @@ class ParseState:
 					continue
 				saved_materials_by_name[mat_name] = null
 				var fileId = get_obj_id("Material", PackedStringArray(), mat_name)
-				metaobj.log_debug(0,
-					(
-						"Materials "
-						+ str(importMaterials)
-						+ " legacy "
-						+ str(extractLegacyMaterials)
-						+ " fileId "
-						+ str(fileId)
-					)
-				)
+				metaobj.log_debug(0, "Materials " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
 				if not importMaterials:
 					mat = default_material
 				elif not extractLegacyMaterials and fileId == 0 and not use_new_names:
@@ -559,23 +506,10 @@ class ParseState:
 					if external_objects_by_id.has(fileId):
 						new_mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 					elif external_objects_by_type_name.get("Material", {}).has(mat_name):
-						new_mat = metaobj.get_godot_resource(
-							external_objects_by_type_name.get("Material").get(mat_name)
-						)
+						new_mat = metaobj.get_godot_resource(external_objects_by_type_name.get("Material").get(mat_name))
 					if new_mat != null:
 						mat = new_mat
-						metaobj.log_debug(0,
-							(
-								"External material object "
-								+ str(fileId)
-								+ "/"
-								+ str(mat_name)
-								+ " "
-								+ str(new_mat.resource_name)
-								+ "@"
-								+ str(new_mat.resource_path)
-							)
-						)
+						metaobj.log_debug(0, "External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
 					elif extractLegacyMaterials:
 						var legacy_material_name: String = godot_mat_name
 						if legacy_material_name_setting == 0:
@@ -602,11 +536,7 @@ class ParseState:
 							if mat == null and materialSearch >= 2:
 								# and material in the whole project with this name!!
 								for pathname in asset_database.path_to_meta:
-									if (
-										pathname.get_file() == legacy_material_name + ".material"
-										or pathname.get_file() == godot_mat_name + ".mat.tres"
-										or pathname.get_file() == godot_mat_name + ".mat.res"
-									):
+									if pathname.get_file() == legacy_material_name + ".material" or pathname.get_file() == godot_mat_name + ".mat.tres" or pathname.get_file() == godot_mat_name + ".mat.res":
 										legacy_material_name = pathname
 										mat = load(pathname)
 										break
@@ -615,68 +545,20 @@ class ParseState:
 							mat = default_material
 					else:
 						var respath: String = get_resource_path(godot_mat_name, ".material")
-						metaobj.log_debug(0,
-							(
-								"Before save "
-								+ str(mat_name)
-								+ " "
-								+ str(mat.resource_name)
-								+ "@"
-								+ str(respath)
-								+ " from "
-								+ str(mat.resource_path)
-							)
-						)
+						metaobj.log_debug(0, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
 						if mat.albedo_texture != null:
-							metaobj.log_debug(0,
-								(
-									"    albedo = "
-									+ str(mat.albedo_texture.resource_name)
-									+ " / "
-									+ str(mat.albedo_texture.resource_path)
-								)
-							)
+							metaobj.log_debug(0, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
-							metaobj.log_debug(0,
-								(
-									"    normal = "
-									+ str(mat.normal_texture.resource_name)
-									+ " / "
-									+ str(mat.normal_texture.resource_path)
-								)
-							)
+							metaobj.log_debug(0, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
 						if FileAccess.file_exists(respath):
 							mat.take_over_path(respath)
 						ResourceSaver.save(mat, respath)
 						mat = load(respath)
-						metaobj.log_debug(0,
-							(
-								"Save-and-load material object "
-								+ str(mat_name)
-								+ " "
-								+ str(mat.resource_name)
-								+ "@"
-								+ str(mat.resource_path)
-							)
-						)
+						metaobj.log_debug(0, "Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
 						if mat.albedo_texture != null:
-							metaobj.log_debug(0,
-								(
-									"    albedo = "
-									+ str(mat.albedo_texture.resource_name)
-									+ " / "
-									+ str(mat.albedo_texture.resource_path)
-								)
-							)
+							metaobj.log_debug(0, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
-							metaobj.log_debug(0,
-								(
-									"    normal = "
-									+ str(mat.normal_texture.resource_name)
-									+ " / "
-									+ str(mat.normal_texture.resource_path)
-								)
-							)
+							metaobj.log_debug(0, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
 					metaobj.log_debug(0, "Mat for " + str(i) + " is " + str(mat))
 					if mat != null:
 						mesh.surface_set_material(i, mat)
@@ -751,9 +633,7 @@ class ParseState:
 				i = 0
 				var ilen: int = len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])
 				while i < ilen:
-					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = (
-						bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
-					)
+					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = (bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor)
 					i += 1
 				bsarr[bsidx].resize(3)
 				#metaobj.log_debug(0, "format flags: " + str(fmt_compress_flags & 7) + "|" + str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0])))
@@ -766,17 +646,7 @@ class ParseState:
 				#		bsarr[bsidx][i].resize(0)
 				#		bsarr[bsidx][i].resize(len(arr[i]))
 
-			surf_data_by_mesh.push_back(
-				{
-					"prim": prim,
-					"arr": arr,
-					"bsarr": bsarr,
-					"lods": lods,
-					"fmt_compress_flags": fmt_compress_flags,
-					"name": name,
-					"mat": mat
-				}
-			)
+			surf_data_by_mesh.push_back({"prim": prim, "arr": arr, "bsarr": bsarr, "lods": lods, "fmt_compress_flags": fmt_compress_flags, "name": name, "mat": mat})
 		mesh.clear_surfaces()
 		for surf_idx in range(surf_count):
 			var prim: int = surf_data_by_mesh[surf_idx].get("prim")
@@ -822,9 +692,7 @@ class ParseState:
 						var ilen: int = len(track_values)
 						if path.ends_with(":transform"):
 							while i < ilen:
-								track_values[i] = Transform3D(
-									track_values[i].basis, track_values[i].origin * scale_correction_factor
-								)
+								track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
 								i += 1
 						else:
 							while i < ilen:
@@ -842,9 +710,7 @@ class ParseState:
 						if path.ends_with(":transform"):
 							while i < ilen:
 								if ((i % 5) % 2) != 1:
-									track_values[i] = Transform3D(
-										track_values[i].basis, track_values[i].origin * scale_correction_factor
-									)
+									track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
 								i += 1
 						else:
 							while i < ilen:
@@ -913,19 +779,12 @@ func _post_import(p_scene: Node) -> Object:
 	if metaobj.internal_data.has("scale_correction_factor"):
 		var scf: float = metaobj.internal_data.get("scale_correction_factor")
 		if godot_root_scale != scf:
-			metaobj.log_warn(0,
-				"Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf)
-			)
+			metaobj.log_warn(0, "Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf))
 	ps.scale_correction_factor = godot_root_scale  # metaobj.internal_data.get("scale_correction_factor", 1.0)
 	if apply_root_scale:
 		ps.scale_correction_factor = 1.0
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
-	ps.importMaterials = (
-		metaobj.importer.keys.get("materials", {}).get(
-			"materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)
-		)
-		== 1
-	)
+	ps.importMaterials = (metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1)
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
 	ps.preserve_hierarchy = false
@@ -1056,13 +915,9 @@ func _post_import(p_scene: Node) -> Object:
 		# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
 		var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
 		if up_axis.to_upper() == "X_UP":
-			ps.toplevel_node.transform = (
-				Transform3D(Basis.from_euler(Vector3(0, 0, PI / -2.0)), Vector3.ZERO) * ps.toplevel_node.transform
-			)
+			ps.toplevel_node.transform = (Transform3D(Basis.from_euler(Vector3(0, 0, PI / -2.0)), Vector3.ZERO) * ps.toplevel_node.transform)
 		if up_axis.to_upper() == "Z_UP":
-			ps.toplevel_node.transform = (
-				Transform3D(Basis.from_euler(Vector3(PI / -2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform
-			)
+			ps.toplevel_node.transform = (Transform3D(Basis.from_euler(Vector3(PI / -2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform)
 
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
@@ -1186,12 +1041,7 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 			accN[lane] = ((accN[lane] << 31) | unsrs(accN[lane], 33)) * PRIME64_1
 			offset += 8
 			lane = (lane + 1) & 3
-		acc = (
-			((accN[0] << 1) | unsrs(accN[0], 63))
-			+ ((accN[1] << 7) | unsrs(accN[1], 57))
-			+ ((accN[2] << 12) | unsrs(accN[2], 52))
-			+ ((accN[3] << 18) | unsrs(accN[3], 46))
-		)
+		acc = (((accN[0] << 1) | unsrs(accN[0], 63)) + ((accN[1] << 7) | unsrs(accN[1], 57)) + ((accN[2] << 12) | unsrs(accN[2], 52)) + ((accN[3] << 18) | unsrs(accN[3], 46)))
 		for i in range(4):
 			accN[i] = accN[i] * PRIME64_2
 			accN[i] = ((accN[i] << 31) | unsrs(accN[i], 33)) * PRIME64_1
@@ -1228,10 +1078,5 @@ static func xxHash64(buffer: PackedByteArray, seed = 0) -> int:
 
 func test_xxHash64():
 	assert(xxHash64("a".to_ascii_buffer()) == 3104179880475896308)
-	assert(
-		(
-			xxHash64("asdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfgh".to_ascii_buffer())
-			== -3292477735350538661
-		)
-	)
+	assert(xxHash64("asdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfghasdfgh".to_ascii_buffer()) == -3292477735350538661)
 	assert(xxHash64(PackedByteArray().duplicate()) == -1205034819632174695)

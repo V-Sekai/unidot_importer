@@ -18,9 +18,7 @@ const ASSET_TYPE_UNKNOWN = 8
 
 const SHOULD_CONVERT_TO_GLB: bool = false
 
-var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw(
-	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg=="
-)
+var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg==")
 
 
 func write_sentinel_png(sentinel_filename: String):
@@ -31,7 +29,6 @@ func write_sentinel_png(sentinel_filename: String):
 
 
 class AssetHandler:
-
 	var editor_interface: EditorInterface = null
 
 	func _init():
@@ -43,7 +40,7 @@ class AssetHandler:
 		extends ConfigFile
 		var modified: bool = false
 		var pkgasset: RefCounted = null
-		
+
 		func _init(pkgasset: RefCounted):
 			self.pkgasset = pkgasset
 
@@ -55,23 +52,10 @@ class AssetHandler:
 			else:
 				var existing_val = self.get_value(section, key)
 				if typeof(existing_val) != typeof(value):
-					pkgasset.log_debug(
-						(
-							"Modified type section:"
-							+ section
-							+ " key:"
-							+ key
-							+ " : "
-							+ str(existing_val)
-							+ " => "
-							+ str(value)
-						)
-					)
+					pkgasset.log_debug("Modified type section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value))
 					ret = true
 				elif existing_val != value:
-					pkgasset.log_debug(
-						"Modified section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value)
-					)
+					pkgasset.log_debug("Modified section:" + section + " key:" + key + " : " + str(existing_val) + " => " + str(value))
 					ret = true
 			modified = modified or ret
 			if ret:
@@ -131,14 +115,7 @@ class AssetHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		return ASSET_TYPE_UNKNOWN
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return ""
 
 
@@ -146,25 +123,14 @@ class DefaultHandler:
 	extends AssetHandler
 	pass
 
+
 class ImageHandler:
 	extends AssetHandler
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var user_path_base = OS.get_user_data_dir()
-		var is_tiff: bool = (
-			(data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00)
-			or (data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A)
-		)
-		var is_png: bool = (
-			(data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47) or is_tiff
-		)
+		var is_tiff: bool = (data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00) or (data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A)
+		var is_png: bool = (data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47) or is_tiff
 		var full_output_path: String = pkgasset.pathname
 		if not is_png and path.get_extension().to_lower() == "png":
 			pkgasset.log_debug("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
@@ -172,18 +138,7 @@ class ImageHandler:
 		elif is_png and path.get_extension().to_lower() != "png":
 			pkgasset.log_debug("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".png"
-		pkgasset.log_debug(
-			(
-				"PREPROCESS_IMAGE "
-				+ str(is_tiff)
-				+ "/"
-				+ str(is_png)
-				+ " path "
-				+ str(path)
-				+ " to "
-				+ str(full_output_path)
-			)
-		)
+		pkgasset.log_debug("PREPROCESS_IMAGE " + str(is_tiff) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
 		var temp_output_path: String = tmpdir + "/" + full_output_path
 		if is_tiff:
 			var outfile: FileAccess = FileAccess.open(temp_output_path.get_basename() + ".tif", FileAccess.WRITE_READ)
@@ -192,9 +147,7 @@ class ImageHandler:
 			outfile = null
 			var stdout: Array = [].duplicate()
 			var d = DirAccess.open("res://")
-			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join(
-				"convert.exe"
-			)
+			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
 			if addon_path.begins_with("res://"):
 				if not d.file_exists(addon_path):
 					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
@@ -267,9 +220,7 @@ class ImageHandler:
 		cfile.set_value_compare("params", "roughness/mode", 1)
 		cfile.set_value_compare("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
 		cfile.set_value_compare("params", "process/size_limit", max_texture_size)
-		cfile.set_value_compare(
-			"params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0
-		)
+		cfile.set_value_compare("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
 
@@ -285,14 +236,7 @@ class AudioHandler:
 		ret.resource_type = resource_type
 		return ret
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return ""
 
 	func write_godot_import(pkgasset: Object, force_keep: bool) -> bool:
@@ -344,18 +288,9 @@ class YamlHandler:
 		pkgasset.log_debug("Done with " + temp_path + "/" + pkgasset.guid)
 		return preprocess_asset(pkgasset, tmpdir, thread_subdir, pkgasset.pathname, buf)
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		if pkgasset.parsed_asset == null:
-			pkgasset.log_fail(
-				"Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML"
-			)
+			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return ""
 		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
@@ -387,9 +322,7 @@ class YamlHandler:
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		if pkgasset.parsed_asset == null:
-			pkgasset.log_fail(
-				"Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML"
-			)
+			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return false
 		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
@@ -405,16 +338,7 @@ class YamlHandler:
 		for extra_asset_fileid in extra_resources:
 			var file_ext: String = extra_resources.get(extra_asset_fileid)
 			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
-			pkgasset.log_debug(
-				(
-					"Creating "
-					+ str(extra_asset_fileid)
-					+ " is "
-					+ str(created_res)
-					+ " at "
-					+ str(pkgasset.pathname.get_basename() + file_ext)
-				)
-			)
+			pkgasset.log_debug("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(pkgasset.pathname.get_basename() + file_ext))
 			if created_res != null:
 				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext  # ".skin.tres"
 				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
@@ -452,14 +376,7 @@ class YamlHandler:
 class SceneHandler:
 	extends YamlHandler
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var new_pathname: String = pkgasset.pathname.get_basename() + (".prefab.tscn" if is_prefab else ".tscn")
 		return new_pathname
@@ -480,7 +397,7 @@ class SceneHandler:
 				pkgasset.log_debug(ResourceUID.id_to_text(new_uid))
 				ResourceUID.add_id(new_uid, "res://" + pkgasset.pathname)
 				var fa: FileAccess = FileAccess.open("res://" + pkgasset.pathname, FileAccess.WRITE)
-				fa.store_string("[gd_scene format=3 uid=\"" + ResourceUID.id_to_text(new_uid) + "\"]\n\n[node name=\"Node3D\" type=\"Node3D\"]\n")
+				fa.store_string('[gd_scene format=3 uid="' + ResourceUID.id_to_text(new_uid) + '"]\n\n[node name="Node3D" type="Node3D"]\n')
 				fa.flush()
 				fa = null
 				EditorPlugin.new().get_editor_interface().get_resource_filesystem().update_file("res://" + pkgasset.pathname)
@@ -493,14 +410,7 @@ class SceneHandler:
 class BaseModelHandler:
 	extends AssetHandler
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var already_rewrote_file = false
 		if str(pkgasset.pathname).to_lower().ends_with(".dae"):
 			var buffer_as_ascii: String = data_buf.get_string_from_utf8()  # may contain unicode
@@ -512,9 +422,7 @@ class BaseModelHandler:
 					var up_axis = buffer_as_ascii.substr(pos + 1, next_pos - pos - 1).strip_edges()
 					pkgasset.parsed_meta.internal_data["up_axis"] = up_axis
 					if up_axis != "Y_UP":
-						var outfile: FileAccess = FileAccess.open(
-							tmpdir + "/" + pkgasset.pathname, FileAccess.WRITE_READ
-						)
+						var outfile: FileAccess = FileAccess.open(tmpdir + "/" + pkgasset.pathname, FileAccess.WRITE_READ)
 						outfile.store_buffer(data_buf.slice(0, pos + 1))
 						outfile.store_string("Y_UP")
 						outfile.store_buffer(data_buf.slice(next_pos))
@@ -552,7 +460,7 @@ class BaseModelHandler:
 		# I think these are the default settings now?? The option no longer exists???
 		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value_compare("params", "animation/fps", 30) # FIXME: This may fail in files whose FBX framerate is not 30
+		cfile.set_value_compare("params", "animation/fps", 30)  # FIXME: This may fail in files whose FBX framerate is not 30
 		# Due to passing bake30 to FBX2glTF, it may ignore the original framerate...
 		# Unity seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
@@ -562,9 +470,7 @@ class BaseModelHandler:
 		cfile.set_value_compare("params", "meshes/light_baking", importer.meshes_light_baking)
 		cfile.set_value_compare("params", "meshes/ensure_tangents", importer.ensure_tangents)
 		cfile.set_value_compare("params", "meshes/create_shadow_meshes", false)  # Until visual artifacts with shadow meshes get fixed
-		cfile.set_value_compare(
-			"params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0)
-		)
+		cfile.set_value_compare("params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value_compare("params", "nodes/apply_root_scale", false)
 		cfile.set_value_compare("params", "nodes/root_name", "Root Scene")
 		# addCollider???? TODO
@@ -583,16 +489,16 @@ class BaseModelHandler:
 			if not subresources["animations"].has(take_name):
 				subresources["animations"][take_name] = {}
 			var take: Dictionary = subresources["animations"][take_name]
-			var idx: int = take.get("slices/amount", 0) + 1 # 1-indexed
+			var idx: int = take.get("slices/amount", 0) + 1  # 1-indexed
 			var prefix: String = "slice_" + str(idx)
 			take[prefix + "/name"] = anim_clip.get("name")
 			take[prefix + "/start_frame"] = anim_clip.get("start_frame")
 			take[prefix + "/end_frame"] = anim_clip.get("end_frame")
 			take[prefix + "/loop_mode"] = anim_clip.get("loop_mode")
-			take[prefix + "/save_to_file/enabled"] = false # TODO
-			take[prefix + "/save_to_file/keep_custom_tracks"] = true # TODO
-			take[prefix + "/save_to_file/path"] = "" # TODO
-			take["slices/amount"] = idx # 1-indexed
+			take[prefix + "/save_to_file/enabled"] = false  # TODO
+			take[prefix + "/save_to_file/keep_custom_tracks"] = true  # TODO
+			take[prefix + "/save_to_file/path"] = ""  # TODO
+			take["slices/amount"] = idx  # 1-indexed
 			# animation/import
 
 		if not subresources.has("nodes"):
@@ -767,13 +673,9 @@ class FbxHandler:
 				strlist.append(buffer_as_ascii.substr(nextpos + 1, lastquote - nextpos - 1))
 		return strlist
 
-	func _preprocess_fbx_scale_binary(
-		pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float
-	) -> PackedByteArray:
+	func _preprocess_fbx_scale_binary(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
-			pkgasset.log_debug(
-				"TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early."
-			)
+			pkgasset.log_debug("TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early.")
 			#return fbx_file_binary
 		var filename: String = pkgasset.pathname
 		var needle_buf: PackedByteArray = "\u0001PS\u000F...UnitScaleFactorS".to_ascii_buffer()
@@ -814,20 +716,7 @@ class FbxHandler:
 			pkgasset.log_fail(filename + ": not a float or double " + str(number_type))
 			return fbx_file_binary
 		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-		pkgasset.log_debug(
-			(
-				filename
-				+ ": Binary FBX: UnitScaleFactor="
-				+ str(scale)
-				+ " -> "
-				+ str(new_scale)
-				+ " (Scale Factor = "
-				+ str(globalScale)
-				+ "; Convert Units = "
-				+ ("on" if useFileScale else "OFF")
-				+ ")"
-			)
-		)
+		pkgasset.log_debug(filename + ": Binary FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) + " (Scale Factor = " + str(globalScale) + "; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
 		if is_double:
 			spb.seek(spb.get_position() - 8)
 			pkgasset.log_debug("double - Seeked to " + str(spb.get_position()))
@@ -838,17 +727,9 @@ class FbxHandler:
 			spb.put_float(new_scale)
 		return spb.data_array
 
-	func _preprocess_fbx_scale_ascii(
-		pkgasset: Object,
-		fbx_file_binary: PackedByteArray,
-		buffer_as_ascii: String,
-		useFileScale: bool,
-		globalScale: float
-	) -> PackedByteArray:
+	func _preprocess_fbx_scale_ascii(pkgasset: Object, fbx_file_binary: PackedByteArray, buffer_as_ascii: String, useFileScale: bool, globalScale: float) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
-			pkgasset.log_debug(
-				"TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early."
-			)
+			pkgasset.log_debug("TODO: when we switch to the Godot FBX implementation, we can short-circuit this code and return early.")
 			#return fbx_file_binary
 		var filename: String = pkgasset.pathname
 		var output_buf: PackedByteArray = fbx_file_binary
@@ -870,20 +751,7 @@ class FbxHandler:
 		pkgasset.log_debug("Scale is " + str(scale))
 		pkgasset.log_debug("Also Scale is " + str(scale + 0.0))
 		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
-		pkgasset.log_debug(
-			(
-				filename
-				+ ": ASCII FBX: UnitScaleFactor="
-				+ str(scale)
-				+ " -> "
-				+ str(new_scale)
-				+ " (Scale Factor = "
-				+ str(globalScale)
-				+ "; Convert Units = "
-				+ ("on" if useFileScale else "OFF")
-				+ ")"
-			)
-		)
+		pkgasset.log_debug(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) + " (Scale Factor = " + str(globalScale) + "; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
 		output_buf = fbx_file_binary.slice(0, comma_pos + 1)
 		output_buf += str(new_scale).to_ascii_buffer()
 		output_buf += fbx_file_binary.slice(newline_pos, len(fbx_file_binary))
@@ -918,7 +786,7 @@ class FbxHandler:
 			filename = filename.substr(len(basedir) + 1)
 		return path_beginning + filename
 
-	func _scan_project_for_textures(filename_dict: Dictionary, efsdir: EditorFileSystemDirectory=null):
+	func _scan_project_for_textures(filename_dict: Dictionary, efsdir: EditorFileSystemDirectory = null):
 		if efsdir == null:
 			var fs: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 			efsdir = fs.get_filesystem()
@@ -952,9 +820,7 @@ class FbxHandler:
 		else:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8()  # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
-			fbx_file = _preprocess_fbx_scale_ascii(
-				pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1)
-			)
+			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var outfile: FileAccess = FileAccess.open(temp_input_path, FileAccess.WRITE_READ)
 		outfile.store_buffer(fbx_file)
 		outfile.flush()
@@ -998,9 +864,7 @@ class FbxHandler:
 			for texname in tex_not_exists.keys():
 				if not tex_not_exists[texname].is_empty():
 					unique_texture_map[texname] = _make_relative_to(tex_not_exists[texname], output_dirname)
-		var output_path: String = self.preprocess_asset(
-			pkgasset, tmpdir, thread_subdir, input_path, fbx_file, unique_texture_map
-		)
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, unique_texture_map)
 		#if len(output_path) == 0:
 		#	output_path = path
 		d.remove(temp_input_path)  # delete "input.fbx"
@@ -1017,9 +881,7 @@ class FbxHandler:
 		for child in cur_children:
 			if gltf_nodes[child].get("skin", -1) >= 0 and gltf_nodes[child].get("mesh", -1) >= 0:
 				this_children.append(gltf_nodes[child]["name"])
-			out_map = assign_skinned_parents(
-				out_map, gltf_nodes, gltf_nodes[child]["name"], gltf_nodes[child].get("children", [])
-			)
+			out_map = assign_skinned_parents(out_map, gltf_nodes, gltf_nodes[child]["name"], gltf_nodes[child].get("children", []))
 		if not this_children.is_empty():
 			out_map[parent_node_name] = this_children
 		return out_map
@@ -1038,9 +900,7 @@ class FbxHandler:
 	func gltf_to_transform3d(node: Dictionary) -> Transform3D:
 		if node.has("matrix"):
 			var mat: Array = node.get("matrix", [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
-			var basis: Basis = Basis(
-				Vector3(mat[0], mat[1], mat[2]), Vector3(mat[4], mat[5], mat[6]), Vector3(mat[8], mat[9], mat[10])
-			)
+			var basis: Basis = Basis(Vector3(mat[0], mat[1], mat[2]), Vector3(mat[4], mat[5], mat[6]), Vector3(mat[8], mat[9], mat[10]))
 			var origin = Vector3(mat[12], mat[13], mat[14])
 			return Transform3D(basis, origin)
 		var tra: Array = node.get("translation", [0, 0, 0])
@@ -1094,14 +954,7 @@ class FbxHandler:
 				if channel.get("target", {}).get("node", -1) > node_idx:
 					channel["target"]["node"] -= 1
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		pkgasset.log_debug("I am an FBX " + str(path))
 		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
@@ -1115,9 +968,7 @@ class FbxHandler:
 			output_path = full_output_path.get_basename() + ".glb"
 		var stdout: Array = [].duplicate()
 		var d = DirAccess.open("res://")
-		var addon_path: String = editor_interface.get_editor_settings().get_setting(
-			"filesystem/import/fbx/fbx2gltf_path"
-		)
+		var addon_path: String = editor_interface.get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
 		if not addon_path.get_file().is_empty():
 			if not d.file_exists(addon_path):
 				pkgasset.log_warn("Not converting fbx to glb because FBX2glTF.exe is not present.")
@@ -1127,23 +978,7 @@ class FbxHandler:
 		# --long-indices auto
 		# --compute-normals never|broken|missing|always
 		# --blend-shape-normals --blend-shape-tangents
-		var ret = OS.execute(
-			addon_path,
-			[
-				"--pbr-metallic-roughness",
-				"--fbx-temp-dir",
-				tmpdir + "/" + thread_subdir,
-				"--normalize-weights",
-				"1",
-				"--anim-framerate",
-				"bake30",
-				"-i",
-				tmpdir + "/" + path,
-				"-o",
-				tmp_gltf_output_path
-			],
-			stdout
-		)
+		var ret = OS.execute(addon_path, ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", "bake30", "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path], stdout)
 		pkgasset.log_debug("FBX2glTF returned " + str(ret) + " -----")
 		pkgasset.log_debug(str(stdout))
 		pkgasset.log_debug("-----------------------------")
@@ -1168,12 +1003,7 @@ class FbxHandler:
 			var root_node_idx: int = default_scene["nodes"][0]
 			var root_node: Dictionary = json["nodes"][root_node_idx]
 			if root_node.get("name", "") == "RootNode" and not root_node.get("children", []).is_empty():
-				if (
-					root_node.get("mesh", -1) == -1
-					and root_node.get("skin", -1) == -1
-					and root_node.get("extensions", []).is_empty()
-					and root_node.get("camera", -1) == -1
-				):
+				if root_node.get("mesh", -1) == -1 and root_node.get("skin", -1) == -1 and root_node.get("extensions", []).is_empty() and root_node.get("camera", -1) == -1:
 					var root_xform = gltf_to_transform3d(root_node)
 					if root_xform.is_equal_approx(Transform3D.IDENTITY):
 						var root_children: Array = root_node["children"]
@@ -1225,14 +1055,14 @@ class FbxHandler:
 		if importer.keys.get("animationType", 2) == 3 and json.has("nodes") and importer.keys.get("avatarSetup", 0) >= 1:
 			var bone_map_dict: Dictionary
 			if importer.keys.get("avatarSetup", 0) == 2:
-				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null,0,"",0])
+				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
 				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
 				if src_ava_meta == null:
 					pkgasset.log_fail("Unable to lookup meta dependency", "lastHumanDescriptionAvatarSource", src_ava)
 				else:
 					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
 					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
-				
+
 			elif len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
 				var skel: Skeleton3D = Skeleton3D.new()
 				for node in json["nodes"]:
@@ -1306,10 +1136,7 @@ class FbxHandler:
 				json["skins"] = []
 			json["skins"].append({"joints": human_skin_nodes})
 
-
-		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents(
-			{}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"]
-		)
+		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
 		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers", "animations"]:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
@@ -1343,7 +1170,6 @@ class FbxHandler:
 						pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"]["bone_name"][sanitized_bone_try_name] = orig_name
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
-
 
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
 		var full_output: PackedByteArray = out_json_data
@@ -1387,14 +1213,7 @@ class FbxHandler:
 class DisabledHandler:
 	extends AssetHandler
 
-	func preprocess_asset(
-		pkgasset: Object,
-		tmpdir: String,
-		thread_subdir: String,
-		path: String,
-		data_buf: PackedByteArray,
-		unique_texture_map: Dictionary = {}
-	) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return "asset_not_supported"
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
@@ -1422,6 +1241,7 @@ func get_class_name(obj):
 	if obj is AssetHandler:
 		return "AssetHandler"
 	return obj.get_class()
+
 
 var image_handler: ImageHandler = ImageHandler.new()
 

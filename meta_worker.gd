@@ -8,7 +8,6 @@ const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
 class ThreadWork:
 	var asset: unitypackagefile.UnityPackageAsset
 	var extra: Object
-	
 
 
 # asset: unitypackagefile.UnityPackageAsset object

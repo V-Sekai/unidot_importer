@@ -44,16 +44,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if asset.is_non_stripped_prefab_reference:
 				continue  # We don't want these.
 			if asset.is_stripped:
-				asset.log_fail(
-					(
-						"Stripped object "
-						+ asset.type
-						+ " would be added to arr "
-						+ str(asset.meta.guid)
-						+ "/"
-						+ str(asset.fileID)
-					)
-				)
+				asset.log_fail("Stripped object " + asset.type + " would be added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 			if is_prefab:
 				if asset.type == "PrefabInstance":
 					var target_prefab_meta = asset.meta.lookup_meta(asset.source_prefab)
@@ -113,9 +104,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	pkgasset.parsed_meta.calculate_prefab_nodepaths_recursive()
 
-	var node_state: Object = scene_node_state_class.new(
-		pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents
-	)
+	var node_state: Object = scene_node_state_class.new(pkgasset.parsed_meta.get_database(), pkgasset.parsed_meta, scene_contents)
 
 	var ps: RefCounted = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
@@ -221,7 +210,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				scene_contents.remove_child(occlusion)
 				occlusion = null
 			else:
-				occlusion.occluder = SphereOccluder3D.new() # wrong type
+				occlusion.occluder = SphereOccluder3D.new()  # wrong type
 		elif asset.type != "GameObject":
 			# alternatively, is it a subclass of UnityComponent?
 			parent = asset.gameObject
@@ -255,16 +244,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
 
 	node_state.env = env
-	node_state.set_main_name_map(
-		node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map
-	)
+	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
 
 	arr.sort_custom(customComparison)
 	for asset in arr:
 		if asset.is_stripped:
-			asset.log_fail(
-				"Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID)
-			)
+			asset.log_fail("Stripped object " + asset.type + " added to arr " + str(asset.meta.guid) + "/" + str(asset.fileID))
 		var skel: RefCounted = null
 		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
 		if asset.transform != null:
@@ -299,14 +284,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		if str(asset.type) == "SkinnedMeshRenderer":
 			var ret: Node = asset.create_skinned_mesh(node_state)
 			if ret != null:
-				asset.log_debug(
-					(
-						"Finally added SkinnedMeshRenderer "
-						+ str(asset.uniq_key)
-						+ " into Skeleton"
-						+ str(scene_contents.get_path_to(ret))
-					)
-				)
+				asset.log_debug("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
 
 	for animtree in node_state.prefab_state.animator_node_to_object:
 		var obj: RefCounted = node_state.prefab_state.animator_node_to_object[animtree]  # UnityAnimator
@@ -340,9 +318,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					env.background_energy = camera.environment.background_energy
 				for mono in node_state.get_components(camera_obj, "MonoBehaviour"):
 					if str(mono.monoscript[2]) == "948f4100a11a5c24981795d21301da5c":  # PostProcessingLayer
-						pp_layer_bits = mono.keys.get(
-							"volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0)
-						)
+						pp_layer_bits = mono.keys.get("volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0))
 						break
 				break
 		for mono in node_state.find_objects_of_type("MonoBehaviour"):

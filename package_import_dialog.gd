@@ -68,19 +68,19 @@ var pkg: Object = null  # Type unitypackagefile, set in _selected_package
 func _resource_reimported(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
 		return
-	asset_database.log_debug([null,0,"",0], "RESOURCES REIMPORTED ============")
+	asset_database.log_debug([null, 0, "", 0], "RESOURCES REIMPORTED ============")
 	for res in resources:
-		asset_database.log_debug([null,0,"",0], res)
-	asset_database.log_debug([null,0,"",0], "=================================")
+		asset_database.log_debug([null, 0, "", 0], res)
+	asset_database.log_debug([null, 0, "", 0], "=================================")
 
 
 func _resource_reloaded(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
 		return
-	asset_database.log_debug([null,0,"",0], "Got a RESOURCES RELOADED ============")
+	asset_database.log_debug([null, 0, "", 0], "Got a RESOURCES RELOADED ============")
 	for res in resources:
-		asset_database.log_debug([null,0,"",0], res)
-	asset_database.log_debug([null,0,"",0], "=====================================")
+		asset_database.log_debug([null, 0, "", 0], res)
+	asset_database.log_debug([null, 0, "", 0], "=====================================")
 
 
 func _init():
@@ -111,6 +111,7 @@ func _cell_selected() -> void:
 		var new_checked: bool = !ti.is_checked(0)
 		_check_recursively(ti, new_checked)
 
+
 func _meta_completed(tw: Object):
 	var pkgasset = tw.asset
 	var ti = tw.extra as TreeItem
@@ -118,12 +119,8 @@ func _meta_completed(tw: Object):
 	if pkgasset.parsed_meta != null:
 		importer_type = pkgasset.parsed_meta.importer_type.replace("Importer", "")
 	ti.set_text(1, importer_type.replace("Default", "Scene"))
-	
-	var color = Color(
-		0.7 * fmod(importer_type.unicode_at(0)*173.0/255.0, 1.0),
-		0.7 * fmod(importer_type.unicode_at(1)*139.0/255.0, 1.0),
-		0.7 * fmod(importer_type.unicode_at(2)*157.0/255.0, 1.0),
-		1.0)
+
+	var color = Color(0.7 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
 
 
@@ -144,7 +141,7 @@ func _selected_package(p_path: String) -> void:
 	#pkg.parse_all_meta(asset_database)
 	meta_worker.asset_database = asset_database
 	asset_database.in_package_import = true
-	asset_database.log_debug([null,0,"",0], "Asset database object returned " + str(asset_database))
+	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 
 	var tree_names = ["Assets"]
@@ -165,7 +162,7 @@ func _selected_package(p_path: String) -> void:
 			tree_items.pop_back()
 			i -= 1
 		if i < 0:
-			asset_database.log_fail([null,0,"",0], "Path outside of Assets: " + path)
+			asset_database.log_fail([null, 0, "", 0], "Path outside of Assets: " + path)
 			break
 		while i < len(path_names) - 1:
 			i += 1
@@ -264,7 +261,7 @@ func _show_importer_common() -> void:
 		# was get_icon in 3.2
 		var progress_icon = base_control.get_theme_icon("Progress" + str(i + 1), "EditorIcons")
 		if progress_icon == null:
-			asset_database.log_fail([null,0,"",0], "Failed to get icon!")
+			asset_database.log_fail([null, 0, "", 0], "Failed to get icon!")
 		else:
 			spinner_icon.set_frame_texture(i, progress_icon)
 	spinner_icon.frames = 8
@@ -323,7 +320,7 @@ func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 
 func do_import_step():
 	if _currently_preprocessing_assets != 0:
-		asset_database.log_fail([null,0,"",0], "Import step called during preprocess")
+		asset_database.log_fail([null, 0, "", 0], "Import step called during preprocess")
 		return
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 
@@ -336,10 +333,10 @@ func do_import_step():
 		on_import_fully_completed()
 		return
 
-	asset_database.log_debug([null,0,"",0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
+	asset_database.log_debug([null, 0, "", 0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_waiting_write) == 0:
 		asset_database.save()
-		asset_database.log_debug([null,0,"",0], "Trying to scan more things: state=" + str(tree_dialog_state))
+		asset_database.log_debug([null, 0, "", 0], "Trying to scan more things: state=" + str(tree_dialog_state))
 		if tree_dialog_state == STATE_PREPROCESSING:
 			tree_dialog_state = STATE_TEXTURES
 			for tw in asset_textures:
@@ -379,7 +376,7 @@ func do_import_step():
 			var tmpprint: Array = [].duplicate()
 			for meta in toposorted:
 				tmpprint.push_back(meta.path)
-			asset_database.log_debug([null,0,"",0], "Toposorted prefab dependencies: " + str(tmpprint))
+			asset_database.log_debug([null, 0, "", 0], "Toposorted prefab dependencies: " + str(tmpprint))
 			for meta in toposorted:
 				if guid_to_tw.has(meta.guid):
 					asset_work_waiting_write.append(guid_to_tw.get(meta.guid))
@@ -397,7 +394,7 @@ func do_import_step():
 		elif tree_dialog_state == STATE_DONE_IMPORT:
 			break
 		else:
-			asset_database.log_fail([null,0,"",0], "Invalid state: " + str(tree_dialog_state))
+			asset_database.log_fail([null, 0, "", 0], "Invalid state: " + str(tree_dialog_state))
 			break
 
 	var start_ts = Time.get_ticks_msec()
@@ -410,7 +407,7 @@ func do_import_step():
 				break
 
 	var asset_work = asset_work_waiting_scan
-	asset_database.log_debug([null,0,"",0], "Queueing work: state=" + str(tree_dialog_state))
+	asset_database.log_debug([null, 0, "", 0], "Queueing work: state=" + str(tree_dialog_state))
 	var files_to_reimport: PackedStringArray = PackedStringArray().duplicate()
 	#for tw in asset_work:
 	#	editor_filesystem.update_file(tw.asset.pathname)
@@ -441,13 +438,13 @@ func do_import_step():
 			tw.asset.parsed_meta.insert_resource_path(tw.asset.parsed_meta.main_object_id, tw.asset.pathname)
 		on_file_completed_godot_import(tw, loaded_asset != null)
 
-	asset_database.log_debug([null,0,"",0], "Done Queueing work: state=" + str(tree_dialog_state))
+	asset_database.log_debug([null, 0, "", 0], "Done Queueing work: state=" + str(tree_dialog_state))
 
 
 func _done_preprocessing_assets():
-	asset_database.log_debug([null,0,"",0], "Finished all preprocessing!!")
+	asset_database.log_debug([null, 0, "", 0], "Finished all preprocessing!!")
 	self.import_worker.stop_all_threads_and_wait()
-	asset_database.log_debug([null,0,"",0], "Joined.")
+	asset_database.log_debug([null, 0, "", 0], "Joined.")
 	asset_database.save()
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 
@@ -460,22 +457,10 @@ func start_godot_import(tw: Object):
 	#metafil = null
 	var asset_modified: bool = asset_adapter.write_godot_asset(tw.asset, tmpdir + "/" + tw.output_path)
 	var import_modified: bool = asset_adapter.write_godot_import(tw.asset)
-	tw.asset.log_debug(
-		(
-			"Wrote file "
-			+ tw.output_path
-			+ " asset modified:"
-			+ str(asset_modified)
-			+ " import modified:"
-			+ str(import_modified)
-		)
-	)
+	tw.asset.log_debug("Wrote file " + tw.output_path + " asset modified:" + str(asset_modified) + " import modified:" + str(import_modified))
 
 	var force_reimport: bool = false
-	if (
-		asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL
-		and force_reimport_models_checkbox.button_pressed
-	):
+	if asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL and force_reimport_models_checkbox.button_pressed:
 		force_reimport = true
 	if asset_database.get_meta_at_path(tw.asset.parsed_meta.path) == null:
 		tw.asset.log_warn("Asset " + str(tw.asset.parsed_meta.guid) + " alraedy existed in project but not in database.")
@@ -514,16 +499,7 @@ func _asset_processing_finished(tw: Object):
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
 	tw.asset.log_debug("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
-	tw.asset.log_debug(
-		(
-			"Finished processing meta path "
-			+ str(tw.asset.parsed_meta.path)
-			+ " guid "
-			+ str(tw.asset.parsed_meta.guid)
-			+ " opath "
-			+ str(tw.output_path)
-		)
-	)
+	tw.asset.log_debug("Finished processing meta path " + str(tw.asset.parsed_meta.path) + " guid " + str(tw.asset.parsed_meta.guid) + " opath " + str(tw.output_path))
 	if not asset_adapter.uses_godot_importer(tw.asset):
 		asset_database.insert_meta(tw.asset.parsed_meta)
 	if tw.asset.asset_tar_header != null:
@@ -559,6 +535,7 @@ func _asset_processing_finished(tw: Object):
 		else:
 			_done_preprocessing_assets()
 
+
 func _preprocess_second_pass():
 	var second_pass = _preprocessing_second_pass
 	_preprocessing_second_pass = [].duplicate()
@@ -579,7 +556,7 @@ func _preprocess_second_pass():
 
 
 func _asset_processing_started(tw: Object):
-	asset_database.log_debug([null,0,tw.asset.guid,0], "Started processing asset is " + str(tw.asset.pathname) + "/" + str(tw.asset.guid))
+	asset_database.log_debug([null, 0, tw.asset.guid, 0], "Started processing asset is " + str(tw.asset.pathname) + "/" + str(tw.asset.guid))
 	var ti: TreeItem = tw.extra
 	if tw.asset.parsed_meta != null:
 		tw.asset.parsed_meta.clear_logs()
@@ -593,7 +570,7 @@ func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Arr
 		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:
-				asset_database.log_fail([null,0,"",0], "Path " + str(path) + " has null asset!")
+				asset_database.log_fail([null, 0, "", 0], "Path " + str(path) + " has null asset!")
 			else:
 				ret += 1
 				if not asset.parsed_meta.meta_dependency_guids.is_empty():
@@ -625,53 +602,53 @@ var preprocess_timer: Timer = null
 
 func _do_import_step_tick():
 	if import_step_reentrant:
-		asset_database.log_debug([null,0,"",0], "Still working...")
+		asset_database.log_debug([null, 0, "", 0], "Still working...")
 		# We can safely ignore reentrant ticks.
 		# it is healthy and normal to get ticked while displaying the progress bar for reimport_files.
 		# asset_database.log_debug([null,0,"",0], "reentrant TICK ======= " + str(import_step_tick_count))
 		return
 	import_step_reentrant = true
 	import_step_tick_count += 1
-	asset_database.log_debug([null,0,"",0], "TICK ======= " + str(import_step_tick_count))
+	asset_database.log_debug([null, 0, "", 0], "TICK ======= " + str(import_step_tick_count))
 	OS.close_midi_inputs()  # Place to set C++ breakpoint to check for reentrancy
 	do_import_step()
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		import_step_timer.timeout.disconnect(self._do_import_step_tick)
 		import_step_timer.queue_free()
 		import_step_timer = null
-		asset_database.log_debug([null,0,"",0], "All done")
+		asset_database.log_debug([null, 0, "", 0], "All done")
 		asset_database.in_package_import = false
 		asset_database.save()
-		asset_database.log_debug([null,0,"",0], "Saved database")
+		asset_database.log_debug([null, 0, "", 0], "Saved database")
 		var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 		editor_filesystem.scan()
 		call_deferred(&"on_import_fully_completed")
-	asset_database.log_debug([null,0,"",0], "TICK RETURN ======= " + str(import_step_tick_count))
+	asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
 	import_step_reentrant = false
 
 
 func _scan_sources_complete(useless: Variant = null):
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
-	asset_database.log_debug([null,0,"",0], "Reimporting sentinel to wait for import step to finish.")
+	asset_database.log_debug([null, 0, "", 0], "Reimporting sentinel to wait for import step to finish.")
 	editor_filesystem.reimport_files(PackedStringArray(["res://_sentinel_file.png"]))
-	asset_database.log_debug([null,0,"",0], "Got signal that scan_sources is complete.")
+	asset_database.log_debug([null, 0, "", 0], "Got signal that scan_sources is complete.")
 	for tw in asset_all:
 		if not asset_adapter.uses_godot_importer(tw.asset):
 			continue
 		var filename: String = tw.asset.pathname
-		asset_database.log_debug([null,0,tw.asset.guid,0], filename + ":" + str(editor_filesystem.get_file_type(filename)))
+		asset_database.log_debug([null, 0, tw.asset.guid, 0], filename + ":" + str(editor_filesystem.get_file_type(filename)))
 		var fs_dir: EditorFileSystemDirectory = editor_filesystem.get_filesystem_path(filename.get_base_dir())
 		if fs_dir == null:
-			asset_database.log_fail([null,0,tw.asset.guid,0], "BADBAD: Filesystem directory null for " + str(filename))
+			asset_database.log_fail([null, 0, tw.asset.guid, 0], "BADBAD: Filesystem directory null for " + str(filename))
 		else:
-			asset_database.log_debug([null,0,tw.asset.guid,0], "Dir " + str(filename.get_base_dir()) + " file count: " + str(fs_dir.get_file_count()))
+			asset_database.log_debug([null, 0, tw.asset.guid, 0], "Dir " + str(filename.get_base_dir()) + " file count: " + str(fs_dir.get_file_count()))
 			var idx = fs_dir.find_file_index(filename.get_file())
 			if idx == -1:
-				asset_database.log_fail([null,0,tw.asset.guid,0], "BADBAD: Index is -1 for " + str(filename))
+				asset_database.log_fail([null, 0, tw.asset.guid, 0], "BADBAD: Index is -1 for " + str(filename))
 			else:
-				asset_database.log_debug([null,0,tw.asset.guid,0], "Import " + str(fs_dir.get_file(idx)) + " valid: " + str(fs_dir.get_file_import_is_valid(idx)))
-	asset_database.log_debug([null,0,"",0], "Ready to start import step ticks")
+				asset_database.log_debug([null, 0, tw.asset.guid, 0], "Import " + str(fs_dir.get_file(idx)) + " valid: " + str(fs_dir.get_file_import_is_valid(idx)))
+	asset_database.log_debug([null, 0, "", 0], "Ready to start import step ticks")
 
 	import_step_tick_count = 0
 	import_step_reentrant = false
@@ -688,7 +665,7 @@ func _scan_sources_complete(useless: Variant = null):
 func _preprocess_wait_tick():
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
-		asset_database.log_debug([null,0,"",0], "Done preprocessing. ready to trigger scan_sources!")
+		asset_database.log_debug([null, 0, "", 0], "Done preprocessing. ready to trigger scan_sources!")
 		preprocess_timer.timeout.disconnect(self._preprocess_wait_tick)
 		preprocess_timer.queue_free()
 		preprocess_timer = null
@@ -696,7 +673,7 @@ func _preprocess_wait_tick():
 		cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
 		cfile.set_value("remap", "importer", "keep")
 		cfile.save("res://_sentinel_file.png.import")
-		asset_database.log_debug([null,0,"",0], "Writing res://_sentinel_file.png")
+		asset_database.log_debug([null, 0, "", 0], "Writing res://_sentinel_file.png")
 		asset_adapter.write_sentinel_png("res://_sentinel_file.png")
 		editor_filesystem.sources_changed.connect(self._scan_sources_complete, CONNECT_DEFERRED)
 		editor_filesystem.scan_sources()
@@ -711,13 +688,13 @@ func _asset_tree_window_confirmed():
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
 
-	asset_database.log_debug([null,0,"",0], "Finishing meta.")
+	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
-	asset_database.log_debug([null,0,"",0], "Joined meta.")
+	asset_database.log_debug([null, 0, "", 0], "Joined meta.")
 	tree_dialog_state = STATE_PREPROCESSING
 	import_worker.asset_database = asset_database
 	asset_database.in_package_import = true
-	asset_database.log_debug([null,0,"",0], "Asset database object returned " + str(asset_database))
+	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 	import_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	var visited = {}.duplicate()
 	var second_pass: Array = [].duplicate()
@@ -735,6 +712,6 @@ func _asset_tree_window_confirmed():
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(preprocess_timer, true)
 	preprocess_timer.timeout.connect(self._preprocess_wait_tick)
 	if num_processing == 0:
-		asset_database.log_debug([null,0,"",0], "No assets to process!")
+		asset_database.log_debug([null, 0, "", 0], "No assets to process!")
 		_done_preprocessing_assets()
 		return

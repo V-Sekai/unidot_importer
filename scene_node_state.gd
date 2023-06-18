@@ -67,16 +67,7 @@ func add_component_map_to_prefabbed_gameobject(gameobject_fileid: int, component
 
 func add_prefab_rename(gameobject_fileid: int, new_name: String):
 	if meta.gameobject_fileid_to_rename.has(gameobject_fileid):
-		meta.log_debug(gameobject_fileid,
-			(
-				"Duplicate rename for fileid "
-				+ str(gameobject_fileid)
-				+ " : was "
-				+ str(meta.gameobject_fileid_to_rename[gameobject_fileid])
-				+ " is now "
-				+ new_name
-			)
-		)
+		meta.log_debug(gameobject_fileid, "Duplicate rename for fileid " + str(gameobject_fileid) + " : was " + str(meta.gameobject_fileid_to_rename[gameobject_fileid]) + " is now " + new_name)
 	meta.gameobject_fileid_to_rename[gameobject_fileid] = new_name
 
 
@@ -254,21 +245,12 @@ class Skelley:
 				return pref
 			return null
 
-	func add_nodes_recursively(
-		skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary, bone_transform: RefCounted
-	):
+	func add_nodes_recursively(skel_parents: Dictionary, child_transforms_by_stripped_id: Dictionary, bone_transform: RefCounted):
 		if bone_transform.is_stripped:
 			#bone_transform.log_warn("Not able to add skeleton nodes from a stripped transform!")
 			for child in child_transforms_by_stripped_id.get(bone_transform.fileID, []):
 				if not intermediates.has(child.uniq_key):
-					child.log_debug(
-						(
-							"Adding child bone "
-							+ str(child)
-							+ " into intermediates during recursive search from "
-							+ str(bone_transform)
-						)
-					)
+					child.log_debug("Adding child bone " + str(child) + " into intermediates during recursive search from " + str(bone_transform))
 					intermediates[child.uniq_key] = child
 					intermediate_bones.push_back(child)
 					# TODO: We might also want to exclude prefab instances here.
@@ -282,14 +264,7 @@ class Skelley:
 			# child.log_debug("Try child " + str(child_ref))
 			# not skel_parents.has(child.uniq_key):
 			if not intermediates.has(child.uniq_key):
-				child.log_debug(
-					(
-						"Adding child bone "
-						+ str(child)
-						+ " into intermediates during recursive search from "
-						+ str(bone_transform)
-					)
-				)
+				child.log_debug("Adding child bone " + str(child) + " into intermediates during recursive search from " + str(bone_transform))
 				intermediates[child.uniq_key] = child
 				intermediate_bones.push_back(child)
 				# TODO: We might also want to exclude prefab instances here.
@@ -334,15 +309,7 @@ class Skelley:
 			if bone.is_stripped_or_prefab_instance():
 				# We do not know yet the full extent of the skeleton
 				uniq_key_to_bone[bone.uniq_key] = -1
-				bone.log_debug(
-					(
-						"bone "
-						+ bone.uniq_key
-						+ " is stripped "
-						+ str(bone.is_stripped)
-						+ " or prefab instance. CLEARING SKELETON"
-					)
-				)
+				bone.log_debug("bone " + bone.uniq_key + " is stripped " + str(bone.is_stripped) + " or prefab instance. CLEARING SKELETON")
 				contains_stripped_bones = true
 				godot_skeleton = null
 				continue
@@ -367,16 +334,7 @@ class Skelley:
 					if not dedupe_dict.has(bone_name):
 						dedupe_dict[bone_name] = bone
 				godot_skeleton.add_bone(bone_name)
-				bone.log_debug(
-					(
-						"Adding bone "
-						+ bone_name
-						+ " idx "
-						+ str(idx)
-						+ " new size "
-						+ str(godot_skeleton.get_bone_count())
-					)
-				)
+				bone.log_debug("Adding bone " + bone_name + " idx " + str(idx) + " new size " + str(godot_skeleton.get_bone_count()))
 				idx += 1
 			idx = 0
 			for bone in bones:
@@ -434,18 +392,7 @@ func remove_fileID_to_skeleton_bone(fileID: int):
 
 func add_fileID(child: Node, unityobj: RefCounted):
 	if owner != null:
-		unityobj.log_debug(
-			(
-				"Add fileID "
-				+ str(unityobj.fileID)
-				+ " type "
-				+ str(unityobj.utype)
-				+ " "
-				+ str(owner.name)
-				+ " to "
-				+ str(child.name)
-			)
-		)
+		unityobj.log_debug("Add fileID " + str(unityobj.fileID) + " type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
 		meta.fileid_to_nodepath[unityobj.fileID] = owner.get_path_to(child)
 	# FIXME??
 	#else:
@@ -515,17 +462,7 @@ func initialize_skelleys(assets: Array) -> Array:
 			var bone0_obj: RefCounted = asset.meta.lookup(bones[0])  # UnityTransform
 			# TODO: what about meshes with bones but without skin? Can this even happen?
 			if bone0_obj == null:
-				asset.log_warn(
-					(
-						"ERROR: Importing model "
-						+ asset.meta.guid
-						+ " at "
-						+ asset.meta.path
-						+ ": "
-						+ str(bones[0])
-						+ " is null"
-					)
-				)
+				asset.log_warn("ERROR: Importing model " + asset.meta.guid + " at " + asset.meta.path + ": " + str(bones[0]) + " is null")
 			var this_id: int = num_skels
 			var this_skelley: Skelley = null
 			if skel_ids.has(bone0_obj.uniq_key):
@@ -613,12 +550,8 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				# bone.log_warn("Skeleton parented to prefab contains root bone not rooted within prefab.")
 				continue
 			var source_obj_ref = bone.prefab_source_object
-			var target_skelley: NodePath = target_prefab_meta.fileid_to_nodepath.get(
-				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath())
-			)
-			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
-				source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], "")
-			)
+			var target_skelley: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
+			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
 			# bone.log_debug("Parented prefab root bone : " + str(bone.uniq_key) + " for " + str(target_skelley) + ":" + str(target_skel_bone))
 			if godot_skeleton_nodepath == NodePath() and target_skelley != NodePath():
 				godot_skeleton_nodepath = target_skelley
@@ -639,7 +572,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			# FINALLY! We did all this. now let's add the skins and proper bone index arrays into the skins!
 		# Add all the bones
 		if skelley.godot_skeleton == null:
-			meta.log_fail(0, "Skelley " + str(skelley) + " in prefab " + uniq_key + " could not find source godot skeleton!", "prefab", [null,-1,target_prefab_meta.guid,-1])
+			meta.log_fail(0, "Skelley " + str(skelley) + " in prefab " + uniq_key + " could not find source godot skeleton!", "prefab", [null, -1, target_prefab_meta.guid, -1])
 			continue
 		var dedupe_dict = {}.duplicate()
 		for idx in range(skelley.godot_skeleton.get_bone_count()):
@@ -666,16 +599,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 				if not dedupe_dict.has(bone_name):
 					dedupe_dict[bone_name] = bone
 			skelley.godot_skeleton.add_bone(bone_name)
-			bone.log_debug(
-				(
-					"Prefab adding bone "
-					+ bone.name
-					+ " idx "
-					+ str(new_idx)
-					+ " new size "
-					+ str(skelley.godot_skeleton.get_bone_count())
-				)
-			)
+			bone.log_debug("Prefab adding bone " + bone.name + " idx " + str(new_idx) + " new size " + str(skelley.godot_skeleton.get_bone_count()))
 			fileid_to_bone_name[bone.fileID] = skelley.godot_skeleton.get_bone_name(new_idx)
 			bone.skeleton_bone_index = new_idx
 		# Now set up the indices and parents.
@@ -688,9 +612,7 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			var parent_bone_index: int = -1
 			if bone.parent.is_prefab_reference:
 				var source_obj_ref = bone.parent.prefab_source_object
-				var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(
-					source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], "")
-				)
+				var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
 				parent_bone_index = skelley.godot_skeleton.find_bone(target_skel_bone)
 			else:
 				parent_bone_index = skelley.godot_skeleton.find_bone(fileid_to_bone_name.get(bone.parent.fileID, ""))
