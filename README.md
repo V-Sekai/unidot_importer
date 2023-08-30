@@ -13,7 +13,7 @@ Please use the latest Godot 4.0 alpha builds ( `master` branch of https://github
 - Implementation of an asset database for unity assets by GUID
 - `.unitypackage` importer and translation shim.
 - preliminary animation and animation tree porting.
-- We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF. please download the FBX2glTF exe
+- We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF. [please download the FBX2glTF exe](https://github.com/godotengine/FBX2glTF/releases) and configure FBX Import in Godot Editor Settings before using Unidot.
 
 Note that scripts and shaders will need to be ported by hand. However, it will be possible to map from the unity scripts/shaders to Godot equivalents after porting.
 
@@ -30,11 +30,9 @@ Canvas / UI is not implemented.
 
 1. This project should be imported at `addons/unidot` in the project, often as a git submodule.
 
-2. Most unity assets use .fbx files. To support FBX requires additional setup:
+2. Most unity assets use .fbx files. To support FBX requires additional setup before import:
 
-  Godot's .fbx implementation is incomplete and can corrupt normals or fail in typical cases, such as FBX files exported by Blender.
-
-  To install, one must download FBX2glTF from https://github.com/revolufire/FBX2glTF/releases/, then rename to FBX2glTF.exe and move it into this addon directory.
+  To install FBX support, one must download FBX2glTF from https://github.com/godotengine/FBX2glTF/releases and set it in the FBX2glTF.exe path in the Import category of **Editor Settings** (not Project Settings)
 
 3. To add TIFF / .tif support, install ImageMagick and copy convert.exe into this addon directory.
 
