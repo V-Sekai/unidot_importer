@@ -2,9 +2,9 @@
 
 Unidot Importer is a Unity compatibility layer and `.unitypackage` importer for Godot 4.x.
 
-## Engine patches
+## Made for Godot Engine 4
 
-Please use the latest Godot 4.0 alpha builds ( `master` branch of https://github.com/godotengine/godot ) to run this addon.
+Please use the any stable Godot 4.0, 4.1, or later ( `master` branch of https://github.com/godotengine/godot ) with FBX2glTF configured in Editor Settings to run this addon.
 
 ## Features
 
