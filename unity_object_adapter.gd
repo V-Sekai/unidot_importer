@@ -897,12 +897,14 @@ class UnityAnimatorRelated:
 	func ref_to_anim_key(motion_ref: Array) -> String:
 		return "%s:%d" % [meta.guid if typeof(motion_ref[2]) == TYPE_NIL else motion_ref[2], motion_ref[1]]
 
-	func recurse_to_motion(controller: RefCounted, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary):
+	func recurse_to_motion(controller: RefCounted, layer_index: int, motion_ref: Array, animation_guid_fileid_to_name: Dictionary, reverse_animations: bool):
 		var motion_node: AnimationRootNode = null
 		var anim_key: String = ref_to_anim_key(motion_ref)
 		if animation_guid_fileid_to_name.has(anim_key):
 			motion_node = AnimationNodeAnimation.new()
 			motion_node.animation = animation_guid_fileid_to_name[anim_key]
+			if reverse_animations:
+				motion_node.play_mode = AnimationNodeAnimation.PLAY_MODE_BACKWARD
 		else:
 			var blend_tree = meta.lookup(motion_ref)
 			log_debug("type: " + str(blend_tree.type) + " class " + str(blend_tree.get_class()) + " " + str(blend_tree.uniq_key))
@@ -910,7 +912,7 @@ class UnityAnimatorRelated:
 				log_fail("Animation not in animation_guid_fileid_to_name: " + str(anim_key))
 				motion_node = AnimationNodeAnimation.new()
 			else:
-				motion_node = blend_tree.create_animation_node(controller, layer_index, animation_guid_fileid_to_name)
+				motion_node = blend_tree.create_animation_node(controller, layer_index, animation_guid_fileid_to_name, reverse_animations)
 		return motion_node
 
 
@@ -1327,6 +1329,7 @@ class UnityAnimatorController:
 			trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO
 		else:
 			trans.advance_expression = conditions
+			trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_AUTO # All conditions use Auto now.
 		if is_muted:
 			trans.advance_mode = AnimationNodeStateMachineTransition.ADVANCE_MODE_DISABLED
 		# TODO: Solo is not implemented yet. It requires knowledge of all sibling transitions at each stage of state machine.
@@ -1454,11 +1457,14 @@ class UnityAnimatorStateMachine:
 class UnityAnimatorState:
 	extends UnityAnimatorRelated
 
-	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
-		var motion_ref: Array = keys["m_Motion"]
-		var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, motion_ref, animation_guid_fileid_to_name)
-		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
+	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary, reverse_animations: bool=false) -> AnimationRootNode:
 		var speed: float = keys.get("m_Speed", 1)
+		if speed < 0:
+			speed *= -1
+			reverse_animations = not reverse_animations
+		var motion_ref: Array = keys["m_Motion"]
+		var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, motion_ref, animation_guid_fileid_to_name, reverse_animations)
+		# TODO: Convert states with motion time, speed or other parameters into AnimationBlendTree graphs.
 		var cycle_off: float = keys.get("m_CycleOffset", 0)
 		var speed_param_active: int = keys.get("m_SpeedParameterActive", 0) and not keys.get("m_SpeedParameter", "").is_empty()
 		var time_param_active: int = keys.get("m_TimeParameterActive", 0) and not keys.get("m_TimeParameter", "").is_empty()
@@ -1576,19 +1582,23 @@ class UnityBlendTree:
 				uniq_name_dict[name] = 1
 				out_guid_fid_to_anim_name[ref_to_anim_key(motion_ref)] = name
 
-	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
+	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary, reverse_animations: bool=false) -> AnimationRootNode:
 		var minmax: Rect2 = Rect2(-1.1, -1.1, 2.2, 2.2)
 		var ret: AnimationRootNode = null
 		match keys["m_BlendType"]:
 			0:  # Simple1D
 				var bs = AnimationNodeBlendSpace1D.new()
 				for child in keys["m_Childs"]:
+					var speed: float = child.get("m_TimeScale", 1)
+					if speed < 0:
+						speed *= -1
+						reverse_animations = not reverse_animations
 					# TODO: m_TimeScale and m_CycleOffset
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
-					if child.get("m_TimeScale", 1) != 1:
+					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name, reverse_animations)
+					if speed != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
-						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", speed)
 						bt.add_node(&"Motion", motion_node, Vector2(200, 200))
 						bt.add_node(&"TimeScale", tsnode, Vector2(500, 200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
@@ -1605,12 +1615,16 @@ class UnityBlendTree:
 				# TODO: Does Godot support the different types of 2D blending?
 				var bs = AnimationNodeBlendSpace2D.new()
 				for child in keys["m_Childs"]:
+					var speed: float = child.get("m_TimeScale", 1)
+					if speed < 0:
+						speed *= -1
+						reverse_animations = not reverse_animations
 					# TODO: m_TimeScale and m_CycleOffset
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
-					if child.get("m_TimeScale", 1) != 1:
+					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name, reverse_animations)
+					if speed != 1:
 						var bt = AnimationNodeBlendTree.new()
 						var tsnode = AnimationNodeTimeScale.new()
-						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", speed)
 						bt.add_node(&"Motion", motion_node, Vector2(200, 200))
 						bt.add_node(&"TimeScale", tsnode, Vector2(500, 200))
 						bt.connect_node(&"TimeScale", 0, &"Motion")
@@ -1637,13 +1651,17 @@ class UnityBlendTree:
 
 				var i = 0
 				for child in keys["m_Childs"]:
-					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name)
+					var speed: float = child.get("m_TimeScale", 1)
+					if speed < 0:
+						speed *= -1
+						reverse_animations = not reverse_animations
+					var motion_node: AnimationRootNode = recurse_to_motion(controller, layer_index, child["m_Motion"], animation_guid_fileid_to_name, reverse_animations)
 					var motion_name = get_unique_name("Child", uniq_dict)
 					bt.add_node(motion_name, motion_node, Vector2(500, i * 200))
-					if child.get("m_TimeScale", 1) != 1:
+					if speed != 1:
 						var tsnode = AnimationNodeTimeScale.new()
 						var tsname = get_unique_name("TimeScale", uniq_dict)
-						tsnode.set_meta("scale", child.get("m_TimeScale", 1))
+						tsnode.set_meta("scale", speed)
 						bt.add_node(tsname, tsnode, Vector2(700, i * 200 - 50))
 						bt.connect_node(tsname, 0, motion_name)
 						motion_name = tsname
@@ -1698,6 +1716,7 @@ class UnityAnimationClip:
 		var animator_go: UnityGameObject = animator.gameObject
 		var path_split: PackedStringArray = unipath.split("/")
 		var current_fileID: int = animator_go.fileID
+		var animator_nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(current_fileID, animator.meta.fileid_to_nodepath.get(current_fileID, NodePath()))
 		var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
 		var extra_path: String = ""
 		for path_component in path_split:
@@ -1719,6 +1738,10 @@ class UnityAnimationClip:
 					return NodePath(unipath)
 				return NodePath(unipath + "/" + adapter.to_classname(unicomp))
 			return NodePath(unipath)
+		if str(nodepath).begins_with(str(animator_nodepath) + "/"):
+			nodepath = NodePath(str(nodepath).substr(len(str(animator_nodepath)) + 1))
+		else:
+			log_warn("NodePath " + str(nodepath) + " not within the animator path " + str(animator_nodepath), "", [null,current_fileID,"",0])
 		if not extra_path.is_empty():
 			nodepath = NodePath(str(nodepath) + extra_path)
 		var skeleton_bone: String = animator.meta.prefab_fileid_to_skeleton_bone.get(current_fileID, animator.meta.fileid_to_skeleton_bone.get(current_fileID, ""))
@@ -1787,13 +1810,14 @@ class UnityAnimationClip:
 			assert("Keyframe interpolation" == "not yet implemented")
 			return prev_key["value"]
 
-	func generate_track_nodepaths_for_node(animator: RefCounted, node_parent: Node, clip: Animation) -> Array:
+	func adapt_track_nodepaths_for_node(animator: RefCounted, node_parent: Node, clip: Animation) -> Array:
 		var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_track_names: Array = []
 		var identical: int = 0
 		for track_idx in range(clip.get_track_count()):
 			var typ: int = clip.track_get_type(track_idx)
 			var resolved_key: String = str(clip.track_get_path(track_idx))
+			var resolved_subpath: String = NodePath(resolved_key).get_concatenated_subnames()
 			match typ:
 				Animation.TYPE_BLEND_SHAPE:
 					resolved_key = "B" + resolved_key
@@ -1813,7 +1837,7 @@ class UnityAnimationClip:
 			var path: String = orig_info[0]
 			var attr: String = orig_info[1]
 			var classID: int = orig_info[2]
-			#var orig_path: String = NodePath().get_concatenated_subnames()
+			#var orig_path: String = NodePath(path).get_concatenated_subnames()
 			#var orig_pathname: String = orig_path
 			var new_path: NodePath = NodePath()
 			var new_resolved_key: String = ""
@@ -1822,12 +1846,13 @@ class UnityAnimationClip:
 					classID = 137
 					new_path = resolve_gameobject_component_path(animator, path, classID)
 					if new_path != NodePath():
-						new_path = NodePath(str(new_path) + ":" + str(NodePath().get_concatenated_subnames()))
+						new_path = NodePath(str(new_path) + ":" + str(resolved_subpath))
 					new_resolved_key = "B" + str(new_path)
 				Animation.TYPE_VALUE:
 					new_path = resolve_gameobject_component_path(animator, path, classID)
 					if new_path != NodePath():
-						new_path = NodePath(str(new_path) + ":" + str(NodePath().get_concatenated_subnames()))
+						new_path = NodePath(str(new_path) + ":" + str(resolved_subpath))
+					log_debug("Adapt TYPE_VALUE track " + str(path) + " to " + str(new_path))
 					new_resolved_key = "V" + str(new_path)
 				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
 					classID = 4
@@ -1845,7 +1870,7 @@ class UnityAnimationClip:
 		return new_track_names
 
 	func adapt_animation_clip_at_node(animator: RefCounted, node_parent: Node, clip: Animation):
-		var generated_track_nodepaths: Array = generate_track_nodepaths_for_node(animator, node_parent, clip)
+		var generated_track_nodepaths: Array = adapt_track_nodepaths_for_node(animator, node_parent, clip)
 		if generated_track_nodepaths.is_empty():  # Already adapted.
 			return
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
@@ -1865,7 +1890,7 @@ class UnityAnimationClip:
 	# The idea is if there are multiple "solutions" to adapting animation clips, this could allow storing both
 	# variants of the animation clip by hash, allowing multiple scenes to share their versions of adapted clips.
 	func get_adapted_clip_path_hash(animator: RefCounted, node_parent: Node, clip: Animation) -> int:
-		var generated_track_nodepaths: Array = generate_track_nodepaths_for_node(animator, node_parent, clip)
+		var generated_track_nodepaths: Array = adapt_track_nodepaths_for_node(animator, node_parent, clip)
 		if generated_track_nodepaths.is_empty():  # Already adapted.
 			return 0
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
@@ -1892,6 +1917,7 @@ class UnityAnimationClip:
 		# m_EditorCurves, m_EulerEditorCurves
 		# m_EulerCurves, m_FloatCurves, m_PositionCruves, m_PPtrCurves, m_RotationCurves, m_ScaleCurves
 		var resolved_to_default: Dictionary = {}
+		var max_ts: float = 0.0
 		for track in keys["m_FloatCurves"]:
 			var attr: String = track["attribute"]
 			var path: String = track.get("path", "")  # Some omit path if for the current GameObject...?
@@ -1900,8 +1926,10 @@ class UnityAnimationClip:
 			if len(track["curve"].get("m_Curve", [])) == 0:
 				log_warn("Empty curve detected " + path + ":" + attr)
 				continue
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
-			if classID == 95:
+			if classID == 95 and false: # do something different for humanoid keys
 				# Humanoid or Animator float parameters
 				pass
 			elif classID == 137 and attr.begins_with("blendShape."):
@@ -1924,20 +1952,24 @@ class UnityAnimationClip:
 					var ts: float = key_iter.timestamp
 					anim.blend_shape_track_insert_key(bstrack, ts, value / 100.0)
 			else:
-				var target_node: Node = null
-				if node_parent != null:
-					target_node = node_parent.get_node(nodepath)
-					log_debug("nodepath %s from %s %s became %s" % [str(nodepath), str(node_parent), str(node_parent.name), str(target_node)])
-					if target_node == null:
-						var gdscriptweird: Node = null
-						target_node = gdscriptweird
-				# yuk yuk. This needs to be improved but should be a good start for some properties:
-				var converted_property_keys = adapted_obj.convert_properties(target_node, {attr: 0.0}).keys()
-				if converted_property_keys.is_empty():
-					log_warn("Unknown property " + str(attr) + " for " + str(path) + " type " + str(adapted_obj.type), attr, adapted_obj)
-					continue
-				var converted_property: String = converted_property_keys[0]
-				nodepath = NodePath(str(nodepath) + ":" + converted_property)
+				if classID == 95: # animated Animator parameters / aaps. Humanoid should be done separately.
+					nodepath = NodePath(".:metadata/" + attr)
+				else:
+					var target_node: Node = null
+					if node_parent != null:
+						target_node = node_parent.get_node(nodepath)
+						log_debug("nodepath %s from %s %s became %s" % [str(nodepath), str(node_parent), str(node_parent.name), str(target_node)])
+						if target_node == null:
+							var gdscriptweird: Node = null
+							target_node = gdscriptweird
+					# yuk yuk. This needs to be improved but should be a good start for some properties:
+					var converted_property_keys = adapted_obj.convert_properties(target_node, {attr: 0.0}).keys()
+					if converted_property_keys.is_empty():
+						log_warn("Unknown property " + str(attr) + " for " + str(path) + " type " + str(adapted_obj.type), attr, adapted_obj)
+						continue
+					var converted_property: String = converted_property_keys[0]
+					nodepath = NodePath(str(nodepath) + ":" + converted_property)
+				log_debug("Generated TYPE_VALUE node path " + str(nodepath))
 				var valtrack = anim.add_track(Animation.TYPE_VALUE)
 				resolved_to_default["V" + str(nodepath)] = [path, attr, classID]
 				anim.track_set_path(valtrack, nodepath)
@@ -1959,6 +1991,8 @@ class UnityAnimationClip:
 					anim.track_insert_key(valtrack, ts, value)
 
 		for track in keys["m_PositionCurves"]:
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
@@ -1973,9 +2007,11 @@ class UnityAnimationClip:
 				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
-				anim.position_track_insert_key(postrack, ts, value)
+				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
 
 		for track in keys["m_EulerCurves"]:
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
@@ -2007,9 +2043,11 @@ class UnityAnimationClip:
 						godot_euler_mode = EULER_ORDER_XYZ
 				# This is more complicated than this...
 				# The keys need to be baked out and sampled using this mode.
-				anim.rotation_track_insert_key(rottrack, ts, Basis.from_euler(value, godot_euler_mode))
+				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis.from_euler(value * PI / 180.0, godot_euler_mode) * Basis.FLIP_X)
 
 		for track in keys["m_RotationCurves"]:
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
@@ -2024,9 +2062,11 @@ class UnityAnimationClip:
 				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z) || is_inf(prev_slope.w) || is_inf(next_slope.w))
 				var value: Quaternion = key_iter.next()
 				var ts: float = key_iter.timestamp
-				anim.rotation_track_insert_key(rottrack, ts, value)
+				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis(value) * Basis.FLIP_X)
 
 		for track in keys["m_ScaleCurves"]:
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
@@ -2044,12 +2084,17 @@ class UnityAnimationClip:
 				anim.scale_track_insert_key(scaletrack, ts, value)
 
 		for track in keys["m_PPtrCurves"]:
+			for keyframe in track["curve"]["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			log_warn("PPtr curves (material swaps) are not yet implemented")
 			# TYPE_VALUE track should mostly work for this.
 			# This is mostly only used for material overrides.
 			# Which will map to MeshInstance3D:surface_material_override/0 and so on.
 			pass
 
+		if max_ts <= 0.0:
+			max_ts = 1.0 # Animations are 1 second long by default, but can be shorter based on keyframe
+		anim.length = max_ts
 		anim.set_meta("resolved_to_default_paths", resolved_to_default)
 		if anim.resource_path == StringName():
 			var res_path = StringName()
@@ -3162,7 +3207,7 @@ class UnityPrefabInstance:
 			# FIXME: I think this fileID is wrong...
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
 			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath))
-			var uprops: Dictionary = fileID_to_keys.get(fileID)
+			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
 			if uprops.has("m_Name"):
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
@@ -3262,8 +3307,8 @@ class UnityPrefabInstance:
 		for target_nodepath in nodepath_to_keys:
 			var virtual_unity_object: UnityObject = nodepath_to_first_virtual_object.get(target_nodepath)
 			var existing_node = instanced_scene.get_node(target_nodepath)
-			var uprops: Dictionary = fileID_to_keys.get(fileID)
-			var props: Dictionary = nodepath_to_keys.get(target_nodepath)
+			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
+			var props: Dictionary = nodepath_to_keys.get(target_nodepath, {})
 			if existing_node != null:
 				log_debug("Applying mod to node " + str(existing_node) + " at path " + str(target_nodepath) + "!! Mod is " + str(props) + "/" + str(props.has("name")))
 				virtual_unity_object.apply_node_props(existing_node, props)
