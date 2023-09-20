@@ -17,6 +17,7 @@ const ASSET_TYPE_SCENE = 7
 const ASSET_TYPE_UNKNOWN = 8
 
 const SHOULD_CONVERT_TO_GLB: bool = false
+const USE_BUILTIN_FBX: bool = false # true
 
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg==")
 
@@ -527,7 +528,7 @@ class BaseModelHandler:
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		# super.write_godot_asset(pkgasset, temp_path)
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
-		if pkgasset.existing_data_md5 != pkgasset.data_md5:
+		if USE_BUILTIN_FBX or pkgasset.existing_data_md5 != pkgasset.data_md5:
 			var dres = DirAccess.open("res://")
 			pkgasset.log_debug("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
@@ -802,6 +803,9 @@ class FbxHandler:
 		var full_tmpdir: String = tmpdir + "/" + thread_subdir
 		var input_path: String = thread_subdir + "/" + "input.fbx"
 		var temp_input_path: String = tmpdir + "/" + input_path
+		if USE_BUILTIN_FBX:
+			input_path = pkgasset.pathname
+			temp_input_path = input_path
 		var importer = pkgasset.parsed_meta.importer
 
 		var fbx_file: PackedByteArray = pkgasset.asset_tar_header.get_data()
@@ -867,7 +871,8 @@ class FbxHandler:
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, unique_texture_map)
 		#if len(output_path) == 0:
 		#	output_path = path
-		d.remove(temp_input_path)  # delete "input.fbx"
+		if not USE_BUILTIN_FBX:
+			d.remove(temp_input_path)  # delete "input.fbx"
 		for fn in unique_texture_map.keys():
 			d.remove(texture_dirname + "/" + fn)
 		pkgasset.log_debug("Updating file at " + output_path)
@@ -966,6 +971,8 @@ class FbxHandler:
 		var tmp_bin_output_path: String = tmpdir + "/" + thread_subdir + "/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = full_output_path.get_basename() + ".glb"
+		if USE_BUILTIN_FBX:
+			return pkgasset.pathname
 		var stdout: Array = [].duplicate()
 		var d = DirAccess.open("res://")
 		var addon_path: String = editor_interface.get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
@@ -978,7 +985,9 @@ class FbxHandler:
 		# --long-indices auto
 		# --compute-normals never|broken|missing|always
 		# --blend-shape-normals --blend-shape-tangents
-		var ret = OS.execute(addon_path, ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", "bake30", "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path], stdout)
+		var cmdline_args := ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", "bake30", "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path]
+		pkgasset.log_debug(addon_path + " " + " ".join(cmdline_args))
+		var ret = OS.execute(addon_path, cmdline_args, stdout)
 		pkgasset.log_debug("FBX2glTF returned " + str(ret) + " -----")
 		pkgasset.log_debug(str(stdout))
 		pkgasset.log_debug("-----------------------------")
