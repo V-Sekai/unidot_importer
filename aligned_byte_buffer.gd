@@ -274,7 +274,7 @@ func uint32_subarray(offset: int, length_arg: int, stride: int = 4, cluster: int
 
 func float32_subarray(offset: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedFloat32Array:
 	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset) * cluster / stride)
-	print("float32 subarray " + str(offset) + " length_arg " + str(length_arg) + " length " + str(length) + " stride " + str(stride) + " cluster " + str(cluster))
+	# print("float32 subarray " + str(offset) + " length_arg " + str(length_arg) + " length " + str(length) + " stride " + str(stride) + " cluster " + str(cluster))
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
 	assert(_validate_word_alignment(offset, stride))
@@ -371,7 +371,7 @@ func formatted_vector3_subarray(handedness_vector: Vector3, format: int, offset:
 	var float_array: Array = Array(formatted_float_subarray(format, offset, length * dimension, stride, dimension))
 	var vec3_array: PackedVector3Array = PackedVector3Array()
 	vec3_array.resize(len(float_array) / dimension)
-	print("Asked for format " + str(format) + " offset " + str(offset) + " length " + str(length) + " stride " + str(stride) + " dim " + str(dimension) + " outarr " + str(len(vec3_array)) + " floatarr " + str(len(float_array)) + " buflen " + str(len(_buffer)) + " floatbuflen " + str(len(_float32_buf)))
+	# print("Asked for format " + str(format) + " offset " + str(offset) + " length " + str(length) + " stride " + str(stride) + " dim " + str(dimension) + " outarr " + str(len(vec3_array)) + " floatarr " + str(len(float_array)) + " buflen " + str(len(_buffer)) + " floatbuflen " + str(len(_float32_buf)))
 	match dimension:
 		2:
 			var i: int = 0

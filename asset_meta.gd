@@ -124,23 +124,29 @@ func log_debug(fileid: int, msg: String):
 	var fileidstr = ""
 	if fileid != 0:
 		fileidstr = " @" + str(fileid)
-	log_message_holder.all_logs.append(msg + fileidstr)
+	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
+	log_database_holder.database.global_log_count += 1
+	var log_str: String = seq_str + msg + fileidstr
+	log_message_holder.all_logs.append(log_str)
 	log_database_holder.database.log_debug([null, fileid, self.guid, 0], msg)
 
 
 # Anything that is unexpected but does not necessarily imply corruption.
 # For example, successfully loaded a resource with default fileid
 func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
-	var fieldstr = ""
+	var fieldstr: String = ""
 	if not field.is_empty():
 		fieldstr = "." + field + ": "
-	var fileidstr = ""
+	var fileidstr: String = ""
 	if remote_ref[1] != 0:
 		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
 	if fileid != 0:
 		fileidstr += " @" + str(fileid)
-	log_message_holder.all_logs.append(fieldstr + msg + fileidstr)
-	log_message_holder.warnings_fails.append(fieldstr + msg + fileidstr)
+	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
+	log_database_holder.database.global_log_count += 1
+	var log_str: String = seq_str + fieldstr + msg + fileidstr
+	log_message_holder.all_logs.append(log_str)
+	log_message_holder.warnings_fails.append(log_str)
 	var xref: Array = remote_ref
 	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]
@@ -158,9 +164,12 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
 	if fileid != 0:
 		fileidstr += " @" + str(fileid)
-	log_message_holder.all_logs.append(fieldstr + msg + fileidstr)
-	log_message_holder.warnings_fails.append(fieldstr + msg + fileidstr)
-	log_message_holder.fails.append(fieldstr + msg + fileidstr)
+	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
+	log_database_holder.database.global_log_count += 1
+	var log_str: String = seq_str + fieldstr + msg + fileidstr
+	log_message_holder.all_logs.append(log_str)
+	log_message_holder.warnings_fails.append(log_str)
+	log_message_holder.fails.append(log_str)
 	var xref: Array = remote_ref
 	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]

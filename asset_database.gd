@@ -10,6 +10,8 @@ const ASSET_DATABASE_PATH: String = "res://unity_asset_database.tres"
 var object_adapter = object_adapter_class.new()
 var in_package_import: bool = false
 
+@export var global_log_count: int = 0
+
 @export var guid_to_path: Dictionary = {}
 @export var path_to_meta: Dictionary = {}
 
@@ -19,6 +21,8 @@ var in_package_import: bool = false
 @export var null_material_reference: Material = null
 @export var default_material_reference: Material = null
 
+
+const ENABLE_CONSOLE_DEBUGGING : bool = false
 
 # SEMI-STATIC
 func get_singleton() -> Object:
@@ -37,29 +41,32 @@ func save():
 
 # Log messages related to this asset
 func log_debug(local_ref: Array, msg: String):
-	print(".unidot. " + str(local_ref[2]) + ":" + str(local_ref[1]) + " : " + msg)
+	if ENABLE_CONSOLE_DEBUGGING:
+		print(".unidot. " + str(local_ref[2]) + ":" + str(local_ref[1]) + " : " + msg)
 
 
 # Anything that is unexpected but does not necessarily imply corruption.
 # For example, successfully loaded a resource with default fileid
 func log_warn(local_ref: Array, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
-	var fieldstr = ""
-	if not field.is_empty():
-		fieldstr = "." + field
-	if remote_ref:
-		push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
-	push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : " + msg)
+	if ENABLE_CONSOLE_DEBUGGING:
+		var fieldstr = ""
+		if not field.is_empty():
+			fieldstr = "." + field
+		if remote_ref:
+			push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
+		push_warning(".UNIDOT. " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : " + msg)
 
 
 # Anything that implies the asset will be corrupt / lost data.
 # For example, some reference or field could not be assigned.
 func log_fail(local_ref: Array, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
-	var fieldstr = ""
-	if not field.is_empty():
-		fieldstr = "." + field
-	if remote_ref:
-		push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
-	push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : " + msg)
+	if ENABLE_CONSOLE_DEBUGGING:
+		var fieldstr = ""
+		if not field.is_empty():
+			fieldstr = "." + field
+		if remote_ref:
+			push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
+		push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : " + msg)
 
 
 func insert_meta(meta: Resource):  # asset_meta

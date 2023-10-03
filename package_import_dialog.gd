@@ -34,6 +34,9 @@ var main_dialog_tree: Tree = null
 var spinner_icon: AnimatedTexture = null
 var spinner_icon1: Texture = null
 var fail_icon: Texture = null
+var log_icon: Texture = null
+var error_icon: Texture = null
+var warning_icon: Texture = null
 
 var checkbox_off_unicode: String = "\u2610"
 var checkbox_on_unicode: String = "\u2611"
@@ -62,8 +65,9 @@ var asset_yaml_post_model: Array = [].duplicate()
 var asset_prefabs: Array = [].duplicate()
 var asset_scenes: Array = [].duplicate()
 
-var pkg: Object = null  # Type unitypackagefile, set in _selected_package
+var result_log_lineedit: TextEdit 
 
+var pkg: Object = null  # Type unitypackagefile, set in _selected_package
 
 func _resource_reimported(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
@@ -103,14 +107,192 @@ func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
 		_check_recursively(chld, is_checked)
 
 
+class ErrorSyntaxHighlighter extends SyntaxHighlighter:
+	var fail_highlight: Dictionary
+	var warn_highlight: Dictionary
+	var default_highlight: Dictionary
+	var inited: bool = false
+	var pid: Object
+
+	const ERROR_COLOR_TAG := "FAIL: "
+	const WARNING_COLOR_TAG := "warn: "
+
+	func _init(package_import_dialog_val: Object):
+		pid = package_import_dialog_val
+
+	func _get_line_syntax_highlighting(line: int):
+		if line >= len(pid.visible_log_lines) or line < 0:
+			return {}
+		var linestr: String = pid.visible_log_lines[line]
+		if not inited:
+			var error_color : Color = get_text_edit().get_theme_color(&"error_color", &"Editor")
+			var warning_color : Color = get_text_edit().get_theme_color(&"warning_color", &"Editor")
+			fail_highlight = {0: {"size": 1, "color": Color.DIM_GRAY}, 8: {"color": error_color}}
+			warn_highlight = {0: {"size": 1, "color": Color.DIM_GRAY}, 8: {"color": warning_color}}
+			default_highlight = {0: {"size": 1, "color": Color.DIM_GRAY}, 8: {}}
+			inited = true
+		var off1: int = linestr.find(":")
+		var beg: String = linestr.substr(0, linestr.find(":", off1 + 1) + 2)
+		var ret: Dictionary = default_highlight
+		if beg.contains(ERROR_COLOR_TAG):
+			ret = fail_highlight
+		if beg.contains(WARNING_COLOR_TAG):
+			ret = warn_highlight
+		ret = ret.duplicate()
+		ret[off1] = ret[8]
+		ret[8] = {"color": Color.MEDIUM_PURPLE}
+		return ret
+
+var visible_log_lines: PackedStringArray = []
+var tmp_log_lines: PackedStringArray = []
+
+func merge_log_lines(lines_to_add: PackedStringArray, current_scroll: float) -> float:
+	var is_end: bool = result_log_lineedit.get_last_full_visible_line() >= len(visible_log_lines) - 1
+	#len(visible_log_lines) - current_scroll < result_log_lineedit.get_last_full_visible_line()
+	if lines_to_add.is_empty():
+		return current_scroll
+	var idx1: int = len(visible_log_lines) - 1
+	visible_log_lines.resize(len(visible_log_lines) + len(lines_to_add))
+	var idx_out: int = len(visible_log_lines) - 1
+	for idx2 in range(len(lines_to_add) - 1, -1, -1):
+		while idx1 >= 0 and visible_log_lines[idx1] > lines_to_add[idx2]:
+			visible_log_lines[idx_out] = visible_log_lines[idx1]
+			if idx1 == current_scroll:
+				current_scroll = idx_out
+			idx1 -= 1
+			idx_out -= 1
+		visible_log_lines[idx_out] = lines_to_add[idx2]
+		idx2 -= 1
+		idx_out -= 1
+	while idx1 >= 0:
+		visible_log_lines[idx_out] = visible_log_lines[idx1]
+		if idx1 == current_scroll:
+			current_scroll = idx_out
+		idx1 -= 1
+		idx_out -= 1
+	if is_end:
+		return len(visible_log_lines) - result_log_lineedit.get_parent_area_size().y / result_log_lineedit.get_line_height() + 1
+	return current_scroll
+
+func unmerge_log_lines(lines_to_remove: PackedStringArray, current_scroll: float) -> float:
+	if lines_to_remove.is_empty():
+		return current_scroll
+	var idx1: int = 0
+	var idx_out: int = 0
+	for line in lines_to_remove:
+		#print("Remove " + str(line))
+		while idx1 < len(visible_log_lines) and visible_log_lines[idx1] < line:
+			#print("loop " + str(idx1) + " " + str(idx_out) + " " + str(len(visible_log_lines)) + " " + str(visible_log_lines[idx1]))
+			visible_log_lines[idx_out] = visible_log_lines[idx1]
+			if idx1 == current_scroll:
+				current_scroll = idx_out
+			idx1 += 1
+			idx_out += 1
+		if visible_log_lines[idx1] == line:
+			#print("Do " + str(visible_log_lines[idx1]))
+			if idx1 == current_scroll:
+				current_scroll = idx_out
+			idx1 += 1
+	#print(str(idx_out)  + "," + str(idx1))
+	while idx1 < len(visible_log_lines):
+		#print("loop2 " + str(idx1) + " " + str(idx_out) + " " + str(len(visible_log_lines)) + " " + str(visible_log_lines[idx1]))
+		visible_log_lines[idx_out] = visible_log_lines[idx1]
+		if idx1 == current_scroll:
+			current_scroll = idx_out
+		idx1 += 1
+		idx_out += 1
+	#assert(idx_out == len(visible_log_lines) - len(lines_to_remove))
+	visible_log_lines.resize(idx_out)
+	return current_scroll
+
+
+func _get_children_recursive(child_list: Array[TreeItem], cur: TreeItem):
+	child_list.append(cur)
+	for i in range(cur.get_child_count()):
+		_get_children_recursive(child_list, cur.get_child(i))
+
 func _cell_selected() -> void:
 	var ti: TreeItem = main_dialog_tree.get_selected()
+	if not ti:
+		return
 	var col: int = main_dialog_tree.get_selected_column()
 	ti.deselect(col)
-	if ti != null:  # and col == 1:
-		var new_checked: bool = !ti.is_checked(0)
-		_check_recursively(ti, new_checked)
-
+	if col == 0 or col == 1:
+		if ti != null:  # and col == 1:
+			var new_checked: bool = !ti.is_checked(0)
+			_check_recursively(ti, new_checked)
+	elif col >= 2:
+		ti.set_checked(col, not ti.is_checked(col))
+		var current_scroll = result_log_lineedit.scroll_vertical
+		var child_list: Array[TreeItem]
+		_get_children_recursive(child_list, ti)
+		if ti.is_checked(col):
+			var fail_keys = {}
+			var warning_keys = {}
+			var filtered_msgs: PackedStringArray
+			var data_to_unmerge: PackedStringArray
+			for child_ti in child_list:
+				for sub_col in range(2, 5):
+					if ti != child_ti or sub_col > col:
+						var data: Variant = child_ti.get_metadata(sub_col)
+						if typeof(data) == TYPE_PACKED_STRING_ARRAY:
+							data_to_unmerge.append_array(data as PackedStringArray)
+						child_ti.set_metadata(sub_col, PackedStringArray())
+						if sub_col >= col:
+							child_ti.set_checked(sub_col, true)
+						child_ti.set_selectable(sub_col, false)
+			if not data_to_unmerge.is_empty():
+				current_scroll = unmerge_log_lines(data_to_unmerge, current_scroll)
+			for child_ti in child_list:
+				var tw: unitypackagefile.UnityPackageAsset = child_ti.get_metadata(1)
+				var start_idx = len(filtered_msgs)
+				if tw != null:
+					if col == 2:
+						for line in tw.parsed_meta.log_message_holder.fails:
+							fail_keys[line] = true
+						for line in tw.parsed_meta.log_message_holder.warnings_fails:
+							if not fail_keys.has(line):
+								warning_keys[line] = true
+						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.all_logs)
+					elif col == 3:
+						for line in tw.parsed_meta.log_message_holder.warnings_fails:
+							warning_keys[line] = true
+						for line in tw.parsed_meta.log_message_holder.fails:
+							fail_keys[line] = true
+						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.warnings_fails)
+					elif col == 4:
+						for line in tw.parsed_meta.log_message_holder.fails:
+							fail_keys[line] = true
+						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.fails)
+				for i in range(start_idx, len(filtered_msgs)):
+					var tmpidx: int = filtered_msgs[i].find(" ") + 1
+					if fail_keys.has(filtered_msgs[i]):
+						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + ErrorSyntaxHighlighter.ERROR_COLOR_TAG + filtered_msgs[i].substr(tmpidx)
+					elif warning_keys.has(filtered_msgs[i]):
+						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + ErrorSyntaxHighlighter.WARNING_COLOR_TAG + filtered_msgs[i].substr(tmpidx)
+					else:
+						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + filtered_msgs[i].substr(tmpidx)
+			if len(child_list) > 1:
+				filtered_msgs.sort()
+			ti.set_metadata(col, filtered_msgs)
+			current_scroll = merge_log_lines(filtered_msgs, current_scroll)
+		elif not ti.is_checked(col):
+			var data: Variant = ti.get_metadata(col)
+			ti.set_metadata(col, PackedStringArray())
+			if typeof(data) == TYPE_PACKED_STRING_ARRAY:
+				current_scroll = unmerge_log_lines(data as PackedStringArray, current_scroll)
+			for child_ti in child_list:
+				for sub_col in range(2, 5):
+					if ti != child_ti or sub_col > col:
+						child_ti.set_checked(sub_col, false)
+						child_ti.set_selectable(sub_col, true)
+		#print("Updating text " + str(ti.is_checked(col)))
+		#print(len(visible_log_lines))
+		result_log_lineedit.text = '\n'.join(visible_log_lines)
+		result_log_lineedit.scroll_vertical = current_scroll
+		main_dialog_tree.size_flags_stretch_ratio = 1.0
+		result_log_lineedit.visible = true # not visible_log_lines.is_empty()
+		result_log_lineedit.size_flags_stretch_ratio = 1.0
 
 func _meta_completed(tw: Object):
 	var pkgasset = tw.asset
@@ -122,6 +304,38 @@ func _meta_completed(tw: Object):
 
 	var color = Color(0.7 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
+
+
+func _prune_unselected_items(p_ti: TreeItem) -> bool:
+	# Directories might be unchecked but have children which are checked.
+	var children = p_ti.get_children()
+	children.reverse() # probably faster to remove from end.
+	var was_directory = not children.is_empty() or p_ti.get_text(1) == "Directory"
+
+	for child_ti in children:
+		if not _prune_unselected_items(child_ti):
+			p_ti.remove_child(child_ti)
+
+	if not p_ti.is_checked(0) and p_ti.get_child_count() == 0:
+		return false
+	# Check if column 1 (type) is "Directory". is there a cleaner way to do this?
+	if was_directory and p_ti.get_child_count() == 0:
+		return false
+
+	# Has children or it is checked.
+	var text = p_ti.get_text(0)
+	#p_ti.add_button(1, log_icon, 1, false, "View Log")
+	p_ti.set_cell_mode(0, TreeItem.CELL_MODE_STRING)
+	p_ti.set_checked(0, false)
+	p_ti.set_selectable(0, false)
+	p_ti.set_text(0, text)
+	p_ti.set_expand_right(0, true)
+	p_ti.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
+	p_ti.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
+	p_ti.set_text(2, "Logs")
+	p_ti.set_selectable(2, true)
+	p_ti.set_icon(2, log_icon)
+	return true
 
 
 func _selected_package(p_path: String) -> void:
@@ -148,9 +362,11 @@ func _selected_package(p_path: String) -> void:
 	var ti: TreeItem = main_dialog_tree.create_item()
 	ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 	ti.set_text(0, "Assets")
+	ti.set_expand_right(0, true)
+	ti.set_expand_right(1, false)
 	ti.set_checked(0, true)
 	ti.set_icon_max_width(0, 24)
-	ti.set_text(1, "")
+	ti.set_text(1, "ahaha")
 	var tree_items = [ti]
 	for path in pkg.paths:
 		var pkgasset = pkg.path_to_pkgasset[path]
@@ -169,6 +385,8 @@ func _selected_package(p_path: String) -> void:
 			tree_names.push_back(path_names[i])
 			ti = main_dialog_tree.create_item(tree_items[i - 1])
 			tree_items.push_back(ti)
+			ti.set_expand_right(0, true)
+			ti.set_expand_right(1, false)
 			ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 			if DISABLE_TEXTURES and (path.to_lower().ends_with("png") or path.to_lower().ends_with("jpg")):
 				ti.set_checked(0, false)
@@ -214,6 +432,10 @@ func show_importer() -> void:
 	_show_importer_common()
 
 
+func show_importer_logs() -> void:
+	main_dialog.show()
+
+
 func _show_importer_common() -> void:
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
@@ -224,19 +446,43 @@ func _show_importer_common() -> void:
 	main_dialog.add_button("Import and show result", false, "show_result")
 	main_dialog.custom_action.connect(self._asset_tree_window_confirmed_custom)
 	var n: Label = main_dialog.get_label()
-	var vbox = VBoxContainer.new()
+	var vbox := VBoxContainer.new()
 	vbox.size_flags_vertical = Control.SIZE_FILL
 	vbox.size_flags_horizontal = Control.SIZE_FILL
+	var hbox := HBoxContainer.new()
+	hbox.size_flags_vertical = Control.SIZE_FILL
+	hbox.size_flags_horizontal = Control.SIZE_FILL
 	main_dialog_tree = Tree.new()
 	main_dialog_tree.columns = 2
 	main_dialog_tree.set_column_titles_visible(true)
 	main_dialog_tree.set_column_title(0, "Path")
 	main_dialog_tree.set_column_title(1, "Importer")
+	main_dialog_tree.set_column_expand(0, true)
+	main_dialog_tree.set_column_expand(1, false)
+	main_dialog_tree.set_column_expand_ratio(0, 1.0)
+	main_dialog_tree.set_column_expand_ratio(1, 0.0)
 	main_dialog_tree.cell_selected.connect(self._cell_selected)
+	main_dialog_tree.item_activated.connect(self._cell_selected)
 	main_dialog_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_dialog_tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_dialog_tree.custom_minimum_size = Vector2(300.0, 300.0)
 	main_dialog_tree.size_flags_stretch_ratio = 1.0
-	vbox.add_child(main_dialog_tree)
+	hbox.add_child(main_dialog_tree)
+	result_log_lineedit = TextEdit.new()
+	result_log_lineedit.syntax_highlighter = ErrorSyntaxHighlighter.new(self)
+	result_log_lineedit.visible = false
+	result_log_lineedit.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	result_log_lineedit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	result_log_lineedit.custom_minimum_size = Vector2(300.0, 300.0)
+	result_log_lineedit.size_flags_stretch_ratio = 1.0
+	hbox.add_child(result_log_lineedit)
+	hbox.size_flags_stretch_ratio = 1.0
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(hbox)
+	vbox.size_flags_stretch_ratio = 1.0
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	force_reimport_models_checkbox = CheckBox.new()
 	force_reimport_models_checkbox.text = "Force reimport all models"
 	force_reimport_models_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
@@ -254,7 +500,10 @@ func _show_importer_common() -> void:
 		file_dialog.popup_centered_ratio()
 
 	var base_control = EditorPlugin.new().get_editor_interface().get_base_control()
+	log_icon = base_control.get_theme_icon("CodeEdit", "EditorIcons")
 	fail_icon = base_control.get_theme_icon("ImportFail", "EditorIcons")
+	error_icon = base_control.get_theme_icon("Error", "EditorIcons")
+	warning_icon = base_control.get_theme_icon("ErrorWarning", "EditorIcons")
 	spinner_icon1 = base_control.get_theme_icon("Progress1", "EditorIcons")
 	spinner_icon = AnimatedTexture.new()
 	for i in range(8):
@@ -290,25 +539,46 @@ func on_import_fully_completed():
 	import_finished = true
 	if not _keep_open_on_import:
 		if main_dialog:
-			main_dialog.queue_free()
-			main_dialog = null
+			main_dialog.hide()
 
 
 func update_task_color(tw: RefCounted):
 	var ti: TreeItem = tw.extra
 	if tw.asset.parsed_meta == null:
 		ti.set_custom_color(0, Color("#ddffbb"))
-	elif not tw.is_loaded:
-		ti.set_custom_color(0, Color("#ff4422"))
 	else:
-		var holder = tw.asset.parsed_meta.log_message_holder
-		if holder.has_fails():
+		var holder: asset_meta_class.LogMessageHolder = tw.asset.parsed_meta.log_message_holder
+		if not tw.is_loaded:
+			ti.set_custom_color(0, Color("#ff4422"))
+		elif holder.has_fails():
 			ti.set_custom_color(0, Color("#ff8822"))
 		elif holder.has_warnings():
 			ti.set_custom_color(0, Color("#ccff22"))
 		else:
 			ti.set_custom_color(0, Color("#22ff44"))
-
+		if holder != null:
+			var num_fails = len(holder.fails)
+			var delta_num_fails = num_fails - ("0" + ti.get_text(4)).to_int()
+			var num_warnings = len(holder.warnings_fails) - num_fails
+			var delta_num_warnings = num_warnings - ("0" + ti.get_text(3)).to_int()
+			while ti != null:
+				if num_fails > 0:
+					main_dialog_tree.set_column_title(4, "Errors")
+					ti.set_cell_mode(4, TreeItem.CELL_MODE_CHECK)
+					ti.set_icon(4, fail_icon)
+					ti.set_custom_bg_color(4, Color(0.4,0.1,0.12,0.5),true)
+					ti.set_text_alignment(4, HORIZONTAL_ALIGNMENT_RIGHT)
+					ti.set_text(4, str(delta_num_fails + ("0" + ti.get_text(4)).to_int()))
+					ti.set_tooltip_text(4, str(num_fails)+ " Errors")
+				if num_warnings > 0 or num_fails > 0:
+					main_dialog_tree.set_column_title(3, "Warnings")
+					ti.set_cell_mode(3, TreeItem.CELL_MODE_CHECK)
+					ti.set_icon(3, warning_icon)
+					ti.set_custom_bg_color(3, Color(0.4,0.36,0.1,0.5),true)
+					ti.set_text_alignment(3, HORIZONTAL_ALIGNMENT_RIGHT)
+					ti.set_text(3, str(delta_num_warnings + ("0" + ti.get_text(3)).to_int()))
+					ti.set_tooltip_text(3, str(num_warnings)+ " Warnings")
+				ti = ti.get_parent()
 
 func on_file_completed_godot_import(tw: RefCounted, loaded: bool):
 	var ti: TreeItem = tw.extra
@@ -330,6 +600,7 @@ func do_import_step():
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
 		editor_filesystem.scan()
+		EditorPlugin.new().get_editor_interface().save_all_scenes()
 		on_import_fully_completed()
 		return
 
@@ -483,6 +754,7 @@ func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
+	ti.set_metadata(1, tw.asset)
 	ti.set_custom_color(0, Color("#44ffff"))
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
@@ -565,7 +837,7 @@ func _asset_processing_started(tw: Object):
 
 func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Array) -> int:
 	var ret: int = 0
-	if ti.is_checked(0):
+	if ti.is_checked(0) or ti.get_cell_mode(0) != TreeItem.CELL_MODE_CHECK:
 		var path = ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
 		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
@@ -680,13 +952,32 @@ func _preprocess_wait_tick():
 
 
 func _asset_tree_window_confirmed():
+	main_dialog_tree.columns = 5
+	#main_dialog_tree.set_column_title(2, "\u26a0") # Warning emoji
+	#main_dialog_tree.set_column_title(3, "\u26d4") # Error emoji
+	main_dialog_tree.set_column_title(2, "Logs")
+	main_dialog_tree.set_column_clip_content(2, true)
+	main_dialog_tree.set_column_clip_content(3, true)
+	main_dialog_tree.set_column_clip_content(4, true)
+	main_dialog_tree.set_column_custom_minimum_width(2, 64)
+	main_dialog_tree.set_column_custom_minimum_width(3, 64)
+	main_dialog_tree.set_column_custom_minimum_width(4, 64)
+	main_dialog_tree.set_column_expand(2, false)
+	main_dialog_tree.set_column_expand(3, false)
+	main_dialog_tree.set_column_expand(4, false)
+	main_dialog_tree.set_column_expand_ratio(2, 0.1)
+	main_dialog_tree.set_column_expand_ratio(3, 0.1)
+	main_dialog_tree.set_column_expand_ratio(4, 0.1)
+
 	if import_finished:
 		if main_dialog:
-			main_dialog.queue_free()
-			main_dialog = null
+			main_dialog.hide()
 		return
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
+
+	_prune_unselected_items(main_dialog_tree.get_root())
+	result_log_lineedit.visible = true 
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
