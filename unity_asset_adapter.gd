@@ -404,6 +404,7 @@ class SceneHandler:
 				EditorPlugin.new().get_editor_interface().get_resource_filesystem().update_file("res://" + pkgasset.pathname)
 			packed_scene.resource_path = "res://" + pkgasset.pathname
 			ResourceSaver.save(packed_scene, "res://" + pkgasset.pathname)
+			EditorPlugin.new().get_editor_interface().reload_scene_from_path("res://" + pkgasset.pathname)
 			return true
 		return false
 
@@ -747,10 +748,6 @@ class FbxHandler:
 		var scale_string: Variant = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
 		pkgasset.log_debug("Scale as string is " + str(scale_string))
 		var scale: float = convert_to_float(str(scale_string + str(NodePath())))
-		pkgasset.log_debug("Scale as string 2 type is " + str(typeof(str(scale_string + str(NodePath())))))
-		pkgasset.log_debug(str(scale_string + str(NodePath())).to_float())
-		pkgasset.log_debug("Scale is " + str(scale))
-		pkgasset.log_debug("Also Scale is " + str(scale + 0.0))
 		var new_scale: float = _adjust_fbx_scale(pkgasset, scale, useFileScale, globalScale)
 		pkgasset.log_debug(filename + ": ASCII FBX: UnitScaleFactor=" + str(scale) + " -> " + str(new_scale) + " (Scale Factor = " + str(globalScale) + "; Convert Units = " + ("on" if useFileScale else "OFF") + ")")
 		output_buf = fbx_file_binary.slice(0, comma_pos + 1)
@@ -967,7 +964,7 @@ class FbxHandler:
 		var bin_output_path: String = full_output_path.get_basename() + ".bin"
 		var output_path: String = gltf_output_path
 		var return_output_path: String = pkgasset.pathname.get_basename() + ".gltf"
-		var tmp_gltf_output_path: String = tmpdir + "/" + thread_subdir + "/" + gltf_output_path.get_file()
+		var tmp_gltf_output_path: String = tmpdir + "/" + thread_subdir + "/output.gltf"
 		var tmp_bin_output_path: String = tmpdir + "/" + thread_subdir + "/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = full_output_path.get_basename() + ".glb"
