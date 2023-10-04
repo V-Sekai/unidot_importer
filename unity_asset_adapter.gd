@@ -893,7 +893,10 @@ class FbxHandler:
 		return xret
 
 	func sanitize_unique_name(bone_name: String) -> String:
-		var xret = bone_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "")
+		var replacement_char: String = ""
+		if Engine.get_version_info()[1] >= 1 || Engine.get_version_info()[0] > 4:
+			replacement_char = "_"
+		var xret = bone_name.replace("%", replacement_char).replace("/", replacement_char).replace(":", replacement_char).replace(".", replacement_char).replace("@", replacement_char).replace('"', replacement_char)
 		return xret
 
 	func sanitize_anim_name(anim_name: String) -> String:
