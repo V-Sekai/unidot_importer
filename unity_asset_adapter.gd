@@ -1094,6 +1094,7 @@ class FbxHandler:
 			if importer.keys.get("avatarSetup", 0) == 1:
 				pkgasset.log_debug("AAAA set to humanoid and has nodes")
 				bone_map_dict = importer.generate_bone_map_dict_from_human()
+				pkgasset.log_debug(str(bone_map_dict))
 
 			var node_idx = 0
 			var hips_node_idx = -1
@@ -1116,10 +1117,12 @@ class FbxHandler:
 					break
 				node_idx = 0
 				var new_root_idx = -1
+				var scene_nodes = json["scenes"][0]["nodes"].duplicate()
 				for node in json["nodes"]:
 					if node["name"] == "root":
 						pkgasset.log_debug("Found root " + str(hips_node_idx) + " " + str(json["nodes"][1]) + " " + str(node))
 					if node["name"] == "RootNode":
+						scene_nodes.append_array(node.get("children", []))
 						continue
 					for child in node.get("children", []):
 						if child == hips_node_idx:
@@ -1135,6 +1138,8 @@ class FbxHandler:
 					if new_root_idx != -1:
 						break
 					node_idx += 1
+				if scene_nodes.find(new_root_idx) != -1:
+					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
 				hips_node_idx = new_root_idx
 		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
 		if not human_skin_nodes.is_empty():

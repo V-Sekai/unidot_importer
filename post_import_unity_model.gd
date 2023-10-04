@@ -55,6 +55,9 @@ class ParseState:
 	var fileid_to_utype: Dictionary = {}.duplicate()
 	var fileid_to_gameobject_fileid: Dictionary = {}.duplicate()
 	var type_to_fileids: Dictionary = {}.duplicate()
+	var transform_fileid_to_rotation_delta: Dictionary = {}.duplicate()
+	var transform_fileid_to_parent: Dictionary = {}.duplicate()
+	var humanoid_original_transforms: Dictionary
 
 	var all_name_map: Dictionary = {}.duplicate()
 
@@ -169,7 +172,8 @@ class ParseState:
 	func sanitize_filename(sanitized_name: String) -> String:
 		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
 
-	func fold_root_transforms_into_only_child(root_node: Node3D) -> Node3D:
+	func fold_root_transforms_into_only_child() -> bool:
+		var root_node: Node3D = toplevel_node
 		var is_foldable: bool = root_node.get_child_count() == 1
 		var wanted_child: int = 0
 		if root_node.get_child_count() == 2 and root_node.get_child(0) is AnimationPlayer:
@@ -178,26 +182,27 @@ class ParseState:
 		elif root_node.get_child_count() == 2 and root_node.get_child(1) is AnimationPlayer:
 			is_foldable = true
 		if not is_foldable:
-			return null
+			return false
 		var child_node = root_node.get_child(wanted_child)
+		if child_node is Skeleton3D:
+			if len(child_node.get_parentless_bones()) > 1:
+				return false
+			var root_bone_idx: int = child_node.get_parentless_bones()[0]
+			root_node.transform = root_node.transform * child_node.transform * child_node.get_bone_pose(root_bone_idx)
+			child_node.set_bone_rest(root_bone_idx, Transform3D.IDENTITY)
+			child_node.set_bone_pose_position(root_bone_idx, Vector3.ZERO)
+			child_node.set_bone_pose_rotation(root_bone_idx, Quaternion.IDENTITY)
+			child_node.set_bone_pose_scale(root_bone_idx, Vector3.ONE)
+			toplevel_node = child_node
+			return true
 		if child_node is Node3D:
-			if child_node.name != &"RootNode":
-				child_node.transform = root_node.transform * child_node.transform
-				root_node.transform = Transform3D.IDENTITY
-				return child_node
-			elif child_node.get_child_count() == 1 and child_node.get_child(0) is Node3D:
-				var grandchild_node: Node3D = child_node.get_child(0)
-				grandchild_node.transform = root_node.transform * child_node.transform * grandchild_node.transform
-				root_node.transform = Transform3D.IDENTITY
-				child_node.transform = Transform3D.IDENTITY
-				return grandchild_node
-			else:
-				root_node.transform = root_node.transform * child_node.transform
-				child_node.transform = Transform3D.IDENTITY
-				return null
-		return null
+			root_node.transform = root_node.transform * child_node.transform
+			child_node.transform = Transform3D.IDENTITY
+			toplevel_node = child_node
+			return true
+		return false
 
-	func register_component(node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int = 0, p_bone_idx: int = -1):
+	func register_component(node: Node, p_path: PackedStringArray, p_component: String, fileId_go: int = 0, p_bone_idx: int = -1, parent_transform_id: int = 0):
 		#???
 		#if node == toplevel_node:
 		#	return # GameObject nodes always point to the toplevel node.
@@ -224,6 +229,7 @@ class ParseState:
 			all_name_map[fileId_go] = {}.duplicate()
 		all_name_map[fileId_go][object_adapter.to_utype(p_component)] = fileId_comp
 		if p_component == "Transform":
+			transform_fileid_to_parent[fileId_comp] = parent_transform_id
 			all_name_map[fileId_go][1] = fileId_go  # Redundant...
 			fileid_to_nodepath[fileId_go] = nodepath
 			fileid_to_gameobject_fileid[fileId_go] = fileId_go
@@ -265,7 +271,7 @@ class ParseState:
 			metaobj.log_debug(0, "Register aux " + str(metaobj.guid) + ":" + str(-fileId_object) + ": '" + str(p_name) + "' " + str(p_aux_resource))
 		return fileId_object
 
-	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary):
+	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
 		if scale_correction_factor != 1.0:
@@ -275,12 +281,16 @@ class ParseState:
 
 		assert(p_skel_bone != -1)
 
-		var fileId_go: int = register_component(node, p_path, "Transform", 0, p_skel_bone)
+		var fileId_go: int = register_component(node, p_path, "Transform", 0, p_skel_bone, p_parent_transform_id)
+		var fileId_transform: int = all_name_map[fileId_go][4]
+		var bone_name: String = node.get_bone_name(p_skel_bone)
+		if humanoid_original_transforms.has(bone_name):
+			transform_fileid_to_rotation_delta[fileId_transform] = humanoid_original_transforms[bone_name] * node.get_bone_rest(p_skel_bone).affine_inverse()
 
 		for child_bone in node.get_bone_children(p_skel_bone):
 			var orig_child_name: String = get_orig_name("bone_name", node.get_bone_name(child_bone))
 			p_path.push_back(orig_child_name)
-			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name)
+			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, fileId_transform)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -310,21 +320,34 @@ class ParseState:
 					for child_child_bone in child.get_parentless_bones():
 						var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 						p_path.push_back(orig_child_name)
-						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name)
+						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform)
 						pop_back(p_path)
 						if new_id != 0:
 							self.all_name_map[fileId_go][orig_child_name] = new_id
 				else:
 					var orig_child_name: String = get_orig_name("nodes", child.name)
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false)
+					var new_id = self.iterate_node(child, p_path, false, fileId_transform)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 
+		var key = p_path[len(p_path) - 1] # node.name
+		if node.get_parent() == null or (len(p_path) == 2 and str(p_path[1]) == "root"):
+			key = ""
+		for child in skinned_parent_to_node.get(key, {}):
+			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
+			var orig_child_name: String = get_orig_name("nodes", child.name)
+			var new_id: int = 0
+			p_path.push_back(orig_child_name)
+			new_id = self.iterate_node(child, p_path, true, fileId_transform)
+			pop_back(p_path)
+			if new_id != 0:
+				self.all_name_map[fileId_go][orig_child_name] = new_id
+
 		return fileId_go
 
-	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool):
+	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool, p_parent_transform_id: int):
 		metaobj.log_debug(0, "Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 		if node is MeshInstance3D:
 			if is_obj and node.mesh != null:
@@ -336,8 +359,10 @@ class ParseState:
 		#for child in node.get_children():
 		#	iterate_node(child, p_path, false)
 		var fileId_go: int = 0
+		var fileId_transform: int = 0
 		if not (node is AnimationPlayer):
-			fileId_go = register_component(node, p_path, "Transform", 0)
+			fileId_go = register_component(node, p_path, "Transform", 0, -1, p_parent_transform_id)
+			fileId_transform = all_name_map[fileId_go][4]
 
 		if node is AnimationPlayer:
 			#var parent_node: Node3D = node.get_parent()
@@ -380,7 +405,7 @@ class ParseState:
 				for child_child_bone in child.get_parentless_bones():
 					var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name)
+					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -388,11 +413,11 @@ class ParseState:
 				if not (child is AnimationPlayer):
 					var orig_child_name: String = get_orig_name("nodes", child.name)
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false)
+					var new_id = self.iterate_node(child, p_path, false, fileId_transform)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
-		var key = node.name
+		var key = p_path[len(p_path) - 1] # node.name
 		if node.get_parent() == null or (len(p_path) == 2 and str(p_path[1]) == "root"):
 			key = ""
 		for child in skinned_parent_to_node.get(key, {}):
@@ -400,21 +425,21 @@ class ParseState:
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			p_path.push_back(orig_child_name)
-			new_id = self.iterate_node(child, p_path, true)
+			new_id = self.iterate_node(child, p_path, true, fileId_transform)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
-		for child in skinned_parent_to_node.get(orig_node_name, {}):
-			metaobj.log_debug(0, "Skinned oring parent " + str(orig_node_name) + ": " + str(child.name))
-			var orig_child_name: String = get_orig_name("nodes", child.name)
-			var new_id: int = 0
-			p_path.push_back(orig_child_name)
-			new_id = self.iterate_node(child, p_path, true)
-			pop_back(p_path)
-			if new_id != 0:
-				self.all_name_map[fileId_go][orig_child_name] = new_id
+		#for child in skinned_parent_to_node.get(orig_node_name, {}):
+		#	metaobj.log_debug(0, "Skinned oring parent " + str(orig_node_name) + ": " + str(child.name))
+		#	var orig_child_name: String = get_orig_name("nodes", child.name)
+		#	var new_id: int = 0
+		#	p_path.push_back(orig_child_name)
+		#	new_id = self.iterate_node(child, p_path, true, fileId_transform)
+		#	pop_back(p_path)
+		#	if new_id != 0:
+		#		self.all_name_map[fileId_go][orig_child_name] = new_id
 		if animplayer != null:
-			self.iterate_node(animplayer, p_path, false)
+			self.iterate_node(animplayer, p_path, false, fileId_transform)
 		return fileId_go
 
 	func process_animation_player(node: AnimationPlayer):
@@ -774,6 +799,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.HACK_outer_scope_generate_object_hash = generate_object_hash
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
+	ps.humanoid_original_transforms = metaobj.internal_data.get("humanoid_original_transforms", {})
 	if metaobj.importer.keys.get("animationType", 2) == 3:
 		ps.bone_map = metaobj.importer.generate_bone_map_from_human()
 	if metaobj.internal_data.has("scale_correction_factor"):
@@ -812,7 +838,6 @@ func _post_import(p_scene: Node) -> Object:
 				metaobj.log_debug(0, "Missing skinned " + str(skinned_name) + " parent " + str(par))
 		skinned_parent_to_node[par] = node_list
 	ps.skinned_parent_to_node = skinned_parent_to_node
-
 	ps.default_obj_mesh_name = "default"
 	if ps.is_obj:
 		var objf: FileAccess = FileAccess.open(source_file_path, FileAccess.READ)
@@ -922,28 +947,25 @@ func _post_import(p_scene: Node) -> Object:
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
 	toplevel_path.push_back("root")
-	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false)
+	var tmp_root_transform_fileid = 0
+	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false, tmp_root_transform_fileid)
 	ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
 
 	var new_toplevel: Node3D = null
 	if not ps.preserve_hierarchy and skinned_parents.get("", {}).is_empty():
-		new_toplevel = ps.fold_root_transforms_into_only_child(ps.toplevel_node)
-	if new_toplevel != null:
-		metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
-		ps.toplevel_node.transform = new_toplevel.transform
-		new_toplevel.transform = Transform3D.IDENTITY
-		ps.toplevel_node = new_toplevel
-		var new_found_roots = 0
-		var new_root_go_id = 0
-		for child in ps.all_name_map[root_go_id]:
-			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
-				new_found_roots += 1
-				new_root_go_id = ps.all_name_map[root_go_id][child]
-		if new_found_roots == 1:
-			root_go_id = new_root_go_id
-			metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
-			assert(root_go_id == ps.all_name_map[root_go_id][1])
+		if ps.fold_root_transforms_into_only_child():
+			metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
+			var new_found_roots = 0
+			var new_root_go_id = 0
+			for child in ps.all_name_map[root_go_id]:
+				if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
+					new_found_roots += 1
+					new_root_go_id = ps.all_name_map[root_go_id][child]
+			if new_found_roots == 1:
+				root_go_id = new_root_go_id
+				metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
+				assert(root_go_id == ps.all_name_map[root_go_id][1])
 
 	var path = "//RootNode/root"
 
@@ -958,6 +980,7 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.fileid_to_skeleton_bone = ps.fileid_to_skeleton_bone
 	metaobj.fileid_to_utype = ps.fileid_to_utype
 	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
+	metaobj.transform_fileid_to_rotation_delta = ps.transform_fileid_to_rotation_delta
 
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map

@@ -51,6 +51,8 @@ var importer  # unity_object_adapter.UnityAssetImporter subclass
 #####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
 #####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
 
+var prefab_transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
+var prefab_transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 var prefab_fileid_to_nodepath = {}
 var prefab_fileid_to_skeleton_bone = {}  # int -> string
 var prefab_fileid_to_utype = {}  # int -> int
@@ -64,6 +66,8 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 
 @export var prefab_main_gameobject_id = 0
 @export var prefab_main_transform_id = 0
+@export var transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
+@export var transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 @export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
 @export var fileid_to_skeleton_bone: Dictionary = {}  # int -> string: scene_node_state.add_fileID_to_skeleton_bone
 @export var fileid_to_utype: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
@@ -303,13 +307,21 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 	for target_fileid in target_prefab_meta.prefab_fileid_to_nodepath:
 		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid)))
 	for target_fileid in target_prefab_meta.fileid_to_skeleton_bone:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid))
+		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
 		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid))
 	for target_fileid in target_prefab_meta.fileid_to_utype:
 		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(target_fileid)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_utype:
 		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_utype.get(target_fileid))
+	for target_fileid in target_prefab_meta.transform_fileid_to_rotation_delta:
+		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_rotation_delta.get(target_fileid))
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_rotation_delta:
+		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(target_fileid))
+	for target_fileid in target_prefab_meta.transform_fileid_to_parent_fileid:
+		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid))
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_parent_fileid:
+		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_parent_fileid.get(target_fileid))
 	for target_type in target_prefab_meta.type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
 			self.prefab_type_to_fileids[target_type] = PackedInt64Array()
@@ -640,6 +652,10 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 		type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 		if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 			fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
+		if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
+			transform_fileid_to_parent_fileid[output_obj.fileID] = output_obj.keys.get("m_Father")[1]
+		if output_obj.type == "Prefab" or output_obj.type == "PrefabInstance":
+			transform_fileid_to_parent_fileid[output_obj.fileID] = output_obj.parent_ref[1]
 		var new_basic_id: int = next_basic_id.get(output_obj.utype, output_obj.utype * 100000)
 		next_basic_id[output_obj.utype] = new_basic_id + 1
 		parsed.local_id_alias[new_basic_id] = output_obj.fileID
@@ -682,6 +698,10 @@ func parse_asset(file: Object) -> ParsedAsset:
 			type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 			if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 				fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
+			if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
+				transform_fileid_to_parent_fileid[output_obj.fileID] = output_obj.keys.get("m_Father")[1]
+			if output_obj.type == "Prefab" or output_obj.type == "PrefabInstance":
+				transform_fileid_to_parent_fileid[output_obj.fileID] = output_obj.parent_ref[1]
 			var new_basic_id: int = next_basic_id.get(output_obj.utype, output_obj.utype * 100000)
 			next_basic_id[output_obj.utype] = new_basic_id + 1
 			parsed.local_id_alias[new_basic_id] = output_obj.fileID

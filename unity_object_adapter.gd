@@ -3096,6 +3096,7 @@ class UnityPrefabInstance:
 		if packed_scene == null:
 			log_fail("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid), "prefab", source_prefab)
 			return []
+		meta.transform_fileid_to_parent_fileid[self.fileID ^ target_prefab_meta.prefab_main_transform_id] = self.parent_ref[1]
 		log_debug("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
 		var instanced_scene: Node3D = null
 		var toplevel_rename: String = ""
@@ -3469,6 +3470,9 @@ class UnityPrefabInstance:
 		#for mod in self.modifications:
 		#	# TODO: Assign godot properties for each modification
 		#	pass
+
+		# FIXME: If we're in a top-level scene with its own stripped components, then we should use those IDs, not xor.
+		# The ID numbers might not match up 1-to-1.
 
 		return [self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene]
 
