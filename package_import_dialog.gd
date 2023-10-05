@@ -409,6 +409,7 @@ func _selected_package(p_path: String) -> void:
 			else:
 				ti.set_text(1, "Directory")
 	main_dialog.popup_centered_ratio()
+	check_fbx2gltf()
 	if file_dialog:
 		file_dialog.queue_free()
 		file_dialog = null
@@ -430,6 +431,20 @@ func show_importer() -> void:
 	file_dialog.file_selected.connect(self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
 	_show_importer_common()
+	check_fbx2gltf()
+
+
+func check_fbx2gltf():
+	var d = DirAccess.open("res://")
+	var addon_path: String = EditorPlugin.new().get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
+	if not addon_path.get_file().is_empty():
+		print(addon_path)
+		if not d.file_exists(addon_path):
+			var error_dialog := AcceptDialog.new()
+			EditorPlugin.new().get_editor_interface().get_base_control().add_child(error_dialog)
+			error_dialog.title = "Unidot Importer"
+			error_dialog.dialog_text = "FBX2glTF is not configured in Editor settings. This will cause corrupt imports!\nPlease install FBX2glTF in Editor Settings."
+			error_dialog.popup_centered()
 
 
 func show_importer_logs() -> void:
