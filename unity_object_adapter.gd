@@ -4003,6 +4003,8 @@ class UnityMeshRenderer:
 class UnitySkinnedMeshRenderer:
 	extends UnityMeshRenderer
 
+	const ENABLE_CLOTH := false
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		if len(bones) == 0:
 			var cloth: UnityCloth = gameObject.GetComponent("Cloth")
@@ -4013,6 +4015,8 @@ class UnitySkinnedMeshRenderer:
 			return null
 
 	func create_cloth_godot_node(state: RefCounted, new_parent: Node3D, component_name: String, cloth: UnityCloth) -> Node:
+		if not ENABLE_CLOTH:
+			return create_godot_node_orig(state, new_parent, component_name)
 		var new_node: MeshInstance3D = cloth.create_cloth_godot_node(state, new_parent, component_name, self, self.get_mesh(), null, [])
 		var idx: int = 0
 		for m in keys.get("m_Materials", []):

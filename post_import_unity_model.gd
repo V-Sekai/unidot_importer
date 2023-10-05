@@ -104,8 +104,14 @@ class ParseState:
 			name = animation_to_take_name.get(name, name)
 		if self.is_dae and path == PackedStringArray():
 			name = name.replace(" ", "_")
-		if objtype_to_name_to_id.get(type, {}).has(name): # Pre-Unity 2019
-			return objtype_to_name_to_id.get(type, {}).get(name, 0)
+
+		var name_key = type + "|" + name
+		var old_style_name = name
+		if new_name_dupe_map.has(name_key):
+			old_style_name = old_style_name + " " + str(new_name_dupe_map[name_key])
+		new_name_dupe_map[name_key] = new_name_dupe_map.get(name_key, 0) + 1
+		if objtype_to_name_to_id.get(type, {}).has(old_style_name): # Pre-Unity 2019
+			return objtype_to_name_to_id.get(type, {}).get(old_style_name, 0)
 		elif use_new_names: # Post Unity 2019
 			var pathstr = name
 			if len(path) > 0:
@@ -116,6 +122,8 @@ class ParseState:
 					pathstr += path[i]
 			return generate_object_hash(new_name_dupe_map, type, pathstr)
 		else: # Pre Unity 2019, not in map
+			if type == "Animator":
+				return 9500000
 			var next_obj_id: int = objtype_to_next_id.get(type, object_adapter.to_utype(type) * 100000)
 			while used_ids.has(next_obj_id):
 				next_obj_id += 2
@@ -946,7 +954,7 @@ func _post_import(p_scene: Node) -> Object:
 			var orig_obj_name: String = obj_name
 			var next_num: int = used_names_by_type.get(type).get(orig_obj_name, 1)
 			while used_names_by_type[type].has(obj_name):
-				obj_name = "%s%d" % [orig_obj_name, next_num]  # No space is deliberate, from sanitization rules.
+				obj_name = "%s %d" % [orig_obj_name, next_num]  # No space is deliberate, from sanitization rules.
 				next_num += 1
 			used_names_by_type[type][orig_obj_name] = next_num
 			used_names_by_type[type][obj_name] = 1
