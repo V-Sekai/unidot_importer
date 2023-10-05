@@ -894,7 +894,7 @@ class FbxHandler:
 
 	func sanitize_unique_name(bone_name: String) -> String:
 		var replacement_char: String = ""
-		if Engine.get_version_info()[1] >= 1 || Engine.get_version_info()[0] > 4:
+		if Engine.get_version_info()["minor"] >= 1 || Engine.get_version_info()["major"] > 4:
 			replacement_char = "_"
 		var xret = bone_name.replace("%", replacement_char).replace("/", replacement_char).replace(":", replacement_char).replace(".", replacement_char).replace("@", replacement_char).replace('"', replacement_char)
 		return xret
@@ -1061,7 +1061,8 @@ class FbxHandler:
 		var importer = pkgasset.parsed_meta.importer
 		var humanoid_original_transforms: Dictionary = {}
 		var human_skin_nodes: Array = []
-		if importer.keys.get("animationType", 2) == 3 and json.has("nodes") and importer.keys.get("avatarSetup", 0) >= 1:
+		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3
+		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 0) >= 1:
 			var bone_map_dict: Dictionary
 			if importer.keys.get("avatarSetup", 0) == 2:
 				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
@@ -1122,8 +1123,7 @@ class FbxHandler:
 				var new_root_idx = -1
 				var scene_nodes = json["scenes"][0]["nodes"].duplicate()
 				for node in json["nodes"]:
-					if node["name"] == "root":
-						pkgasset.log_debug("Found root " + str(hips_node_idx) + " " + str(json["nodes"][1]) + " " + str(node))
+					# "RootNode" is always created by the FBX2glTF conversion, so we promote these to gltf root scene nodes.
 					if node["name"] == "RootNode":
 						scene_nodes.append_array(node.get("children", []))
 						continue
@@ -1152,17 +1152,40 @@ class FbxHandler:
 
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
-		for key in ["scenes", "nodes", "meshes", "skins", "images", "textures", "materials", "samplers", "animations"]:
+		# "samplers", "textures",
+		for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
 			if not json.has(key):
 				continue
+				
 			var used_names: Dictionary = {}.duplicate()
+			if key == "nodes":
+				used_names["Root Scene"] = true
+				used_names["Skeleton3D"] = true
+				used_names["GeneralSkeleton"] = true
+				used_names["AnimationPlayer"] = true
+				used_names["AnimationTree"] = true
+				used_names["Mesh"] = true
+				used_names["Camera"] = true
+				used_names["Camera3D"] = true
+				used_names["Light"] = true
+				used_names["Skin"] = true
+			if is_humanoid and key == "nodes":
+				var human_profile = SkeletonProfileHumanoid.new()
+				for i in human_profile.bone_size:
+					used_names[human_profile.get_bone_name(i)] = true
 			var jk: Array = json[key]
 			for elem in range(jk.size()):
-				if not jk[elem].has("name"):
+				if jk[elem].get("name", "") == "":
+					if key == "nodes":
+						pkgasset.log_warn("glTF node " + str(elem) + " without a name: " + str(jk[elem].keys()))
+					if key == "meshes" or key == "materials" or key == "animations" or key == "images":
+						pkgasset.log_debug("glTF " + key + " " + str(elem) + " without a name: " + str(jk[elem].keys()))
 					continue
 				var orig_name: String = jk[elem].get("name")
 				var try_name: String = orig_name
+				# TODO: Should we prevent empty names?
+
 				var next_num: int = used_names.get(orig_name, 1)
 				# Ensure that objects have a unique name in compliance with Unity's uniqueness rules
 				# Godot's rule is Gizmo, Gizmo2, Gizmo3.

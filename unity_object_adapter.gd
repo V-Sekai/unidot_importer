@@ -2828,17 +2828,17 @@ class UnityGameObject:
 			rigidbody.configure_node(ret)
 			state.add_fileID(ret, self)
 			state.add_fileID(ret, transform)
-		elif len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
-			ret = BoneAttachment3D.new()
-			ret.name = self.name
-			state.add_child(ret, godot_skeleton, self)
-			state.add_fileID(ret, transform)
-			ret.bone_name = skeleton_bone_name
 		else:
 			state.add_fileID(godot_skeleton, self)
 			state.add_fileID(godot_skeleton, transform)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, fileID)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, transform.fileID)
+			if len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
+				ret = BoneAttachment3D.new()
+				ret.name = self.name
+				ret.bone_name = skeleton_bone_name
+				state.add_child(ret, godot_skeleton, null)
+				# state.add_fileID(ret, transform)
 		# TODO: do we need to configure GameObject here? IsActive, Name on a skeleton bone?
 		transform.configure_skeleton_bone(godot_skeleton, skeleton_bone_name)
 		if ret != null:
@@ -2854,8 +2854,9 @@ class UnityGameObject:
 				#Is it a fair assumption that Transform is always the first component???
 				skip_first = false
 			else:
-				assert(ret != null)
 				var component = meta.lookup(component_ref.values()[0])
+				if ret == null:
+					log_fail("Unable to create godot node " + component.type + " on null skeleton", "bone", self)
 				var tmp = component.create_godot_node(state, ret)
 				component.configure_node(tmp)
 				var component_key = component.get_component_key()
@@ -2865,6 +2866,12 @@ class UnityGameObject:
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
 			var child_transform: UnityTransform = meta.lookup(child_ref)
+			if ret == null and child_transform.is_prefab_reference or child_transform.type == "PrefabInstance":
+				#log_warn("Unable to recurse to child_transform " + child_transform.uniq_key + " on null skeleton bone ret", "children", self)
+				ret = BoneAttachment3D.new()
+				ret.name = self.name
+				ret.bone_name = skeleton_bone_name
+				state.add_child(ret, godot_skeleton, null)
 			var prefab_data: Array = recurse_to_child_transform(state, child_transform, ret)
 			if len(prefab_data) == 4:
 				name_map[prefab_data[1]] = prefab_data[2]
@@ -3121,7 +3128,7 @@ class UnityPrefabInstance:
 			log_debug("Writing stub scene to " + stub_filename)
 			var to_write: String = "[gd_scene load_steps=2 format=2]\n\n" + '[ext_resource path="' + str(packed_scene.resource_path) + '" type="PackedScene" id=1]\n\n' + "[node name=" + var_to_str(str(toplevel_rename)) + " instance=ExtResource( 1 )]\n"
 			fres.store_string(to_write)
-			log_debug(to_write)
+			#log_debug(to_write)
 			fres.flush()
 			fres = null
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
@@ -3381,6 +3388,8 @@ class UnityPrefabInstance:
 					gameobject_asset.meshFilter = component
 			var comp_map = {}
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
+				if attachment == null:
+					log_fail("Unable to create godot node " + component.type + " on null attachment ", "attachment", component)
 				var tmp = component.create_godot_node(state, attachment)
 				component.configure_node(tmp)
 				var ckey = component.get_component_key()
@@ -3439,6 +3448,8 @@ class UnityPrefabInstance:
 				if child_transform.gameObject != null:
 					log_debug("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
+				if attachment == null:
+					log_fail("Unable to recurse to child_transform " + child_transform.uniq_key + " on null bone attachment", "children", self)
 				var prefab_data: Array = recurse_to_child_transform(state, child_transform, attachment)
 				if child_transform.gameObject != null:
 					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
@@ -4798,7 +4809,7 @@ class UnityAssetImporter:
 
 	var preserveHierarchy: bool:
 		get:
-			return keys.get("meshes").get("preserveHierarchy") != 0
+			return keys.get("meshes").get("preserveHierarchy", 0) != 0
 
 	# 0: No compression; 1: keyframe reduction; 2: keyframe reduction and compress
 	# 3: all of the above and choose best curve for runtime memory.

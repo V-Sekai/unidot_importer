@@ -86,10 +86,10 @@ func external_tar_with_filename(source_file: String):
 			var fn: String = dirlist.get_next()
 			if fn.is_empty():
 				break
-			print(fn)
+			#print(fn)
 			if not fn.begins_with(".") and dirlist.file_exists(fn + "/pathname"):
 				for fnpiece in ["/pathname", "/asset", "/asset.meta", "/preview.png"]:
-					print(fn + "/" + fnpiece)
+					#print(fn + "/" + fnpiece)
 					out_lines.append(fn)
 					if dirlist.file_exists("./" + fn + fnpiece):
 						out_lines.append(fn + fnpiece)
@@ -123,7 +123,7 @@ func external_tar_with_filename(source_file: String):
 			push_error("Invalid member of .unitypackage: " + str(fnparts))
 			continue
 		if not guid_to_pkgasset.has(guid):
-			print("Discovered Asset " + guid)
+			#print("Discovered Asset " + guid)
 			guid_to_pkgasset[guid] = UnityPackageAsset.new()
 		var pkgasset: UnityPackageAsset = guid_to_pkgasset[guid]
 		pkgasset.packagefile = self
@@ -241,7 +241,7 @@ func init_with_filename(source_file: String):
 func parse_all_meta(asset_database):
 	for path in path_to_pkgasset:
 		var pkgasset = path_to_pkgasset[path]
-		print("PATH: " + str(path) + "  PKGASSET " + str(pkgasset))
+		#print("PATH: " + str(path) + "  PKGASSET " + str(pkgasset))
 		if pkgasset.metadata_tar_header != null:
 			var sf = pkgasset.metadata_tar_header.get_stringfile()
 			pkgasset.parsed_meta = asset_database.parse_meta(sf, path)

@@ -368,7 +368,7 @@ func add_child(child: Node, new_parent: Node3D, unityobj: RefCounted):
 	# meta. # FIXME???
 	if owner != null:
 		if new_parent == null:
-			meta.log_warn(0, "Trying to add child " + str(child) + " named " + str(child.name) + " to null parent", "parent", [null, unityobj.fileID, unityobj.meta.guid, 0])
+			meta.log_warn(0, "Trying to add child " + str(child) + " named " + str(child.name) + " to null parent", "parent", unityobj)
 		assert(new_parent != null)
 		new_parent.add_child(child, true)
 		child.owner = owner
@@ -378,7 +378,7 @@ func add_child(child: Node, new_parent: Node3D, unityobj: RefCounted):
 		self.owner = child
 	else:
 		assert(owner != null)
-	if unityobj.fileID != 0:
+	if unityobj != null and unityobj.fileID != 0:
 		add_fileID(child, unityobj)
 
 

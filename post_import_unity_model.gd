@@ -29,10 +29,11 @@ class ParseState:
 	var source_file_path: String
 	var use_new_names: bool = false
 	var preserve_hierarchy: bool = false
+	var preserve_hierarchy_orig_root_node_name: String = ""
 
 	var skinned_parent_to_node: Dictionary = {}.duplicate()
 	var godot_sanitized_to_orig_remap: Dictionary = {}.duplicate()
-	var bone_map: BoneMap = null
+	var bone_map_dict: Dictionary
 	var external_objects_by_id: Dictionary = {}.duplicate()  # fileId -> UnityRef Array
 	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnityRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate()  # for Extract Legacy Materials / By Base Texture Name
@@ -103,9 +104,9 @@ class ParseState:
 			name = animation_to_take_name.get(name, name)
 		if self.is_dae and path == PackedStringArray():
 			name = name.replace(" ", "_")
-		if objtype_to_name_to_id.get(type, {}).has(name):
+		if objtype_to_name_to_id.get(type, {}).has(name): # Pre-Unity 2019
 			return objtype_to_name_to_id.get(type, {}).get(name, 0)
-		elif use_new_names:
+		elif use_new_names: # Post Unity 2019
 			var pathstr = name
 			if len(path) > 0:
 				pathstr = ""
@@ -114,7 +115,7 @@ class ParseState:
 						pathstr += "/"
 					pathstr += path[i]
 			return generate_object_hash(new_name_dupe_map, type, pathstr)
-		else:
+		else: # Pre Unity 2019, not in map
 			var next_obj_id: int = objtype_to_next_id.get(type, object_adapter.to_utype(type) * 100000)
 			while used_ids.has(next_obj_id):
 				next_obj_id += 2
@@ -126,13 +127,13 @@ class ParseState:
 
 	func get_orig_name(obj_gltf_type: String, p_obj_name: String) -> String:
 		var obj_name = p_obj_name
-		if obj_gltf_type == "nodes" and p_obj_name == "Skeleton3D" and bone_map != null:
+		if obj_gltf_type == "nodes" and p_obj_name == "Skeleton3D" and not bone_map_dict.is_empty():
 			obj_name = "GeneralSkeleton"
-		if obj_gltf_type == "bone_name" and bone_map != null:
-			metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name))
-			var bone_mapped = bone_map.get_skeleton_bone_name(p_obj_name)
+		if obj_gltf_type == "bone_name" and not bone_map_dict.is_empty():
+			var bone_mapped = bone_map_dict.get(p_obj_name, "")
 			if bone_mapped != "":
 				obj_name = bone_mapped
+			metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name) + " -> " + str(obj_name))
 		return self.godot_sanitized_to_orig_remap.get(obj_gltf_type, {}).get(obj_name, obj_name)
 
 	func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary) -> Dictionary:
@@ -333,12 +334,16 @@ class ParseState:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 
 		var key = p_path[len(p_path) - 1] # node.name
-		if node.get_parent() == null or (len(p_path) == 2 and str(p_path[1]) == "root"):
-			key = ""
+		# node.get_parent() == null or 
+		if len(p_path) == 2 and str(p_path[1]) == "root":
+			key = preserve_hierarchy_orig_root_node_name
 		for child in skinned_parent_to_node.get(key, {}):
 			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
+			if len(p_path) == 1:
+				# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
+				metaobj.log_fail(0, "Root node shouldn't have any skinned meshes when root is folded")
 			p_path.push_back(orig_child_name)
 			new_id = self.iterate_node(child, p_path, true, fileId_transform)
 			pop_back(p_path)
@@ -360,31 +365,32 @@ class ParseState:
 		#	iterate_node(child, p_path, false)
 		var fileId_go: int = 0
 		var fileId_transform: int = 0
-		if not (node is AnimationPlayer):
-			fileId_go = register_component(node, p_path, "Transform", 0, -1, p_parent_transform_id)
-			fileId_transform = all_name_map[fileId_go][4]
+		if len(p_path) != 1 or node.get_parent() != null:
+			if not (node is AnimationPlayer):
+				fileId_go = register_component(node, p_path, "Transform", 0, -1, p_parent_transform_id)
+				fileId_transform = all_name_map[fileId_go][4]
 
-		if node is AnimationPlayer:
-			#var parent_node: Node3D = node.get_parent()
-			#if scene.get_path_to(parent_node) == NodePath("."):
-			#	parent_node = parent_node.get_child(0)
-			#node_name = str(parent_node.name)
-			register_component(node, p_path, "Animator", fileId_go)
-			process_animation_player(node)
-		elif node is MeshInstance3D:
-			if node.skin != null and not skinned_parent_to_node.is_empty() and not from_skinned_parent:
-				metaobj.log_debug(0, "Already recursed " + str(node.name))
-				return 0  # We already recursed into this skinned mesh.
-			if from_skinned_parent or node.get_blend_shape_count() > 0:  # has_obj_id("SkinnedMeshRenderer", node_name):
-				register_component(node, p_path, "SkinnedMeshRenderer", fileId_go)
-			else:
-				register_component(node, p_path, "MeshFilter", fileId_go)
-				register_component(node, p_path, "MeshRenderer", fileId_go)
-			process_mesh_instance(node)
-		elif node is Camera3D:
-			register_component(node, p_path, "Camera", fileId_go)
-		elif node is Light3D:
-			register_component(node, p_path, "Light", fileId_go)
+			if node is AnimationPlayer:
+				#var parent_node: Node3D = node.get_parent()
+				#if scene.get_path_to(parent_node) == NodePath("."):
+				#	parent_node = parent_node.get_child(0)
+				#node_name = str(parent_node.name)
+				register_component(node, p_path, "Animator", fileId_go)
+				process_animation_player(node)
+			elif node is MeshInstance3D:
+				if node.skin != null and not skinned_parent_to_node.is_empty() and not from_skinned_parent:
+					metaobj.log_debug(0, "Already recursed " + str(node.name))
+					return 0  # We already recursed into this skinned mesh.
+				if from_skinned_parent or node.get_blend_shape_count() > 0:  # has_obj_id("SkinnedMeshRenderer", node_name):
+					register_component(node, p_path, "SkinnedMeshRenderer", fileId_go)
+				else:
+					register_component(node, p_path, "MeshFilter", fileId_go)
+					register_component(node, p_path, "MeshRenderer", fileId_go)
+				process_mesh_instance(node)
+			elif node is Camera3D:
+				register_component(node, p_path, "Camera", fileId_go)
+			elif node is Light3D:
+				register_component(node, p_path, "Light", fileId_go)
 		var animplayer: AnimationPlayer = null
 		for child in node.get_children():
 			if child is AnimationPlayer:
@@ -404,26 +410,46 @@ class ParseState:
 						new_attachments_by_bone_name[bn].append(possible_attach)
 				for child_child_bone in child.get_parentless_bones():
 					var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
-					p_path.push_back(orig_child_name)
+					if len(p_path) == 1 and node.get_parent() == null:
+						preserve_hierarchy_orig_root_node_name = orig_child_name
+						p_path.push_back("root")
+					else:
+						p_path.push_back(orig_child_name)
 					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform)
 					pop_back(p_path)
-					if new_id != 0:
+					if len(p_path) == 1 and node.get_parent() == null:
+						# HACK: If we are above the root node (due to preserve_hierarchy=false), pretend we are the child.
+						fileId_go = new_id
+						fileId_transform = all_name_map[fileId_go][4]
+					elif new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 			else:
 				if not (child is AnimationPlayer):
 					var orig_child_name: String = get_orig_name("nodes", child.name)
-					p_path.push_back(orig_child_name)
+					if len(p_path) == 1 and node.get_parent() == null:
+						preserve_hierarchy_orig_root_node_name = orig_child_name
+						p_path.push_back("root")
+					else:
+						p_path.push_back(orig_child_name)
 					var new_id = self.iterate_node(child, p_path, false, fileId_transform)
 					pop_back(p_path)
-					if new_id != 0:
+					if len(p_path) == 1 and node.get_parent() == null:
+						# HACK: If we are above the root node (due to preserve_hierarchy=false), pretend we are the child.
+						fileId_go = new_id
+						fileId_transform = all_name_map[fileId_go][4]
+					elif new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 		var key = p_path[len(p_path) - 1] # node.name
-		if node.get_parent() == null or (len(p_path) == 2 and str(p_path[1]) == "root"):
-			key = ""
+		# node.get_parent() == null or 
+		if len(p_path) == 2 and str(p_path[1]) == "root":
+			key = preserve_hierarchy_orig_root_node_name
 		for child in skinned_parent_to_node.get(key, {}):
 			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
+			if len(p_path) == 1:
+				# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
+				metaobj.log_fail(0, "Root node shouldn't have any skinned meshes when root is folded")
 			p_path.push_back(orig_child_name)
 			new_id = self.iterate_node(child, p_path, true, fileId_transform)
 			pop_back(p_path)
@@ -801,7 +827,13 @@ func _post_import(p_scene: Node) -> Object:
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
 	ps.humanoid_original_transforms = metaobj.internal_data.get("humanoid_original_transforms", {})
 	if metaobj.importer.keys.get("animationType", 2) == 3:
-		ps.bone_map = metaobj.importer.generate_bone_map_from_human()
+		var bone_map: BoneMap = metaobj.importer.generate_bone_map_from_human()
+		var bone_map_dict: Dictionary = {}
+		for prop in bone_map.get_property_list():
+			if prop["name"].begins_with("bone_map/"):
+				var prof_name: String = prop["name"].trim_prefix("bone_map/")
+				bone_map_dict[prof_name] = bone_map.get_skeleton_bone_name(prof_name)
+		ps.bone_map_dict = bone_map_dict
 	if metaobj.internal_data.has("scale_correction_factor"):
 		var scf: float = metaobj.internal_data.get("scale_correction_factor")
 		if godot_root_scale != scf:
@@ -946,34 +978,41 @@ func _post_import(p_scene: Node) -> Object:
 
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
-	toplevel_path.push_back("root")
+	var did_fold_root_transforms: bool = false
+	var tmp_old_toplevel: Node3D = ps.toplevel_node
+	if not ps.preserve_hierarchy and skinned_parents.get("", {}).is_empty():
+		# I determined this is done before hash calculation in Unity 2019+
+		# I did not test this on older versions, so I'm keeping the old order for those.
+		did_fold_root_transforms = ps.fold_root_transforms_into_only_child()
+	if not did_fold_root_transforms:
+		toplevel_path.push_back("root")
 	var tmp_root_transform_fileid = 0
-	var root_go_id = ps.iterate_node(ps.toplevel_node, toplevel_path, false, tmp_root_transform_fileid)
-	ps.pop_back(toplevel_path)
+	var root_go_id = ps.iterate_node(tmp_old_toplevel, toplevel_path, false, tmp_root_transform_fileid)
+	if not did_fold_root_transforms:
+		ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
 
 	var new_toplevel: Node3D = null
-	if not ps.preserve_hierarchy and skinned_parents.get("", {}).is_empty():
-		if ps.fold_root_transforms_into_only_child():
-			metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
-			var new_found_roots = 0
-			var new_root_go_id = 0
-			for child in ps.all_name_map[root_go_id]:
-				if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
-					new_found_roots += 1
-					new_root_go_id = ps.all_name_map[root_go_id][child]
-			if new_found_roots == 1:
-				root_go_id = new_root_go_id
-				metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
-				assert(root_go_id == ps.all_name_map[root_go_id][1])
-
-	var path = "//RootNode/root"
+	if did_fold_root_transforms:
+		metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
+		var new_found_roots = 0
+		var new_root_go_id = 0
+		for child in ps.all_name_map[root_go_id]:
+			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
+				new_found_roots += 1
+				new_root_go_id = ps.all_name_map[root_go_id][child]
+		if new_found_roots == 1:
+			root_go_id = new_root_go_id
+			metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
+			assert(root_go_id == ps.all_name_map[root_go_id][1])
 
 	# GameObject references always point to the toplevel node:
 	metaobj.prefab_main_gameobject_id = root_go_id
 	metaobj.prefab_main_transform_id = ps.all_name_map[root_go_id][4]
 	ps.fileid_to_nodepath[metaobj.prefab_main_gameobject_id] = NodePath(".")  # Prefab name always toplevel.
-	# ps.fileid_to_nodepath[metaobj.prefab_main_transform_id] = NodePath(".")
+	ps.fileid_to_nodepath[metaobj.prefab_main_transform_id] = NodePath(".")
+	ps.fileid_to_skeleton_bone.erase(metaobj.prefab_main_gameobject_id)
+	ps.fileid_to_skeleton_bone.erase(metaobj.prefab_main_transform_id)
 
 	metaobj.type_to_fileids = ps.type_to_fileids
 	metaobj.fileid_to_nodepath = ps.fileid_to_nodepath
@@ -988,6 +1027,9 @@ func _post_import(p_scene: Node) -> Object:
 	if not asset_database.in_package_import:
 		asset_database.save()
 
+	var outps:= PackedScene.new()
+	outps.pack(p_scene)
+	ResourceSaver.save(outps, "res://tmp_scene.tscn")
 	return p_scene
 
 
