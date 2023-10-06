@@ -3228,6 +3228,7 @@ class UnityPrefabInstance:
 						log_debug("Adding AnimationTree as sibling to existing AnimationPlayer component")
 						animtree = AnimationTree.new()
 						animtree.name = "AnimationTree"
+						animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
 						existing_node.get_parent().add_child(animtree, true)
 						animtree.owner = state.owner
 						animtree.anim_player = animtree.get_path_to(existing_node)
@@ -3598,40 +3599,23 @@ class UnityTransform:
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var rotation_delta: Transform3D
 		var rotation_delta_post: Transform3D
-		var goName: String
-		if self.gameObject != null:
-			goName = str(self.gameObject.name)
 		if meta.transform_fileid_to_local_rotation_post.has(fileID) or meta.prefab_transform_fileid_to_local_rotation_post.has(fileID):
 			rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
-			log_warn("convert_properties: This fileID is a humanoid bone " + str(goName) + " rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()))
+			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()))
 		elif meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
 			var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
 			if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
-				var parent_transform: Object = meta.lookup([null,parent_fileid,"",0])
-				var parentGoName: String
-				'''
-				ParOrigT * ChildOrigT
-				ParOrigT * humanoid_correction * inv_humanoid_correction * ChildOrigT
-				'''
-				if parent_transform != null and parent_transform.gameObject != null:
-					parentGoName = str(parent_transform.gameObject.name)
 				rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
-				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " name " + str(parentGoName) + " is a humanoid bone with child " + str(goName) + " rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()))
-			else:
-				var parent_transform: Object = meta.lookup([null,parent_fileid,"",0])
-				var parentGoName: String
-				if parent_transform != null and parent_transform.gameObject != null:
-					parentGoName = str(parent_transform.gameObject.name)
-				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is normal name " + str(parentGoName) + " with child " + str(goName))
+				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()))
 		else:
-			log_debug("convert_properties: Node " + str(goName) + " has no parent.")
+			log_debug("convert_properties: Node has no parent.")
 		var outdict = convert_properties_component(node, uprops)
 
 		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition")
 		if typeof(pos_tmp) == TYPE_VECTOR3:
 			var pos_vec: Vector3 = pos_tmp as Vector3
 			#outdict["position"] = pos_vec * Vector3(-1, 1, 1)
-			outdict["position"] = rotation_delta * (pos_vec * Vector3(-1, 1, 1)) * rotation_delta_post
+			outdict["position"] = rotation_delta.basis * (pos_vec * Vector3(-1, 1, 1)) * rotation_delta_post.basis
 
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
@@ -4700,6 +4684,7 @@ class UnityAnimator:
 
 		var animtree: AnimationTree = AnimationTree.new()
 		animtree.name = "AnimationTree"
+		animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = true

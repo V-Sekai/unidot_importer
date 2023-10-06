@@ -493,9 +493,11 @@ class BaseModelHandler:
 			var take: Dictionary = subresources["animations"][take_name]
 			var idx: int = take.get("slices/amount", 0) + 1  # 1-indexed
 			var prefix: String = "slice_" + str(idx)
+			# FIXME: If take_name == name, godot won't actually apply the slice data.
 			take[prefix + "/name"] = anim_clip.get("name")
 			take[prefix + "/start_frame"] = anim_clip.get("start_frame")
 			take[prefix + "/end_frame"] = anim_clip.get("end_frame")
+			take["settings/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/save_to_file/enabled"] = false  # TODO
 			take[prefix + "/save_to_file/keep_custom_tracks"] = true  # TODO

@@ -183,6 +183,7 @@ class ParseState:
 		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
 
 	func fold_root_transforms_into_only_child() -> bool:
+		# FIXME: Animations targeting the parent or the child might need to be adjusted.
 		var root_node: Node3D = toplevel_node
 		var is_foldable: bool = root_node.get_child_count() == 1
 		var wanted_child: int = 0
@@ -1019,20 +1020,6 @@ func _post_import(p_scene: Node) -> Object:
 	if not did_fold_root_transforms:
 		ps.pop_back(toplevel_path)
 	var prefab_instance = ps.get_obj_id("PrefabInstance", toplevel_path, "")
-
-	var new_toplevel: Node3D = null
-	if did_fold_root_transforms:
-		metaobj.log_debug(0, "Node is toplevel for " + str(source_file_path))
-		var new_found_roots = 0
-		var new_root_go_id = 0
-		for child in ps.all_name_map[root_go_id]:
-			if typeof(child) == TYPE_STRING_NAME or typeof(child) == TYPE_STRING:
-				new_found_roots += 1
-				new_root_go_id = ps.all_name_map[root_go_id][child]
-		if new_found_roots == 1:
-			root_go_id = new_root_go_id
-			metaobj.log_debug(0, "All name map: " + str(ps.all_name_map[root_go_id]))
-			assert(root_go_id == ps.all_name_map[root_go_id][1])
 
 	# GameObject references always point to the toplevel node:
 	metaobj.prefab_main_gameobject_id = root_go_id
