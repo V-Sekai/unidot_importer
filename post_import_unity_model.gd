@@ -56,8 +56,9 @@ class ParseState:
 	var fileid_to_utype: Dictionary = {}.duplicate()
 	var fileid_to_gameobject_fileid: Dictionary = {}.duplicate()
 	var type_to_fileids: Dictionary = {}.duplicate()
+	var transform_fileid_to_local_rotation_post: Dictionary = {}.duplicate()
 	var transform_fileid_to_rotation_delta: Dictionary = {}.duplicate()
-	var transform_fileid_to_parent: Dictionary = {}.duplicate()
+	var transform_fileid_to_parent_fileid: Dictionary = {}.duplicate()
 	var humanoid_original_transforms: Dictionary
 
 	var all_name_map: Dictionary = {}.duplicate()
@@ -202,6 +203,7 @@ class ParseState:
 			child_node.set_bone_pose_position(root_bone_idx, Vector3.ZERO)
 			child_node.set_bone_pose_rotation(root_bone_idx, Quaternion.IDENTITY)
 			child_node.set_bone_pose_scale(root_bone_idx, Vector3.ONE)
+			humanoid_original_transforms[child_node.get_bone_name(root_bone_idx)] = Transform3D.IDENTITY
 			toplevel_node = child_node
 			return true
 		if child_node is Node3D:
@@ -238,7 +240,7 @@ class ParseState:
 			all_name_map[fileId_go] = {}.duplicate()
 		all_name_map[fileId_go][object_adapter.to_utype(p_component)] = fileId_comp
 		if p_component == "Transform":
-			transform_fileid_to_parent[fileId_comp] = parent_transform_id
+			transform_fileid_to_parent_fileid[fileId_comp] = parent_transform_id
 			all_name_map[fileId_go][1] = fileId_go  # Redundant...
 			fileid_to_nodepath[fileId_go] = nodepath
 			fileid_to_gameobject_fileid[fileId_go] = fileId_go
@@ -280,7 +282,7 @@ class ParseState:
 			metaobj.log_debug(0, "Register aux " + str(metaobj.guid) + ":" + str(-fileId_object) + ": '" + str(p_name) + "' " + str(p_aux_resource))
 		return fileId_object
 
-	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int):
+	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int, p_global_rest:= Transform3D(), p_pre_silhoutte_global_rest:= Transform3D()):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
 		if scale_correction_factor != 1.0:
@@ -293,13 +295,31 @@ class ParseState:
 		var fileId_go: int = register_component(node, p_path, "Transform", 0, p_skel_bone, p_parent_transform_id)
 		var fileId_transform: int = all_name_map[fileId_go][4]
 		var bone_name: String = node.get_bone_name(p_skel_bone)
+
+		p_global_rest *= node.get_bone_rest(p_skel_bone)
 		if humanoid_original_transforms.has(bone_name):
-			transform_fileid_to_rotation_delta[fileId_transform] = humanoid_original_transforms[bone_name] * node.get_bone_rest(p_skel_bone).affine_inverse()
+			p_pre_silhoutte_global_rest *= humanoid_original_transforms.get(bone_name)
+		else:
+			p_pre_silhoutte_global_rest *= node.get_bone_rest(p_skel_bone)
+
+		#if humanoid_original_transforms.has(bone_name):
+		#	'''
+		#	ParOrigT * ChildOrigT = GodotHumanT * X * ChildOrigT
+		#	GodotHumanT = ParOrigT * GodotCorrectionT
+		#	X = GodotCorrectionT.inv
+		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
+		#	'''
+		#	#transform_fileid_to_rotation_delta[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
+		#	# FIXME: Should be p_global_rest.affine_inverse() * silhoutte_diff * p_pre_silhoutte_global_rest
+		if not p_global_rest.is_equal_approx(p_pre_silhoutte_global_rest):
+			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_silhoutte_global_rest
+		if humanoid_original_transforms.has(bone_name):
+			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
 
 		for child_bone in node.get_bone_children(p_skel_bone):
 			var orig_child_name: String = get_orig_name("bone_name", node.get_bone_name(child_bone))
 			p_path.push_back(orig_child_name)
-			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, fileId_transform)
+			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, fileId_transform, p_global_rest, p_pre_silhoutte_global_rest)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -1028,6 +1048,8 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.fileid_to_utype = ps.fileid_to_utype
 	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
 	metaobj.transform_fileid_to_rotation_delta = ps.transform_fileid_to_rotation_delta
+	metaobj.transform_fileid_to_local_rotation_post = ps.transform_fileid_to_local_rotation_post
+	metaobj.transform_fileid_to_parent_fileid = ps.transform_fileid_to_parent_fileid
 
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map

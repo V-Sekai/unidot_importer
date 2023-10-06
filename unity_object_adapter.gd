@@ -3104,6 +3104,7 @@ class UnityPrefabInstance:
 			log_fail("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid), "prefab", source_prefab)
 			return []
 		meta.transform_fileid_to_parent_fileid[self.fileID ^ target_prefab_meta.prefab_main_transform_id] = self.parent_ref[1]
+		log_debug("Assigning prefab root transform " + str(self.fileID ^ target_prefab_meta.prefab_main_transform_id) + " parent fileid " + str(self.parent_ref[1]))
 		log_debug("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
 		var instanced_scene: Node3D = null
 		var toplevel_rename: String = ""
@@ -3212,8 +3213,8 @@ class UnityPrefabInstance:
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID, target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID, target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
 			log_debug("XXXc")
-			# FIXME: I think this fileID is wrong...
-			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, fileID, target_utype)
+			var virtual_fileID = fileID ^ self.fileID
+			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, virtual_fileID, target_utype)
 			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
 			if uprops.has("m_Name"):
@@ -3239,7 +3240,6 @@ class UnityPrefabInstance:
 						state.add_fileID(animtree, virtual_unity_object)
 					else:
 						animtree = existing_node
-					virtual_unity_object.fileID = fileID ^ self.fileID
 					virtual_unity_object.keys = uprops
 					state.prefab_state.animator_node_to_object[animtree] = virtual_unity_object
 					virtual_unity_object.assign_controller(animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"])
@@ -3596,39 +3596,59 @@ class UnityTransform:
 		return null
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var rotation_delta: Transform3D
+		var rotation_delta_post: Transform3D
+		var goName: String
+		if self.gameObject != null:
+			goName = str(self.gameObject.name)
+		if meta.transform_fileid_to_local_rotation_post.has(fileID) or meta.prefab_transform_fileid_to_local_rotation_post.has(fileID):
+			rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
+			log_warn("convert_properties: This fileID is a humanoid bone " + str(goName) + " rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()))
+		elif meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
+			var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
+			if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
+				var parent_transform: Object = meta.lookup([null,parent_fileid,"",0])
+				var parentGoName: String
+				'''
+				ParOrigT * ChildOrigT
+				ParOrigT * humanoid_correction * inv_humanoid_correction * ChildOrigT
+				'''
+				if parent_transform != null and parent_transform.gameObject != null:
+					parentGoName = str(parent_transform.gameObject.name)
+				rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
+				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " name " + str(parentGoName) + " is a humanoid bone with child " + str(goName) + " rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()))
+			else:
+				var parent_transform: Object = meta.lookup([null,parent_fileid,"",0])
+				var parentGoName: String
+				if parent_transform != null and parent_transform.gameObject != null:
+					parentGoName = str(parent_transform.gameObject.name)
+				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is normal name " + str(parentGoName) + " with child " + str(goName))
+		else:
+			log_debug("convert_properties: Node " + str(goName) + " has no parent.")
 		var outdict = convert_properties_component(node, uprops)
-		if uprops.has("m_LocalPosition.x"):
-			outdict["position:x"] = -1.0 * uprops.get("m_LocalPosition.x")  # * FLIP_X
-		if uprops.has("m_LocalPosition.y"):
-			outdict["position:y"] = 1.0 * uprops.get("m_LocalPosition.y")
-		if uprops.has("m_LocalPosition.z"):
-			outdict["position:z"] = 1.0 * uprops.get("m_LocalPosition.z")
-		if uprops.has("m_LocalPosition"):
-			var pos_vec: Variant = get_vector(uprops, "m_LocalPosition")
-			outdict["position"] = Vector3(-1, 1, 1) * pos_vec  # * FLIP_X
+
+		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition")
+		if typeof(pos_tmp) == TYPE_VECTOR3:
+			var pos_vec: Vector3 = pos_tmp as Vector3
+			#outdict["position"] = pos_vec * Vector3(-1, 1, 1)
+			outdict["position"] = rotation_delta * (pos_vec * Vector3(-1, 1, 1)) * rotation_delta_post
+
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
-			outdict["_quaternion"] = (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
-		var tmp: float
-		if uprops.has("m_LocalScale.x"):
-			tmp = 1.0 * uprops.get("m_LocalScale.x")
-			outdict["scale:x"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
-		if uprops.has("m_LocalScale.y"):
-			tmp = 1.0 * uprops.get("m_LocalScale.y")
-			outdict["scale:y"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
-		if uprops.has("m_LocalScale.z"):
-			tmp = 1.0 * uprops.get("m_LocalScale.z")
-			outdict["scale:z"] = 1e-7 if tmp > -1e-7 && tmp < 1e-7 else tmp
-		if uprops.has("m_LocalScale"):
-			var scale: Variant = get_vector(uprops, "m_LocalScale")
-			if typeof(scale) == TYPE_VECTOR3:
-				if scale.x > -1e-7 && scale.x < 1e-7:
-					scale.x = 1e-7
-				if scale.y > -1e-7 && scale.y < 1e-7:
-					scale.y = 1e-7
-				if scale.z > -1e-7 && scale.z < 1e-7:
-					scale.z = 1e-7
-			outdict["scale"] = scale
+			outdict["_quaternion"] = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
+
+		var scale: Variant = get_vector(uprops, "m_LocalScale")
+		if typeof(scale) == TYPE_VECTOR3:
+			var scale_vec: Vector3 = scale as Vector3
+			# FIXME: Godot handles scale 0 much worse than Unity. Try to avoid it.
+			if scale_vec.x > -1e-7 && scale_vec.x < 1e-7:
+				scale_vec.x = 1e-7
+			if scale_vec.y > -1e-7 && scale_vec.y < 1e-7:
+				scale_vec.y = 1e-7
+			if scale_vec.z > -1e-7 && scale_vec.z < 1e-7:
+				scale_vec.z = 1e-7
+			#outdict["scale"] = scale_vec
+			outdict["scale"] = (rotation_delta.basis * Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
 		return outdict
 
 	var rootOrder: int:

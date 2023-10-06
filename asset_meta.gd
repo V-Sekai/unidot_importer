@@ -51,6 +51,7 @@ var importer  # unity_object_adapter.UnityAssetImporter subclass
 #####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
 #####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
 
+var prefab_transform_fileid_to_local_rotation_post: Dictionary = {} # int -> Transform
 var prefab_transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 var prefab_transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 var prefab_fileid_to_nodepath = {}
@@ -66,6 +67,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 
 @export var prefab_main_gameobject_id = 0
 @export var prefab_main_transform_id = 0
+@export var transform_fileid_to_local_rotation_post: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 @export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
@@ -164,7 +166,7 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 	if not field.is_empty():
 		fieldstr = "." + field + ": "
 	var fileidstr = ""
-	if remote_ref[1] != 0:
+	if len(remote_ref) >= 2 and remote_ref[1] != 0:
 		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
 	if fileid != 0:
 		fileidstr += " @" + str(fileid)
@@ -175,7 +177,7 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 	log_message_holder.warnings_fails.append(log_str)
 	log_message_holder.fails.append(log_str)
 	var xref: Array = remote_ref
-	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
+	if len(xref) > 2 and xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]
 	log_database_holder.database.log_fail([null, fileid, self.guid, 0], msg, field, xref)
 
@@ -318,10 +320,14 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_rotation_delta.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_rotation_delta:
 		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(target_fileid))
+	for target_fileid in target_prefab_meta.transform_fileid_to_local_rotation_post:
+		self.prefab_transform_fileid_to_local_rotation_post[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_local_rotation_post.get(target_fileid))
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_local_rotation_post:
+		self.prefab_transform_fileid_to_local_rotation_post[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_local_rotation_post.get(target_fileid))
 	for target_fileid in target_prefab_meta.transform_fileid_to_parent_fileid:
-		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid))
+		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid)) ^ int(prefab_fileid)
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_parent_fileid:
-		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_parent_fileid.get(target_fileid))
+		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_parent_fileid.get(target_fileid)) ^ int(prefab_fileid)
 	for target_type in target_prefab_meta.type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
 			self.prefab_type_to_fileids[target_type] = PackedInt64Array()
