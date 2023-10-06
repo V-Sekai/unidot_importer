@@ -3103,8 +3103,8 @@ class UnityPrefabInstance:
 		if packed_scene == null:
 			log_fail("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid), "prefab", source_prefab)
 			return []
-		meta.transform_fileid_to_parent_fileid[self.fileID ^ target_prefab_meta.prefab_main_transform_id] = self.parent_ref[1]
-		log_debug("Assigning prefab root transform " + str(self.fileID ^ target_prefab_meta.prefab_main_transform_id) + " parent fileid " + str(self.parent_ref[1]))
+		meta.transform_fileid_to_parent_fileid[meta.xor_or_stripped(target_prefab_meta.prefab_main_transform_id, self.fileID)] = self.parent_ref[1]
+		log_debug("Assigning prefab root transform " + str(meta.xor_or_stripped(target_prefab_meta.prefab_main_transform_id, self.fileID)) + " parent fileid " + str(self.parent_ref[1]))
 		log_debug("Instancing PackedScene at " + str(packed_scene.resource_path) + ": " + str(packed_scene.resource_name))
 		var instanced_scene: Node3D = null
 		var toplevel_rename: String = ""
@@ -3157,7 +3157,7 @@ class UnityPrefabInstance:
 
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
 		var gntfac = target_prefab_meta.gameobject_name_to_fileid_and_children
-		#state.prefab_state.prefab_gameobject_name_map[self.fileID ^ self.meta.prefab_main_gameobject_id] =
+		#state.prefab_state.prefab_gameobject_name_map[meta.xor_or_stripped(self.meta.prefab_main_gameobject_id, self.fileID] =
 		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, gntfac, ps.prefab_gameobject_name_map)
 		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, pgntfac, ps.prefab_gameobject_name_map)
 		meta.remap_prefab_fileids(self.fileID, target_prefab_meta)
@@ -3213,7 +3213,7 @@ class UnityPrefabInstance:
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID, target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID, target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
 			log_debug("XXXc")
-			var virtual_fileID = fileID ^ self.fileID
+			var virtual_fileID = meta.xor_or_stripped(fileID, self.fileID)
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, virtual_fileID, target_utype)
 			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
@@ -3476,7 +3476,7 @@ class UnityPrefabInstance:
 
 		#calculate_prefab_nodepaths(state, instanced_scene, target_fileid, target_prefab_meta)
 		#for target_fileid in target_prefab_meta.fileid_to_nodepath:
-		#	var stripped_id = int(target_fileid)^fileID
+		#	var stripped_id = meta.xor_or_stripped(int(target_fileid), fileID)
 		#	prefab_fileid_to_nodepath =
 		#stripped_id_to_nodepath
 		#for mod in self.modifications:
@@ -3486,7 +3486,7 @@ class UnityPrefabInstance:
 		# FIXME: If we're in a top-level scene with its own stripped components, then we should use those IDs, not xor.
 		# The ID numbers might not match up 1-to-1.
 
-		return [self.fileID, toplevel_rename, self.fileID ^ target_prefab_meta.prefab_main_gameobject_id, instanced_scene]
+		return [self.fileID, toplevel_rename, meta.xor_or_stripped(target_prefab_meta.prefab_main_gameobject_id, self.fileID), instanced_scene]
 
 	func get_transform() -> Object:  # Not really... but there usually isn't a stripped transform for the prefab instance itself.
 		return self

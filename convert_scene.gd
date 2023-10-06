@@ -48,8 +48,8 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			if is_prefab:
 				if asset.type == "PrefabInstance":
 					var target_prefab_meta = asset.meta.lookup_meta(asset.source_prefab)
-					asset.meta.prefab_main_gameobject_id = target_prefab_meta.prefab_main_gameobject_id ^ asset.fileID
-					asset.meta.prefab_main_transform_id = target_prefab_meta.prefab_main_transform_id ^ asset.fileID
+					asset.meta.prefab_main_gameobject_id = pkgasset.parsed_meta.xor_or_stripped(target_prefab_meta.prefab_main_gameobject_id, asset.fileID)
+					asset.meta.prefab_main_transform_id = pkgasset.parsed_meta.xor_or_stripped(target_prefab_meta.prefab_main_transform_id, asset.fileID)
 				else:
 					asset.meta.prefab_main_gameobject_id = asset.fileID
 					asset.meta.prefab_main_transform_id = asset.transform.fileID

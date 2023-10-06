@@ -67,6 +67,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 
 @export var prefab_main_gameobject_id = 0
 @export var prefab_main_transform_id = 0
+@export var prefab_source_id_pair_to_stripped_id: Dictionary = {} # Vector2i -> int. if not here, we do XOR.
 @export var transform_fileid_to_local_rotation_post: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
@@ -78,7 +79,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var godot_resources: Dictionary = {}  # int -> Resource: insert_resource/override_resource
 @export var main_object_id: int = 0  # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
 @export var gameobject_name_to_fileid_and_children: Dictionary = {}  # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
-# @export var fileid_to_parent: Dictionary = {} # {400004: 400000, 400008: 400000, 400010: 12                    3456778901234^100100000}
+# @export var fileid_to_parent: Dictionary = {} # {400004: 400000, 400008: 400000, 400010: 123456778901234^100100000}
 @export var transform_fileid_to_children: Dictionary = {}  # {400000: {"SomeName": {null: 1234, "SomeName2": ...}}}
 @export var gameobject_fileid_to_components: Dictionary = {}  # {400000: {"SomeName": {null: 1234, "SomeName2": ...}}}
 @export var transform_fileid_to_prefab_ids: Dictionary = {}  # {400000: PackedInt64Array(1, 2, 3)}
@@ -225,22 +226,23 @@ func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionar
 	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
 	var gameobject_to_prefab_ids: Dictionary = self.transform_fileid_to_prefab_ids
 	var ret: Dictionary = {}.duplicate()
-	var my_id: int = gameobject_id ^ prefab_id
+	var my_id: int = xor_or_stripped(gameobject_id, prefab_id)
 	if new_map.has(my_id):
 		#log_fail(prefab_id, "remap_prefab_gameobject_names_inner: Avoided infinite recursion: " + str(prefab_id) + "/" + str(gameobject_id))
 		#return prefab_main_gameobject_id
 		ret = new_map[my_id]
 	#new_map[my_id] = {}
-	var my_transform_id: int = original_map[gameobject_id].get(4, 0) ^ prefab_id
+	var my_transform_id: int = xor_or_stripped(original_map[gameobject_id].get(4, 0), prefab_id)
 	var this_map: Dictionary = original_map[gameobject_id]
 	for name in this_map:
 		var sub_id = this_map[name]
+		var prefabbed_id = xor_or_stripped(sub_id, prefab_id)
 		if typeof(name) != TYPE_STRING and typeof(name) != TYPE_STRING_NAME:
 			# int: class_id; NodePath: script-type
-			ret[name] = sub_id ^ prefab_id
+			ret[name] = prefabbed_id
 			continue
-		var new_name = gameobject_renames.get(prefab_id ^ sub_id, name)
-		ret[new_name] = sub_id ^ prefab_id
+		var new_name = gameobject_renames.get(prefabbed_id, name)
+		ret[new_name] = prefabbed_id
 		#ret[new_name] = remap_prefab_gameobject_names_inner(prefab_id, original_map, sub_id, new_map)
 	if prefab_id != 0:
 		var component_map: Dictionary = gameobject_new_components.get(my_id, {})
@@ -255,7 +257,7 @@ func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionar
 	#for target_prefab_id in gameobject_to_prefab_ids.get(my_transform_id, PackedInt64Array()):
 	#	var target_prefab_meta: Object = lookup_meta_by_guid(self.prefab_id_to_guid.get(target_prefab_id))
 	#	var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
-	#	var prefab_name = gameobject_renames[target_prefab_id ^ target_prefab_meta.prefab_main_gameobject_id]
+	#	var prefab_name = gameobject_renames[xor_or_stripped(target_prefab_meta.prefab_main_gameobject_id, target_prefab_id)]
 	#	ret[prefab_name] = target_prefab_meta.remap_prefab_gameobject_names_inner(target_prefab_id ^ prefab_id, pgntfac, target_prefab_meta.prefab_main_gameobject_id, new_map)
 	# Note: overwrites of name should respect m_RootOrder (we may need to store m_RootOrder here too)
 	new_map[my_id] = ret
@@ -305,43 +307,43 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 	# xor is the actual operation used for a prefabbed fileid in a prefab instance.
 	var my_path_prefix: String = str(fileid_to_nodepath.get(prefab_fileid)) + "/"
 	for target_fileid in target_prefab_meta.fileid_to_nodepath:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
+		self.prefab_fileid_to_nodepath[xor_or_stripped(target_fileid, prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.fileid_to_nodepath.get(target_fileid)))
 	for target_fileid in target_prefab_meta.prefab_fileid_to_nodepath:
-		self.prefab_fileid_to_nodepath[int(target_fileid) ^ int(prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid)))
+		self.prefab_fileid_to_nodepath[xor_or_stripped(target_fileid, prefab_fileid)] = NodePath(my_path_prefix + str(target_prefab_meta.prefab_fileid_to_nodepath.get(target_fileid)))
 	for target_fileid in target_prefab_meta.fileid_to_skeleton_bone:
-		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid))
+		self.prefab_fileid_to_skeleton_bone[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.fileid_to_skeleton_bone.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
-		self.prefab_fileid_to_skeleton_bone[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid))
+		self.prefab_fileid_to_skeleton_bone[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_skeleton_bone.get(target_fileid))
 	for target_fileid in target_prefab_meta.fileid_to_utype:
-		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(target_fileid)
+		self.prefab_fileid_to_utype[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.fileid_to_utype.get(target_fileid)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_utype:
-		self.prefab_fileid_to_utype[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_utype.get(target_fileid))
+		self.prefab_fileid_to_utype[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_utype.get(target_fileid))
 	for target_fileid in target_prefab_meta.transform_fileid_to_rotation_delta:
-		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_rotation_delta.get(target_fileid))
+		self.prefab_transform_fileid_to_rotation_delta[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.transform_fileid_to_rotation_delta.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_rotation_delta:
-		self.prefab_transform_fileid_to_rotation_delta[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(target_fileid))
+		self.prefab_transform_fileid_to_rotation_delta[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(target_fileid))
 	for target_fileid in target_prefab_meta.transform_fileid_to_local_rotation_post:
-		self.prefab_transform_fileid_to_local_rotation_post[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_local_rotation_post.get(target_fileid))
+		self.prefab_transform_fileid_to_local_rotation_post[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.transform_fileid_to_local_rotation_post.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_local_rotation_post:
-		self.prefab_transform_fileid_to_local_rotation_post[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_local_rotation_post.get(target_fileid))
+		self.prefab_transform_fileid_to_local_rotation_post[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_local_rotation_post.get(target_fileid))
 	for target_fileid in target_prefab_meta.transform_fileid_to_parent_fileid:
-		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid)) ^ int(prefab_fileid)
+		self.prefab_transform_fileid_to_parent_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid), prefab_fileid)
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_parent_fileid:
-		self.prefab_transform_fileid_to_parent_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_parent_fileid.get(target_fileid)) ^ int(prefab_fileid)
+		self.prefab_transform_fileid_to_parent_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.prefab_transform_fileid_to_parent_fileid.get(target_fileid), prefab_fileid)
 	for target_type in target_prefab_meta.type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
 			self.prefab_type_to_fileids[target_type] = PackedInt64Array()
 		for target_fileid in target_prefab_meta.type_to_fileids.get(target_type):
-			self.prefab_type_to_fileids[target_type].push_back(int(target_fileid) ^ int(prefab_fileid))
+			self.prefab_type_to_fileids[target_type].push_back(xor_or_stripped(target_fileid, prefab_fileid))
 	for target_type in target_prefab_meta.prefab_type_to_fileids:
 		if not self.prefab_type_to_fileids.has(target_type):
 			self.prefab_type_to_fileids[target_type] = PackedInt64Array()
 		for target_fileid in target_prefab_meta.prefab_type_to_fileids.get(target_type):
-			self.prefab_type_to_fileids[target_type].push_back(int(target_fileid) ^ int(prefab_fileid))
+			self.prefab_type_to_fileids[target_type].push_back(xor_or_stripped(target_fileid, prefab_fileid))
 	for target_fileid in target_prefab_meta.fileid_to_gameobject_fileid:
-		self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid))
+		self.prefab_fileid_to_gameobject_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid), prefab_fileid)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_gameobject_fileid:
-		self.prefab_fileid_to_gameobject_fileid[int(target_fileid) ^ int(prefab_fileid)] = (target_prefab_meta.prefab_fileid_to_gameobject_fileid.get(target_fileid) ^ int(prefab_fileid))
+		self.prefab_fileid_to_gameobject_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.prefab_fileid_to_gameobject_fileid.get(target_fileid), prefab_fileid)
 
 
 func calculate_prefab_nodepaths_recursive():
@@ -360,6 +362,10 @@ func calculate_prefab_nodepaths_recursive():
 	for go_fileid in fileid_to_component_fileids.keys():
 		for fileid in fileid_to_component_fileids.get(go_fileid):
 			fileid_to_component_fileids[fileid] = fileid_to_component_fileids.get(go_fileid)
+
+
+func xor_or_stripped(fileID: int, prefab_fileID: int) -> int:
+	return prefab_source_id_pair_to_stripped_id.get(Vector2i(prefab_fileID, fileID), prefab_fileID ^ fileID)
 
 
 # This overrides a built-in resource, storing the resource inside the database itself.
@@ -656,6 +662,8 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 		if not type_to_fileids.has(output_obj.type):
 			type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 		type_to_fileids[output_obj.type].push_back(output_obj.fileID)
+		if output_obj.is_stripped:
+			prefab_source_id_pair_to_stripped_id[Vector2i(output_obj.prefab_instance[1], output_obj.prefab_source_object[1])] = output_obj.fileID
 		if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 			fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 		if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
@@ -702,6 +710,8 @@ func parse_asset(file: Object) -> ParsedAsset:
 			if not type_to_fileids.has(output_obj.type):
 				type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 			type_to_fileids[output_obj.type].push_back(output_obj.fileID)
+			if output_obj.is_stripped:
+				prefab_source_id_pair_to_stripped_id[Vector2i(output_obj.prefab_instance[1], output_obj.prefab_source_object[1])] = output_obj.fileID
 			if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 				fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 			if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
