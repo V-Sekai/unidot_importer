@@ -210,8 +210,8 @@ class UnityObject:
 	func configure_skeleton_bone_props(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props = self.convert_skeleton_properties(skel, bone_name, uprops)
 		var bone_idx: int = skel.find_bone(bone_name)
-		if props.has("_quaternion"):
-			skel.set_bone_pose_rotation(bone_idx, props["_quaternion"])
+		if props.has("quaternion"):
+			skel.set_bone_pose_rotation(bone_idx, props["quaternion"])
 		if props.has("position"):
 			skel.set_bone_pose_position(bone_idx, props["position"])
 		if props.has("scale"):
@@ -232,44 +232,11 @@ class UnityObject:
 		if node is MeshInstance3D:
 			self.apply_mesh_renderer_props(meta, node, props)
 		log_debug(str(node.name) + ": " + str(props))
-		# var has_transform_track: bool = false
-		# var transform_position: Vector3 = Vector3()
-		# var transform_rotation: Quaternion = Quaternion()
-		# var transform_position: Vector3 = Vector3()
-		if props.has("_quaternion"):
-			node.transform.basis = Basis.IDENTITY.scaled(node.scale) * Basis(props.get("_quaternion"))
-
-		var has_position_x: bool = props.has("position:x")
-		var has_position_y: bool = props.has("position:y")
-		var has_position_z: bool = props.has("position:z")
-		if has_position_x or has_position_y or has_position_z:
-			var per_axis_position: Vector3 = node.position
-			if has_position_x:
-				per_axis_position.x = props.get("position:x")
-			if has_position_y:
-				per_axis_position.y = props.get("position:y")
-			if has_position_z:
-				per_axis_position.z = props.get("position:z")
-			node.position = per_axis_position
-		var has_scale_x: bool = props.has("scale:x")
-		var has_scale_y: bool = props.has("scale:y")
-		var has_scale_z: bool = props.has("scale:z")
-		if has_scale_x or has_scale_y or has_scale_z:
-			var per_axis_scale: Vector3 = node.scale
-			if has_scale_x:
-				per_axis_scale.x = props.get("scale:x")
-			if has_scale_y:
-				per_axis_scale.y = props.get("scale:y")
-			if has_scale_z:
-				per_axis_scale.z = props.get("scale:z")
-			node.scale = per_axis_scale
 		for propname in props:
 			if typeof(props.get(propname)) == TYPE_NIL:
 				continue
-			elif str(propname) == "_quaternion":  # .begins_with("_"):
-				pass
 			elif str(propname).ends_with(":x") or str(propname).ends_with(":y") or str(propname).ends_with(":z"):
-				pass
+				log_warn("Unexpected per-axis value property in apply_node_props " + str(propname))
 			elif str(propname) == "name":
 				pass  # We cannot do Name here because it will break existing NodePath of outer prefab to children.
 			else:
@@ -3610,7 +3577,7 @@ class UnityTransform:
 				rot_quat = (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
 			else:
 				rot_quat = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
-			outdict["_quaternion"] = rot_quat
+			outdict["quaternion"] = rot_quat
 
 		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)
