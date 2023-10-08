@@ -36,6 +36,10 @@ func show_importer_logs():
 	if package_import_dialog != null:
 		package_import_dialog.show_importer_logs()
 
+func do_reimport_previous_files():
+	if package_import_dialog != null:
+		package_import_dialog.do_reimport_previous_files()
+
 func recursive_print_scene():
 	recursive_print(get_tree().edited_scene_root)
 
@@ -43,6 +47,7 @@ func recursive_print_scene():
 func _enter_tree():
 	print("run enter tree")
 	add_tool_menu_item("Import Unity Package...", self.show_importer)
+	add_tool_menu_item("Reimport previous files", self.do_reimport_previous_files)
 	add_tool_menu_item("Reimport large unity package...", self.show_reimport)
 	add_tool_menu_item("Show last import logs", self.show_importer_logs)
 	#add_tool_menu_item("Queue Test...", self.queue_test)
@@ -52,7 +57,8 @@ func _enter_tree():
 func _exit_tree():
 	print("run exit tree")
 	remove_tool_menu_item("Print scene nodes with owner...")
+	remove_tool_menu_item("Reimport previous files")
 	remove_tool_menu_item("Import Unity Package...")
 	remove_tool_menu_item("Show last import logs")
-	#remove_tool_menu_item("Reimport large unity package...")
+	remove_tool_menu_item("Reimport large unity package...")
 	#remove_tool_menu_item("Queue Test...")

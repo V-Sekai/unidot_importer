@@ -415,6 +415,43 @@ func _selected_package(p_path: String) -> void:
 		file_dialog = null
 
 
+func _reselect_pruned_items(p_ti: TreeItem):
+	for child_ti in p_ti.get_children():
+		_reselect_pruned_items(child_ti)
+	var text = p_ti.get_text(0)
+	p_ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
+	p_ti.set_checked(0, true)
+	p_ti.set_text(0, text)
+
+
+func do_reimport_previous_files() -> void:
+	_currently_preprocessing_assets = 0
+	_preprocessing_second_pass.clear()
+	retry_tex = false
+
+	asset_work_waiting_write.clear()
+	asset_work_waiting_scan.clear()
+	asset_work_currently_importing.clear()
+	asset_work_completed.clear()
+
+	asset_all.clear()
+	asset_textures.clear()
+	asset_materials_and_other.clear()
+	asset_models.clear()
+	asset_yaml_post_model.clear()
+	asset_prefabs.clear()
+	asset_scenes.clear()
+
+	result_log_lineedit.text = ""
+	result_log_lineedit.syntax_highlighter = ErrorSyntaxHighlighter.new(self)
+
+	import_finished = false
+	tree_dialog_state = STATE_DIALOG_SHOWING
+	_reselect_pruned_items(main_dialog_tree.get_root())
+	_asset_tree_window_confirmed()
+	main_dialog.show()
+
+
 func show_reimport() -> void:
 	file_dialog = null
 	_show_importer_common()

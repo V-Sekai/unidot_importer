@@ -807,6 +807,10 @@ class UnityShader:
 	pass
 
 
+class UnityAvatar:
+	extends UnityObject
+	pass
+
 # todo: create
 
 
@@ -2758,6 +2762,24 @@ class UnityGameObject:
 		var skeleton_bone_index: int = transform.skeleton_bone_index
 		var skeleton_bone_name: String = godot_skeleton.get_bone_name(skeleton_bone_index)
 		var ret: Node3D = null
+		var animator = GetComponent("Animator")
+		if animator != null:
+			var sub_avatar_meta = animator.get_avatar_meta()
+			if sub_avatar_meta != null:
+				state = state.state_with_avatar_meta(sub_avatar_meta)
+				if godot_skeleton.name != "GeneralSkeleton":
+					log_fail("Skelley object should have ensured godot_skeleton with avatar is named GeneralSkeleton")
+				godot_skeleton.unique_name_in_owner = true
+		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID)
+		if not avatar_bone_name.is_empty():
+			var conflicting_bone := godot_skeleton.find_bone(avatar_bone_name)
+			var dedupe := 1
+			if conflicting_bone != -1:
+				while godot_skeleton.find_bone(avatar_bone_name + " " + str(dedupe)) != -1:
+					dedupe += 1
+				godot_skeleton.set_bone_name(conflicting_bone, avatar_bone_name + " " + str(dedupe))
+			godot_skeleton.set_bone_name(skeleton_bone_index, avatar_bone_name)
+			skeleton_bone_name = avatar_bone_name
 		var rigidbody = GetComponent("Rigidbody")
 		var name_map = {}
 		name_map[1] = self.fileID
@@ -2849,6 +2871,10 @@ class UnityGameObject:
 				extra_fileID.push_back(component)
 				log_debug("Has a collider " + self.name)
 				has_collider = true
+			if component.type == "Animator":
+				var sub_avatar_meta = component.get_avatar_meta()
+				if sub_avatar_meta != null:
+					state = state.state_with_avatar_meta(sub_avatar_meta)
 		var is_staticbody: bool = false
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
@@ -2885,7 +2911,11 @@ class UnityGameObject:
 				log_fail("Skelley " + str(new_skelley) + " is missing a godot_skeleton")
 			else:
 				ret.add_child(new_skelley.godot_skeleton, true)
+				if not state.active_avatars.is_empty():
+					new_skelley.godot_skeleton.name = "GeneralSkeleton"
 				new_skelley.godot_skeleton.owner = state.owner
+				if not state.active_avatars.is_empty():
+					new_skelley.godot_skeleton.unique_name_in_owner = true
 
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
@@ -3381,8 +3411,12 @@ class UnityPrefabInstance:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
 			for new_skelley in list_of_skelleys:
 				if new_skelley.godot_skeleton != null:
+					if not state.active_avatars.is_empty():
+						new_skelley.godot_skeleton.name = "GeneralSkeleton"
 					attachment.add_child(new_skelley.godot_skeleton, true)
 					new_skelley.godot_skeleton.owner = state.owner
+					if not state.active_avatars.is_empty():
+						new_skelley.godot_skeleton.unique_name_in_owner = true
 
 			var name_map = {}
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
@@ -3590,7 +3624,11 @@ class UnityTransform:
 				scale_vec.y = 1e-7
 			if scale_vec.z > -1e-7 && scale_vec.z < 1e-7:
 				scale_vec.z = 1e-7
-			scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec)).get_scale()
+			### FIXME: # scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec)).get_scale()
+			if has_post:
+				scale_vec = (Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
+			else:
+				scale_vec = (rotation_delta.basis.inverse() * Basis.from_scale(scale_vec)).get_scale()
 			outdict["scale"] = scale_vec
 		return outdict
 
@@ -4619,6 +4657,9 @@ class UnityAnimation:
 class UnityAnimator:
 	extends UnityBehaviour
 
+	func get_avatar_meta() -> Object:
+		return meta.lookup_meta(keys.get("m_Avatar", [null, 0, "", null]))
+
 	func assign_controller(anim_player: AnimationPlayer, anim_tree: AnimationTree, controller_ref: Array):
 		var main_library: AnimationLibrary = null
 		var base_library: AnimationLibrary = null
@@ -4860,6 +4901,7 @@ class UnityModelImporter:
 					log_warn("Unrecognized humanName " + str(human_name) + " boneName " + str(bone_name))
 		if not meta.internal_data.get("humanoid_root_bone", "").is_empty():
 			bone_map_dict[meta.internal_data.get("humanoid_root_bone", "")] = "Root"
+		meta.humanoid_bone_map_dict = bone_map_dict
 		return bone_map_dict
 
 	func generate_bone_map_from_human() -> BoneMap:
@@ -5034,7 +5076,7 @@ var _type_dictionary: Dictionary = {
 	# "AudioReverbFilter": UnityAudioReverbFilter,
 	# "AudioReverbZone": UnityAudioReverbZone,
 	# DISABLED FOR NOW: "AudioSource": UnityAudioSource,
-	# "Avatar": UnityAvatar,
+	"Avatar": UnityAvatar,
 	# "AvatarMask": UnityAvatarMask,
 	# "BaseAnimationTrack": UnityBaseAnimationTrack,
 	# "BaseVideoTexture": UnityBaseVideoTexture,

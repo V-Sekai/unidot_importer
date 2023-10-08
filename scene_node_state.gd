@@ -44,6 +44,17 @@ var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
 
 
+class AvatarState:
+	extends RefCounted
+
+	var humanoid_bone_map_dict: Dictionary # node name -> human name
+	var human_bone_to_local_rotation: Dictionary # human name -> local rotation correction post
+	var human_bone_to_rotation_delta: Dictionary # human name -> global rotation correction
+
+
+var active_avatars: Array[AvatarState]
+
+
 func set_main_name_map(name_map: Dictionary, prefab_name_map: Dictionary = {}):
 	meta.gameobject_name_to_fileid_and_children = name_map
 	meta.prefab_gameobject_name_to_fileid_and_children = prefab_name_map
@@ -305,6 +316,7 @@ class Skelley:
 					bones_set[bone.uniq_key] = true
 					bones.push_back(bone)
 		var idx: int = 0
+		var has_avatar: bool = false
 		for bone in bones:
 			if bone.is_stripped_or_prefab_instance():
 				# We do not know yet the full extent of the skeleton
@@ -315,7 +327,16 @@ class Skelley:
 				continue
 			uniq_key_to_bone[bone.uniq_key] = idx
 			bone.skeleton_bone_index = idx
+			var go: Object = bone.get_gameObject()
+			if go != null:
+				var animator: Object = go.GetComponent("Animator")
+				if animator != null:
+					if animator.get_avatar_meta() != null:
+						has_avatar = true
 			idx += 1
+
+		if has_avatar and godot_skeleton != null:
+			godot_skeleton.name = "GeneralSkeleton"
 		if not contains_stripped_bones:
 			var dedupe_dict = {}.duplicate()
 			for bone_i in range(godot_skeleton.get_bone_count()):
@@ -412,6 +433,48 @@ func state_with_body(new_body: CollisionObject3D) -> RefCounted:
 	state.body = new_body
 	return state
 
+
+func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
+	if not avatar_meta.humanoid_bone_map_dict or not avatar_meta.transform_fileid_to_local_rotation_post:
+		return self
+	var state = duplicate()
+	var avatar_state := AvatarState.new()
+	#avatar_state.current_avatar_object = new_avatar
+	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_dict.duplicate()
+
+	var id_to_local_rotation: Dictionary = avatar_meta.transform_fileid_to_local_rotation_post
+	var id_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
+	var id_to_bone: Dictionary = avatar_meta.fileid_to_skeleton_bone
+	var human_bone_to_local_rotation: Dictionary
+	var human_bone_to_rotation_delta: Dictionary
+
+	for i in id_to_local_rotation:
+		if id_to_bone.has(i):
+			human_bone_to_local_rotation[id_to_bone[i]] = id_to_local_rotation[i]
+			if id_to_rotation_delta.has(i):
+				human_bone_to_rotation_delta[id_to_bone[i]] = id_to_rotation_delta[i]
+
+	avatar_state.human_bone_to_local_rotation = human_bone_to_local_rotation
+	avatar_state.human_bone_to_rotation_delta = human_bone_to_rotation_delta
+
+	state.active_avatars.push_back(avatar_state)
+
+	return state
+
+
+func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int) -> String:
+	var name_to_return: String = ""
+	for avatar in active_avatars:
+		if avatar.humanoid_bone_map_dict.has(orig_bone_name):
+			if name_to_return.is_empty():
+				name_to_return = avatar.humanoid_bone_map_dict[orig_bone_name]
+				godot_bone_name = name_to_return
+			avatar.humanoid_bone_map_dict.erase(orig_bone_name)
+		if avatar.human_bone_to_local_rotation.has(godot_bone_name):
+			meta.transform_fileid_to_local_rotation_post[fileid] = avatar.human_bone_to_local_rotation[godot_bone_name]
+		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
+			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
+	return name_to_return
 
 func state_with_meta(new_meta: Resource) -> RefCounted:
 	var state = duplicate()

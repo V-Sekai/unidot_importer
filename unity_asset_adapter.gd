@@ -515,7 +515,10 @@ class BaseModelHandler:
 			var bone_map: BoneMap = importer.generate_bone_map_from_human()
 			# TODO: Allow generating BoneMap from Avatar object, too.
 			subresources["nodes"]["PATH:Skeleton3D"]["retarget/bone_map"] = bone_map
-			subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
+			# FIXME: Disabled fix_silhouette because the pre-silhouette matrix is not being calculated yet
+			# This would break skins and unpacked prefabs.
+			subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
+			#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = 28
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
@@ -1146,6 +1149,7 @@ class FbxHandler:
 				if scene_nodes.find(new_root_idx) != -1:
 					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
 				hips_node_idx = new_root_idx
+			pkgasset.parsed_meta
 		if not human_skin_nodes.is_empty():
 			if not json.has("skins"):
 				json["skins"] = []
