@@ -309,6 +309,9 @@ class ParseState:
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
+			if not node.has_meta("humanoid_rotation_delta"):
+				node.set_meta("humanoid_rotation_delta", {})
+			node.get_meta("humanoid_rotation_delta")[node.get_bone_name(p_skel_bone)] = transform_fileid_to_rotation_delta[fileId_transform]
 		if humanoid_original_transforms.has(bone_name):
 			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
 
@@ -345,14 +348,14 @@ class ParseState:
 					for child_child_bone in child.get_parentless_bones():
 						var orig_child_name: String = get_orig_name("bone_name", child.get_bone_name(child_child_bone))
 						p_path.push_back(orig_child_name)
-						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform)
+						var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform, p_global_rest, p_pre_retarget_global_rest)
 						pop_back(p_path)
 						if new_id != 0:
 							self.all_name_map[fileId_go][orig_child_name] = new_id
 				else:
 					var orig_child_name: String = get_orig_name("nodes", child.name)
 					p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false, fileId_transform)
+					var new_id = self.iterate_node(child, p_path, false, fileId_transform, p_global_rest, p_pre_retarget_global_rest)
 					pop_back(p_path)
 					if new_id != 0:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -450,7 +453,7 @@ class ParseState:
 						p_path.push_back("root")
 					else:
 						p_path.push_back(orig_child_name)
-					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform)
+					var new_id = self.iterate_skeleton(child, p_path, child_child_bone, new_attachments_by_bone_name, fileId_transform, p_global_rest, p_pre_retarget_global_rest)
 					pop_back(p_path)
 					if len(p_path) == 1 and node.get_parent() == null:
 						# HACK: If we are above the root node (due to preserve_hierarchy=false), pretend we are the child.
@@ -466,7 +469,7 @@ class ParseState:
 						p_path.push_back("root")
 					else:
 						p_path.push_back(orig_child_name)
-					var new_id = self.iterate_node(child, p_path, false, fileId_transform)
+					var new_id = self.iterate_node(child, p_path, false, fileId_transform, p_global_rest, p_pre_retarget_global_rest)
 					pop_back(p_path)
 					if len(p_path) == 1 and node.get_parent() == null:
 						# HACK: If we are above the root node (due to preserve_hierarchy=false), pretend we are the child.
@@ -479,7 +482,7 @@ class ParseState:
 		if len(p_path) == 2 and str(p_path[1]) == "root":
 			key = preserve_hierarchy_orig_root_node_name
 		for child in skinned_parent_to_node.get(key, {}):
-			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
+			metaobj.log_warn(0, "Skinned parent from non-bone " + str(node.name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0
 			if len(p_path) == 1:
@@ -663,6 +666,9 @@ class ParseState:
 					if skin != null:
 						skin = skin.duplicate()
 						adjust_skin_scale(skin)
+						var skel: Skeleton3D = node.get_parent() as Skeleton3D
+						if skel != null and skel.has_meta("humanoid_rotation_delta"):
+							skin.set_meta("humanoid_rotation_delta", skel.get_meta("humanoid_rotation_delta").duplicate())
 						var respath: String = get_resource_path(godot_mesh_name, ".skin.tres")
 						if FileAccess.file_exists(respath):
 							skin.take_over_path(respath)

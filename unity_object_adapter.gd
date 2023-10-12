@@ -3585,13 +3585,13 @@ class UnityTransform:
 		var has_post: bool = false
 		if meta.transform_fileid_to_local_rotation_post.has(fileID) or meta.prefab_transform_fileid_to_local_rotation_post.has(fileID):
 			rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
-			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()))
+			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
 			has_post = true
 		if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
 			var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
 			if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
 				rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
-				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()))
+				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta.basis.get_scale()))
 		else:
 			log_debug("convert_properties: Node has no parent.")
 
@@ -3615,6 +3615,8 @@ class UnityTransform:
 			outdict["quaternion"] = rot_quat
 
 		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot
+		if not rotation_delta.is_equal_approx(Transform3D.IDENTITY):
+			log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)
 		if typeof(scale) == TYPE_VECTOR3:
 			var scale_vec: Vector3 = scale as Vector3
@@ -4059,36 +4061,57 @@ class UnitySkinnedMeshRenderer:
 			ret = create_godot_node_orig(state, gdskel, component_name)
 		# ret.skeleton = NodePath("..") # default?
 		# TODO: skin??
-		ret.skin = meta.get_godot_resource(get_skin())
-		if ret.skin == null:
-			log_fail("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " has null skin", "skin")
-		elif len(bones) != ret.skin.get_bind_count():
-			log_fail("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has bones " + str(len(bones)) + " mismatched with bind bones " + str(ret.skin.get_bind_count()), "bones")
-		else:
-			var edited: bool = false
-			for idx in range(len(bones)):
-				var bone_transform: UnityTransform = meta.lookup(bones[idx])
-				if bone_transform == null:
-					log_warn("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx), "bones")
-					continue
-				if ret.skin.get_bind_bone(idx) != bone_transform.skeleton_bone_index:
-					edited = true
-					break
-			if edited:
-				ret.skin = ret.skin.duplicate()
-				for idx in range(len(bones)):
-					var bone_transform: UnityTransform = meta.lookup(bones[idx])
-					if bone_transform == null:
-						log_warn("Mesh " + component_name + " at " + str(state.owner.get_path_to(ret)) + " mesh " + str(ret.mesh) + " has null bone " + str(idx), "bones")
-						continue
-					ret.skin.set_bind_bone(idx, bone_transform.skeleton_bone_index)
-					ret.skin.set_bind_name(idx, gdskel.get_bone_name(bone_transform.skeleton_bone_index))
+		ret.skin = edit_skin(component_name, get_skin(), gdskel)
 		# TODO: duplicate skin and assign the correct bone names to match self.bones array
 		return ret
 
 	var bones: Array:
 		get:
 			return keys.get("m_Bones", [])
+
+	func edit_skin(component_name: String, skin_ref: Array, gdskel: Skeleton3D) -> Skin:
+		var original_is_humanoid: bool = false
+		var skin: Skin = meta.get_godot_resource(skin_ref)
+		var skin_humanoid_rotation_delta: Dictionary
+		if skin.has_meta("humanoid_rotation_delta"):
+			skin_humanoid_rotation_delta = skin.get_meta("humanoid_rotation_delta")
+		if skin == null:
+			log_fail("Mesh " + component_name + " has bones " + str(len(bones)) + " has null skin", "skin")
+		elif len(bones) != skin.get_bind_count():
+			log_fail("Mesh " + component_name + "has bones " + str(len(bones)) + " mismatched with bind bones " + str(skin.get_bind_count()), "bones")
+
+		var edited: bool = false
+		for idx in range(len(bones)):
+			var bone_transform: UnityTransform = meta.lookup(bones[idx])
+			if bone_transform == null:
+				log_warn("Mesh " + component_name + " has null bone " + str(idx), "bones")
+				continue
+			if bone_transform.skeleton_bone_index != -1 and skin.get_bind_bone(idx) != bone_transform.skeleton_bone_index:
+				edited = true
+				break
+			var bone_fileID = bone_transform.fileID
+			if meta.transform_fileid_to_rotation_delta.has(bone_fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(bone_fileID):
+				if !skin_humanoid_rotation_delta.get(skin.get_bind_name(idx), Transform3D.IDENTITY).is_equal_approx(meta.transform_fileid_to_rotation_delta.get(bone_fileID, meta.prefab_transform_fileid_to_rotation_delta.get(bone_fileID))):
+					edited = true
+					break
+		if edited:
+			skin = skin.duplicate()
+			for idx in range(len(bones)):
+				var bone_transform: UnityTransform = meta.lookup(bones[idx])
+				if bone_transform == null:
+					log_warn("Mesh " + component_name + " has null bone " + str(idx), "bones")
+					continue
+				if bone_transform.skeleton_bone_index != -1:
+					skin.set_bind_bone(idx, bone_transform.skeleton_bone_index)
+					skin.set_bind_name(idx, gdskel.get_bone_name(bone_transform.skeleton_bone_index))
+				var bone_fileID = bone_transform.fileID
+				if meta.transform_fileid_to_rotation_delta.has(bone_fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(bone_fileID):
+					var skin_rotation_delta: Transform3D = skin_humanoid_rotation_delta.get(skin.get_bind_name(idx), Transform3D.IDENTITY)
+					var rotation_delta: Transform3D = meta.transform_fileid_to_rotation_delta.get(bone_fileID, meta.prefab_transform_fileid_to_rotation_delta.get(bone_fileID))
+					if !rotation_delta.is_equal_approx(skin_rotation_delta):
+						log_debug("skin " + str(idx) + " : This fileID is a humanoid bone rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale " + str(rotation_delta.basis.get_scale()))
+						skin.set_bind_pose(idx, rotation_delta * skin_rotation_delta.affine_inverse() * skin.get_bind_pose(idx))
+		return skin
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
@@ -4098,8 +4121,7 @@ class UnitySkinnedMeshRenderer:
 			outdict["_mesh"] = new_mesh  # property track?
 			var skin_ref: Array = mesh_ref
 			skin_ref = [null, -skin_ref[1], skin_ref[2], skin_ref[3]]
-			var new_skin: Skin = meta.get_godot_resource(skin_ref)
-			outdict["skin"] = new_skin  # property track?
+			outdict["skin"] = edit_skin(node.name, skin_ref, node.get_parent() as Skeleton3D)
 
 			# TODO: blend shapes
 
