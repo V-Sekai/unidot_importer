@@ -19,6 +19,8 @@ const ASSET_TYPE_UNKNOWN = 8
 const SHOULD_CONVERT_TO_GLB: bool = false
 const USE_BUILTIN_FBX: bool = false # true
 
+const SILHOUETTE_FIX_THRESHOLD: float = 28.0
+
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg==")
 
 
@@ -518,7 +520,7 @@ class BaseModelHandler:
 			# FIXME: Disabled fix_silhouette because the pre-silhouette matrix is not being calculated yet
 			# This would break skins and unpacked prefabs.
 			subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
-			#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = 28
+			#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
@@ -1104,6 +1106,7 @@ class FbxHandler:
 				pkgasset.log_debug("AAAA set to humanoid and has nodes")
 				bone_map_dict = importer.generate_bone_map_dict_from_human()
 				pkgasset.log_debug(str(bone_map_dict))
+				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
 
 			var node_idx = 0
 			var hips_node_idx = -1

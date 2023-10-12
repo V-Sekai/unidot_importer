@@ -706,3 +706,157 @@ static func auto_mapping_to_bone_map(skeleton: Skeleton3D, bone_map_dict: Dictio
 	for skeleton_bone_name in bone_map_dict:
 		var profile_bone_name = bone_map_dict[skeleton_bone_name]
 		bone_map.set_skeleton_bone_name(profile_bone_name, skeleton_bone_name)
+
+
+static func gltf_matrix_to_trs(json_node: Dictionary) -> void:
+	if json_node.has("matrix"):
+		# Convert node to TRS notation.
+		var mat: Array = json_node.get("matrix", [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+		var basis: Basis = Basis(Vector3(mat[0], mat[1], mat[2]), Vector3(mat[4], mat[5], mat[6]), Vector3(mat[8], mat[9], mat[10]))
+		var position := Vector3(mat[12], mat[13], mat[14])
+		var scale := basis.get_scale()
+		var quat := basis.get_rotation_quaternion()
+		json_node.erase("matrix")
+		json_node["translation"] = [position.x, position.y, position.z]
+		json_node["scale"] = [scale.x, scale.y, scale.z]
+		json_node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+
+
+static func gltf_to_skel_bone(json_node: Dictionary, skel: Skeleton3D, bone_idx: int) -> void:
+	var tra: Array = json_node.get("translation", [0, 0, 0])
+	var rot: Array = json_node.get("rotation", [0, 0, 0, 1])
+	var sca: Array = json_node.get("scale", [1, 1, 1])
+	skel.set_bone_pose_rotation(bone_idx, Quaternion(rot[0], rot[1], rot[2], rot[3]))
+	skel.set_bone_pose_scale(bone_idx, Vector3(sca[0], sca[1], sca[2]))
+	skel.set_bone_pose_position(bone_idx, Vector3(tra[0], tra[1], tra[2]))
+	skel.set_bone_rest(bone_idx, skel.get_bone_pose(bone_idx))
+
+
+static func silhouette_fix_gltf(json: Dictionary, bone_map: BoneMap, p_threshold: float) -> void:
+	var profile: SkeletonProfile = bone_map.get_profile()
+	# Build profile skeleton.
+	var src_skeleton := Skeleton3D.new()
+	var prof_skeleton := Skeleton3D.new()
+
+	const blacklist: Dictionary = {"LeftFoot": true, "RightFoot": true, "LeftToes": true, "RightToes": true}
+
+	# Add single bones.
+	var bone_map_dict: Dictionary
+	var profile_bones: Dictionary
+	for i in range(profile.get_bone_size()):
+		bone_map_dict[bone_map.get_skeleton_bone_name(profile.get_bone_name(i))] = profile.get_bone_name(i)
+		profile_bones[profile.get_bone_name(i)] = true
+		prof_skeleton.add_bone(profile.get_bone_name(i))
+		prof_skeleton.set_bone_rest(i, profile.get_reference_pose(i))
+	# Set parents.
+	for i in range(profile.get_bone_size()):
+		var parent : int = profile.find_bone(profile.get_bone_parent(i))
+		if (parent >= 0):
+			prof_skeleton.set_bone_parent(i, parent)
+
+	var bone_parents_to_process: Array[Vector2i]
+	for node_idx in PackedInt32Array(json["scenes"][json.get("scene", 0)]["nodes"]):
+		bone_parents_to_process.push_back(Vector2i(-1, node_idx))
+	for node_idx in range(len(json["nodes"])):
+		var node_name: String = json["nodes"][node_idx].get("name", "")
+		node_name = node_name.replace(":","_").replace("/","_")
+		if bone_map_dict.has(node_name):
+			node_name = bone_map_dict[node_name]
+		else:
+			node_name = str(node_idx) + "_" + node_name
+		src_skeleton.add_bone(node_name)
+	var process_i: int = 0
+	while process_i < len(bone_parents_to_process):
+		var parent_child: Vector2i = bone_parents_to_process[process_i]
+		process_i += 1
+		var parent_idx: int = parent_child.x
+		var node_idx: int = parent_child.y
+		for child_idx in PackedInt32Array(json["nodes"][node_idx].get("children", [])):
+			bone_parents_to_process.push_back(Vector2i(node_idx, child_idx))
+		if parent_idx != -1:
+			src_skeleton.set_bone_parent(node_idx, parent_idx)
+		gltf_matrix_to_trs(json["nodes"][node_idx]) # Convert glTF matrix format to TRS.
+		gltf_to_skel_bone(json["nodes"][node_idx], src_skeleton, node_idx)
+
+	var bones_to_process: PackedInt32Array
+	bones_to_process.append_array(prof_skeleton.get_parentless_bones())
+	process_i = 0
+	while process_i < len(bones_to_process):
+		var prof_idx: int = bones_to_process[process_i]
+		process_i += 1
+		var bone_children: PackedInt32Array = prof_skeleton.get_bone_children(prof_idx)
+		bones_to_process.append_array(bone_children)
+		var src_idx: int = src_skeleton.find_bone(prof_skeleton.get_bone_name(prof_idx))
+		if src_idx < 0 or profile.get_tail_direction(prof_idx) == SkeletonProfile.TAIL_DIRECTION_END:
+			continue
+
+		# Calc virtual/looking direction with origins.
+		var prof_tail: Vector3
+		var src_tail: Vector3
+		if profile.get_tail_direction(prof_idx) == SkeletonProfile.TAIL_DIRECTION_AVERAGE_CHILDREN:
+			var prof_bone_children: PackedInt32Array = prof_skeleton.get_bone_children(prof_idx);
+			if prof_bone_children.is_empty():
+				continue
+			var exist_all_children := true;
+			for prof_child_idx in prof_bone_children:
+				var src_child_idx: int = src_skeleton.find_bone(prof_skeleton.get_bone_name(prof_child_idx))
+				if src_child_idx < 0:
+					exist_all_children = false
+					break
+				prof_tail = prof_tail + prof_skeleton.get_bone_global_rest(prof_child_idx).origin
+				src_tail = src_tail + src_skeleton.get_bone_global_rest(src_child_idx).origin
+
+			if not exist_all_children:
+				continue
+			prof_tail = prof_tail / len(bone_children)
+			src_tail = src_tail / len(bone_children)
+
+		if profile.get_tail_direction(prof_idx) == SkeletonProfile.TAIL_DIRECTION_SPECIFIC_CHILD:
+			var prof_tail_idx: int = prof_skeleton.find_bone(profile.get_bone_tail(prof_idx));
+			if prof_tail_idx < 0:
+				continue
+			var src_tail_idx: int = src_skeleton.find_bone(prof_skeleton.get_bone_name(prof_tail_idx))
+			if src_tail_idx < 0:
+				continue
+			prof_tail = prof_skeleton.get_bone_global_rest(prof_tail_idx).origin
+			src_tail = src_skeleton.get_bone_global_rest(src_tail_idx).origin
+
+		var prof_head: Vector3 = prof_skeleton.get_bone_global_rest(prof_idx).origin;
+		var src_head: Vector3 = src_skeleton.get_bone_global_rest(src_idx).origin;
+
+		var prof_dir: Vector3 = prof_tail - prof_head;
+		var src_dir: Vector3 = src_tail - src_head;
+
+		# Rotate rest.
+		if absf(rad_to_deg(src_dir.angle_to(prof_dir))) > p_threshold and not blacklist.has(prof_skeleton.get_bone_name(prof_idx)):
+			# Get rotation difference.
+			var up_vec: Vector3 # Need to rotate other than roll axis.
+			match (Vector3(abs(src_dir.x), abs(src_dir.y), abs(src_dir.z)).min_axis_index()):
+				Vector3.AXIS_X:
+					up_vec = Vector3(1, 0, 0)
+				Vector3.AXIS_Y:
+					up_vec = Vector3(0, 1, 0)
+				Vector3.AXIS_Z:
+					up_vec = Vector3(0, 0, 1)
+			var src_b: Basis = Basis().looking_at(src_dir, up_vec);
+			var prof_b: Basis = src_b.looking_at(prof_dir, up_vec);
+			if prof_b.is_equal_approx(Basis()):
+				continue # May not need to rotate.
+			var diff_b: Basis = prof_b * src_b.inverse();
+
+			# Apply rotation difference as global transform to skeleton.
+			var src_pg: Basis
+			var src_parent: int = src_skeleton.get_bone_parent(src_idx)
+			if src_parent >= 0:
+				src_pg = src_skeleton.get_bone_global_rest(src_parent).basis
+			var fixed_rest_basis := src_pg.inverse() * diff_b * src_pg * src_skeleton.get_bone_rest(src_idx).basis
+
+			# And now, modify both the bone pose/rest and the gltf json itself.
+			src_skeleton.set_bone_pose_rotation(src_idx, fixed_rest_basis.get_rotation_quaternion())
+			src_skeleton.set_bone_rest(src_idx, src_skeleton.get_bone_pose(src_idx))
+			var quat := src_skeleton.get_bone_pose_rotation(src_idx)
+			# Update glTF JSON
+			json["nodes"][src_idx]["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+	# Never added into the tree, so free them.
+	src_skeleton.free()
+	prof_skeleton.free()
