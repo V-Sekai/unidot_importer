@@ -50,6 +50,7 @@ class AvatarState:
 	var humanoid_bone_map_dict: Dictionary # node name -> human name
 	var human_bone_to_local_rotation: Dictionary # human name -> local rotation correction post
 	var human_bone_to_rotation_delta: Dictionary # human name -> global rotation correction
+	var excess_rotation_delta: Transform3D
 
 
 var active_avatars: Array[AvatarState]
@@ -442,24 +443,54 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 	#avatar_state.current_avatar_object = new_avatar
 	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_dict.duplicate()
 
-	var id_to_local_rotation: Dictionary = avatar_meta.transform_fileid_to_local_rotation_post
-	var id_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
-	var id_to_bone: Dictionary = avatar_meta.fileid_to_skeleton_bone
+	var transform_fileid_to_local_rotation_post: Dictionary = avatar_meta.transform_fileid_to_local_rotation_post
+	var transform_fileid_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
+	var fileid_to_skeleton_bone: Dictionary = avatar_meta.fileid_to_skeleton_bone
 	var human_bone_to_local_rotation: Dictionary
 	var human_bone_to_rotation_delta: Dictionary
 
-	for i in id_to_local_rotation:
-		if id_to_bone.has(i):
-			human_bone_to_local_rotation[id_to_bone[i]] = id_to_local_rotation[i]
-			if id_to_rotation_delta.has(i):
-				human_bone_to_rotation_delta[id_to_bone[i]] = id_to_rotation_delta[i]
+	var parent_fileid: int = 0
+
+	for i in transform_fileid_to_local_rotation_post:
+		if fileid_to_skeleton_bone.has(i):
+			if fileid_to_skeleton_bone[i] == "Hips":
+				parent_fileid = i
+			human_bone_to_local_rotation[fileid_to_skeleton_bone[i]] = transform_fileid_to_local_rotation_post[i]
+			if transform_fileid_to_rotation_delta.has(i):
+				human_bone_to_rotation_delta[fileid_to_skeleton_bone[i]] = transform_fileid_to_rotation_delta[i]
 
 	avatar_state.human_bone_to_local_rotation = human_bone_to_local_rotation
 	avatar_state.human_bone_to_rotation_delta = human_bone_to_rotation_delta
 
+	avatar_state.excess_rotation_delta = Transform3D()
+	parent_fileid = avatar_meta.transform_fileid_to_parent_fileid.get(parent_fileid, 0)
+	while parent_fileid != 0:
+		avatar_state.excess_rotation_delta = transform_fileid_to_rotation_delta.get(parent_fileid, Transform3D.IDENTITY) * avatar_state.excess_rotation_delta
+		meta.log_debug(parent_fileid, "Calculating excess rotation delta: " + str(avatar_state.excess_rotation_delta))
+		parent_fileid = avatar_meta.transform_fileid_to_parent_fileid.get(parent_fileid, 0)
+	# FIXME: Should we be applying this to "Root" instead of "Hips"?
+	if "Hips" in avatar_state.human_bone_to_local_rotation:
+		avatar_state.human_bone_to_local_rotation["Hips"] = avatar_state.excess_rotation_delta * avatar_state.human_bone_to_local_rotation["Hips"] * avatar_state.excess_rotation_delta.affine_inverse()
+	if "Hips" in avatar_state.human_bone_to_rotation_delta:
+		avatar_state.human_bone_to_rotation_delta["Hips"] = avatar_state.excess_rotation_delta * avatar_state.human_bone_to_rotation_delta["Hips"] * avatar_state.excess_rotation_delta.affine_inverse()
+
 	state.active_avatars.push_back(avatar_state)
 
 	return state
+
+func apply_excess_rotation_delta(node: Node3D, fileID: int):
+	for avatar_state in active_avatars:
+		if not avatar_state.excess_rotation_delta.is_equal_approx(Transform3D.IDENTITY):
+			node.transform = node.transform * avatar_state.excess_rotation_delta.affine_inverse()
+			if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
+				var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
+				var rotation_delta: Transform3D
+				if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
+					rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
+				rotation_delta *= avatar_state.excess_rotation_delta
+				meta.transform_fileid_to_rotation_delta[parent_fileid] = rotation_delta
+			meta.log_debug(0, "Applying excess rotation delta to node " + str(node.name) + ": " + str(avatar_state.excess_rotation_delta))
+			avatar_state.excess_rotation_delta = Transform3D.IDENTITY
 
 
 func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int) -> String:

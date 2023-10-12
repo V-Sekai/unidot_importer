@@ -1117,9 +1117,7 @@ class FbxHandler:
 					var godot_human_name: String = bone_map_dict[node_name]
 					if godot_human_name == "Hips":
 						hips_node_idx = node_idx
-					if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
-						gltf_transform3d_into_json(node, humanoid_original_transforms[godot_human_name])
-					else:
+					if godot_human_name not in humanoid_original_transforms:
 						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
 					human_skin_nodes.push_back(node_idx)
 				node_idx += 1
@@ -1139,9 +1137,8 @@ class FbxHandler:
 						if child == hips_node_idx:
 							pkgasset.log_debug("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
 							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
-							if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
-								gltf_transform3d_into_json(node, humanoid_original_transforms["Root"])
-							else:
+							bone_map_dict[node["name"]] = "Root"
+							if "Root" not in humanoid_original_transforms:
 								humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
 							new_root_idx = node_idx
 							human_skin_nodes.push_back(new_root_idx)
@@ -1158,9 +1155,10 @@ class FbxHandler:
 				json["skins"] = []
 			json["skins"].append({"joints": human_skin_nodes})
 
+		# skinned_parents use the original gltf names before the remap.
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
-		# "samplers", "textures",
+		# Anything after this point will be using sanitized names, and should go through godot_sanitized_to_orig_remap / bone_map_dict
 		for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
 			if not json.has(key):
@@ -1222,9 +1220,14 @@ class FbxHandler:
 
 		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
 			for node in json["nodes"]:
-				var node_name = node.get("name", "")
+				var node_name: String = node.get("name", "")
 				if not bone_map_dict.has(node_name):
 					humanoid_original_transforms[node_name] = gltf_to_transform3d(node)
+			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
+				for node in json["nodes"]:
+					var node_name: String = node.get("name", "")
+					gltf_transform3d_into_json(node, humanoid_original_transforms[node_name])
+		# humanoid_original_transforms uses post-sanitized node names.
 		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
 
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()

@@ -283,7 +283,7 @@ class ParseState:
 			metaobj.log_debug(0, "Register aux " + str(metaobj.guid) + ":" + str(-fileId_object) + ": '" + str(p_name) + "' " + str(p_aux_resource))
 		return fileId_object
 
-	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int, p_global_rest:= Transform3D(), p_pre_silhoutte_global_rest:= Transform3D()):
+	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int, p_global_rest:= Transform3D(), p_pre_retarget_global_rest:= Transform3D()):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
 		if scale_correction_factor != 1.0:
@@ -297,30 +297,25 @@ class ParseState:
 		var fileId_transform: int = all_name_map[fileId_go][4]
 		var bone_name: String = node.get_bone_name(p_skel_bone)
 
-		p_global_rest *= node.get_bone_rest(p_skel_bone)
-		if humanoid_original_transforms.has(bone_name):
-			p_pre_silhoutte_global_rest *= humanoid_original_transforms.get(bone_name)
-		else:
-			p_pre_silhoutte_global_rest *= node.get_bone_rest(p_skel_bone)
-
-		#if humanoid_original_transforms.has(bone_name):
-		#	'''
 		#	ParOrigT * ChildOrigT = GodotHumanT * X * ChildOrigT
 		#	GodotHumanT = ParOrigT * GodotCorrectionT
-		#	X = GodotCorrectionT.inv
+		#	We want to solve for X = GodotCorrectionT.inv
 		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
-		#	'''
-		#	#transform_fileid_to_rotation_delta[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
-		#	# FIXME: Should be p_global_rest.affine_inverse() * silhoutte_diff * p_pre_silhoutte_global_rest
-		if not p_global_rest.is_equal_approx(p_pre_silhoutte_global_rest):
-			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_silhoutte_global_rest
+		p_global_rest *= node.get_bone_rest(p_skel_bone)
+		if humanoid_original_transforms.has(bone_name):
+			p_pre_retarget_global_rest *= humanoid_original_transforms.get(bone_name)
+		else:
+			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
+
+		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
+			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
 		if humanoid_original_transforms.has(bone_name):
 			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
 
 		for child_bone in node.get_bone_children(p_skel_bone):
 			var orig_child_name: String = get_orig_name("bone_name", node.get_bone_name(child_bone))
 			p_path.push_back(orig_child_name)
-			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, fileId_transform, p_global_rest, p_pre_silhoutte_global_rest)
+			var new_id = self.iterate_skeleton(node, p_path, child_bone, p_attachments_by_bone_name, fileId_transform, p_global_rest, p_pre_retarget_global_rest)
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
@@ -381,7 +376,7 @@ class ParseState:
 
 		return fileId_go
 
-	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool, p_parent_transform_id: int):
+	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool, p_parent_transform_id: int, p_global_rest := Transform3D(), p_pre_retarget_global_rest := Transform3D()):
 		metaobj.log_debug(0, "Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 		if node is MeshInstance3D:
 			if is_obj and node.mesh != null:
@@ -425,7 +420,18 @@ class ParseState:
 			if child is AnimationPlayer:
 				animplayer = child
 				break
-		var orig_node_name = node.name
+
+		p_global_rest *= node.transform
+		if humanoid_original_transforms.has(node.name):
+			p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
+		else:
+			p_pre_retarget_global_rest *= node.transform
+
+		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
+			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
+		if humanoid_original_transforms.has(node.name):
+			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[node.name].affine_inverse() * node.transform
+
 		if node.get_child_count() >= 1 and node.get_child(0).name == "RootNode":
 			node = node.get_child(0)
 		for child in node.get_children():
@@ -484,15 +490,6 @@ class ParseState:
 			pop_back(p_path)
 			if new_id != 0:
 				self.all_name_map[fileId_go][orig_child_name] = new_id
-		#for child in skinned_parent_to_node.get(orig_node_name, {}):
-		#	metaobj.log_debug(0, "Skinned oring parent " + str(orig_node_name) + ": " + str(child.name))
-		#	var orig_child_name: String = get_orig_name("nodes", child.name)
-		#	var new_id: int = 0
-		#	p_path.push_back(orig_child_name)
-		#	new_id = self.iterate_node(child, p_path, true, fileId_transform)
-		#	pop_back(p_path)
-		#	if new_id != 0:
-		#		self.all_name_map[fileId_go][orig_child_name] = new_id
 		if animplayer != null:
 			self.iterate_node(animplayer, p_path, false, fileId_transform)
 		return fileId_go

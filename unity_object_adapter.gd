@@ -2770,6 +2770,7 @@ class UnityGameObject:
 				if godot_skeleton.name != "GeneralSkeleton":
 					log_fail("Skelley object should have ensured godot_skeleton with avatar is named GeneralSkeleton")
 				godot_skeleton.unique_name_in_owner = true
+		state.apply_excess_rotation_delta(godot_skeleton, transform.fileID)
 		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID)
 		if not avatar_bone_name.is_empty():
 			var conflicting_bone := godot_skeleton.find_bone(avatar_bone_name)
