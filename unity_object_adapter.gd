@@ -1043,7 +1043,7 @@ class UnityAnimatorController:
 			lay["m_Controller"] = [null, self.fileID, null, 0]
 			var node_to_add: AnimationRootNode = create_flat_state_machine(lay_idx, animation_guid_fileid_to_name)
 			log_debug("aaa")
-			blended_layers.add_node(renamed_layer, node_to_add, Vector2(100 + lay_x, 400))
+			blended_layers.add_node(renamed_layer, node_to_add, Vector2(100 + lay_x, 200))
 			log_debug("bbb " + str(renamed_layer))
 			if last_output != &"":
 				# TODO: We may wish to generate the correct mask based on animation clip outputs...
@@ -1056,7 +1056,7 @@ class UnityAnimatorController:
 				mixing_node.set_meta(&"add_amount", lay["m_DefaultWeight"])
 				var mixing_name = get_unique_name(&"Blend", used_names)
 				lay_x += 400.0
-				blended_layers.add_node(mixing_name, mixing_node, Vector2(100 + lay_x, 100))
+				blended_layers.add_node(mixing_name, mixing_node, Vector2(100 + lay_x, 0))
 				blended_layers.connect_node(mixing_name, 0, last_output)
 				blended_layers.connect_node(mixing_name, 1, renamed_layer)
 				last_output = mixing_name
@@ -1064,7 +1064,7 @@ class UnityAnimatorController:
 				lay_x += 400.0
 				last_output = renamed_layer
 		blended_layers.connect_node(&"output", 0, last_output)
-		blended_layers.set_node_position(&"output", Vector2(200 + lay_x, 600))
+		blended_layers.set_node_position(&"output", Vector2(200 + lay_x, 350))
 		# Create a StateMachine for m_StateMachine and all child state machines too.
 		# State Machine blending does not currently seem to work.
 		# Then, add to blended_layers
@@ -1095,7 +1095,7 @@ class UnityAnimatorController:
 		return self.parameters[param_name]["uniq_name"]
 
 	const STATE_MACHINE_SCALE: float = 1.0
-	const STATE_MACHINE_OFFSET: Vector3 = Vector3(300, 200, 0)
+	const STATE_MACHINE_OFFSET: Vector3 = Vector3(300, 100, 0)
 
 	func create_flat_state_machine(layer_index: int, animation_guid_fileid_to_name: Dictionary) -> AnimationRootNode:
 		var lay: Dictionary = keys["m_AnimatorLayers"][layer_index]
