@@ -17,6 +17,8 @@ const FORMAT_SINT32: int = 11
 const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
 const monoscript: GDScript = preload("./monoscript.gd")
 const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
+const human_trait = preload("./humanoid/human_trait.gd")
+const humanoid_transform_util = preload("./humanoid/transform_util.gd")
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -1700,9 +1702,10 @@ class UnityAnimationClip:
 		var init_key: Dictionary
 		var final_key: Dictionary
 		var prev_key: Dictionary
-		var prev_slope: Variant
+		var prev_slope: Variant = null
 		var next_key: Dictionary
-		var next_slope: Variant
+		var next_slope: Variant = null
+		var has_slope: bool
 		var key_idx: int = 0
 		var is_eof: bool = false
 		var is_constant: bool = false
@@ -1717,42 +1720,146 @@ class UnityAnimationClip:
 			self.init_key = keyframes[0]
 			self.final_key = keyframes[-1]
 			self.prev_key = self.init_key
-			self.next_key = self.init_key if len(keyframes) == 1 else keyframes[1]
-			prev_slope = prev_key["outSlope"]
-			next_slope = next_key["inSlope"]
+			self.next_key = self.init_key # if len(keyframes) == 1 else keyframes[1]
+			if prev_key.has("outSlope"):
+				has_slope = true # serializedVersion=3 has inSlope/outSlope while version=2 does not
+				# Assets can actually mix and match version 2 and 3 even for related tracks.
+				prev_slope = prev_key["outSlope"]
+				next_slope = next_key["inSlope"]
 			self.is_constant = false
+
+		func get_next_timestamp(timestep: float = -1.0) -> float:
+			if is_eof:
+				return 0.0
+			if len(keyframes) == 1:
+				return 0.0
+			if is_constant and timestamp < next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP:
+				# Make a new keyframe with the previous value CONSTANT_KEYFRAME_TIMESTAMP before the next.
+				return next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP
+			if timestep <= 0:
+				return next_key["time"]
+			elif timestamp + timestep >= next_key["time"]:
+				return next_key["time"]
+			else:
+				return timestamp + timestep
+
+		func fixup_strings(val: Variant) -> Variant:
+			if typeof(val) == TYPE_STRING:
+				return val.to_float()
+			return val
 
 		func next(timestep: float = -1.0) -> Variant:
 			if is_eof:
 				return null
+			if typeof(prev_slope) == TYPE_STRING:
+				prev_slope = prev_slope.to_float()
+			if typeof(next_slope) == TYPE_STRING:
+				next_slope = next_slope.to_float()
+			if typeof(prev_slope) == TYPE_FLOAT:
+				is_constant = is_inf(prev_slope) || is_inf(next_slope)
+				# is_constant = (typeof(key_iter.prev_slope) == TYPE_STRING || typeof(key_iter.next_slope) == TYPE_STRING || is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope))
+			elif typeof(prev_slope) == TYPE_VECTOR3:
+				is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
+			elif typeof(prev_slope) == TYPE_QUATERNION:
+				is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z) || is_inf(prev_slope.w) || is_inf(next_slope.w))
+
 			if len(keyframes) == 1:
 				timestamp = 0.0
 				is_eof = true
-				return init_key["value"]
+				return fixup_strings(init_key["value"])
 			if is_constant and timestamp < next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP:
 				# Make a new keyframe with the previous value CONSTANT_KEYFRAME_TIMESTAMP before the next.
 				timestamp = next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP
-				return prev_key["value"]
+				return fixup_strings(prev_key["value"])
 			if timestep <= 0:
 				timestamp = next_key["time"]
 			else:
 				timestamp += timestep
 			if timestamp >= next_key["time"]:
 				prev_key = next_key
-				prev_slope = prev_key["outSlope"]
+				prev_slope = prev_key.get("outSlope")
 				timestamp = prev_key["time"]
 				key_idx += 1
 				if key_idx >= len(keyframes):
 					is_eof = true
 				else:
 					next_key = keyframes[key_idx]
-					next_slope = next_key["inSlope"]
-				return prev_key["value"]
+					next_slope = next_key.get("inSlope")
+				return fixup_strings(prev_key["value"])
 			# Todo: have caller determine desired keyframe depending on slope and accuracy
 			# and clip length, to decide whether to use default linear interpolation or add more keyframes.
 			# We could also have a setting to use cubic instead of linear for more smoothness but less accuracy.
-			assert("Keyframe interpolation" == "not yet implemented")
-			return prev_key["value"]
+			# FIXME: Assuming linear interpolation
+			return lerp(fixup_strings(prev_key["value"]), fixup_strings(next_key["value"]), (timestamp - prev_key["time"]) / (next_key["time"] - prev_key["time"]))
+
+	class LockstepKeyframeiterator:
+		extends RefCounted
+
+		var kf_iters: Array[KeyframeIterator]
+
+		var timestamp: float = 0.0
+		var is_eof: bool = false
+		var bone_name: String
+		var results: Array[float]
+
+		func _init(iters: Array[KeyframeIterator], name: String):
+			kf_iters = iters
+			bone_name = name
+			results.resize(len(kf_iters))
+
+		func get_next_timestamp(timestep: float = -1.0) -> float:
+			var next_timestamp: Variant = null
+			for i in range(len(kf_iters)):
+				if kf_iters[i] != null:
+					var key_iter: KeyframeIterator = kf_iters[i]
+					if key_iter.is_eof:
+						continue
+					key_iter.timestamp = timestamp
+					if typeof(key_iter.prev_slope) == TYPE_STRING:
+						key_iter.prev_slope = key_iter.prev_slope.to_float()
+					if typeof(key_iter.next_slope) == TYPE_STRING:
+						key_iter.next_slope = key_iter.next_slope.to_float()
+					if typeof(key_iter.prev_slope) == TYPE_FLOAT and typeof(key_iter.next_slope) == TYPE_FLOAT:
+						key_iter.is_constant = is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope)
+					var this_next_timestamp: float = key_iter.get_next_timestamp()
+					if typeof(next_timestamp) != TYPE_FLOAT or next_timestamp > this_next_timestamp:
+						next_timestamp = this_next_timestamp
+			if typeof(next_timestamp) != TYPE_FLOAT:
+				is_eof = true
+				return 0.0
+			else:
+				return next_timestamp
+
+		func next(timestep: float = -1.0) -> Variant:
+			var valid_components: int = 0
+			var new_eof_components: int = 0
+			var next_timestamp: float = get_next_timestamp(timestep)
+			if not is_eof:
+				timestamp = next_timestamp
+				for i in range(len(kf_iters)):
+					if kf_iters[i] != null:
+						var key_iter: KeyframeIterator = kf_iters[i]
+						if key_iter.is_eof:
+							continue
+						var res: Variant = key_iter.next(timestamp - key_iter.timestamp)
+						if typeof(res) == TYPE_STRING:
+							res = res.to_float()
+						results[i] = res
+						valid_components += 1
+						if key_iter.is_eof:
+							new_eof_components += 1
+						key_iter.timestamp = timestamp
+			if new_eof_components == valid_components:
+				is_eof = true
+			if len(results) == 3:
+				return Vector3(results[0], results[1], results[2])
+			elif len(results) == 4:
+				if valid_components == 0:
+					push_error("next() called when all sub-tracks are eof or null")
+				elif Quaternion(results[0], results[1], results[2], results[3]).normalized().is_equal_approx(Quaternion.IDENTITY):
+					push_error("next() valid components " + str(valid_components) + " returned an identity quaternion: " + str(results))
+				return Quaternion(results[0], results[1], results[2], results[3]).normalized()
+			return results
 
 	func adapt_track_nodepaths_for_node(animator: RefCounted, node_parent: Node, clip: Animation) -> Array:
 		var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
@@ -1853,6 +1960,15 @@ class UnityAnimationClip:
 
 	func create_animation_clip_at_node(animator: RefCounted, node_parent: Node) -> Animation:  # UnityAnimator
 		var anim: Animation = Animation.new()
+
+		var bone_name_to_index := human_trait.bone_name_to_index() # String -> int
+		var muscle_name_to_index := human_trait.muscle_name_to_index() # String -> int
+		var muscle_index_to_bone_and_axis := human_trait.muscle_index_to_bone_and_axis() # int -> Vector2i
+		var special_humanoid_transforms : Dictionary
+		for pfx in human_trait.IKPrefixNames:
+			for sfx in human_trait.IKSuffixNames:
+				special_humanoid_transforms[pfx + sfx] = human_trait.IKSuffixNames[sfx]
+
 		# m_AnimationClipSettings[m_StartTime,m_StopTime,m_LoopTime,
 		# m_KeepOriginPositionY/XZ/Orientation,m_HeightFromFeet,m_CycleOffset],
 		# m_Bounds[m_Center,m_Extent],
@@ -1862,20 +1978,37 @@ class UnityAnimationClip:
 		# m_EulerCurves, m_FloatCurves, m_PositionCruves, m_PPtrCurves, m_RotationCurves, m_ScaleCurves
 		var resolved_to_default: Dictionary = {}
 		var max_ts: float = 0.0
+		var humanoid_track_sets: Array[Array]
+		for i in range(human_trait.BoneCount + 1):
+			if i == 0:
+				humanoid_track_sets.append([null, null, null, null])
+			else:
+				humanoid_track_sets.append([null, null, null])
+		# humanoid bone idx -> array of Curve object indexed by muscle axis
+		# [ [{attr:RootT.x},{attr:RootT.y},{attr:RootT.z}], [{attr:RootQ.x},y,z,w], [Shoulder In-Out,...] ...]
+
 		for track in keys["m_FloatCurves"]:
 			var attr: String = track["attribute"]
 			var path: String = track.get("path", "")  # Some omit path if for the current GameObject...?
 			var classID: int = track["classID"]  # Todo: convet classID to class guid+id
-			var adapted_obj: UnityObject = adapter.instantiate_unity_object_from_utype(meta, 0, classID)  # no fileID??
 			if len(track["curve"].get("m_Curve", [])) == 0:
 				log_warn("Empty curve detected " + path + ":" + attr)
 				continue
 			for keyframe in track["curve"]["m_Curve"]:
 				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
-			if classID == 95 and false: # do something different for humanoid keys
-				# Humanoid or Animator float parameters
-				pass
+			if classID == 95 and special_humanoid_transforms.has(attr):
+				# Humanoid Root / IK target parameters
+				if attr.begins_with("RootT."):
+					# hips position (scaled by human scale?)
+					humanoid_track_sets[human_trait.BoneCount][special_humanoid_transforms[attr]] = track
+				elif attr.begins_with("RootQ."):
+					# hips rotation
+					humanoid_track_sets[0][special_humanoid_transforms[attr]] = track
+			elif classID == 95 and muscle_name_to_index.has(attr) or human_trait.TraitMapping.has(attr):
+				# Humanoid muscle parameters
+				var bone_idx_axis: Vector2i = muscle_index_to_bone_and_axis[muscle_name_to_index[human_trait.TraitMapping.get(attr, attr)]]
+				humanoid_track_sets[bone_idx_axis.x][bone_idx_axis.y] = track
 			elif classID == 137 and attr.begins_with("blendShape."):
 				var bstrack = anim.add_track(Animation.TYPE_BLEND_SHAPE)
 				nodepath = NodePath(str(nodepath) + ":" + attr.substr(11))
@@ -1884,11 +2017,6 @@ class UnityAnimationClip:
 				anim.track_set_interpolation_type(bstrack, Animation.INTERPOLATION_LINEAR)
 				var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 				while not key_iter.is_eof:
-					if typeof(key_iter.prev_slope) == TYPE_STRING:
-						key_iter.prev_slope = key_iter.prev_slope.to_float()
-					if typeof(key_iter.next_slope) == TYPE_STRING:
-						key_iter.next_slope = key_iter.next_slope.to_float()
-					key_iter.is_constant = (typeof(key_iter.prev_slope) == TYPE_STRING || typeof(key_iter.next_slope) == TYPE_STRING || is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope))
 					var val_variant: Variant = key_iter.next()
 					if typeof(val_variant) == TYPE_STRING:
 						val_variant = val_variant.to_float()
@@ -1907,6 +2035,7 @@ class UnityAnimationClip:
 							var gdscriptweird: Node = null
 							target_node = gdscriptweird
 					# yuk yuk. This needs to be improved but should be a good start for some properties:
+					var adapted_obj: UnityObject = adapter.instantiate_unity_object_from_utype(meta, 0, classID)  # no fileID??
 					var converted_property_keys = adapted_obj.convert_properties(target_node, {attr: 0.0}).keys()
 					if converted_property_keys.is_empty():
 						log_warn("Unknown property " + str(attr) + " for " + str(path) + " type " + str(adapted_obj.type), attr, adapted_obj)
@@ -1920,11 +2049,6 @@ class UnityAnimationClip:
 				anim.track_set_interpolation_type(valtrack, Animation.INTERPOLATION_LINEAR)
 				var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 				while not key_iter.is_eof:
-					if typeof(key_iter.prev_slope) == TYPE_STRING:
-						key_iter.prev_slope = key_iter.prev_slope.to_float()
-					if typeof(key_iter.next_slope) == TYPE_STRING:
-						key_iter.next_slope = key_iter.next_slope.to_float()
-					key_iter.is_constant = is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope)
 					var val_variant: Variant = key_iter.next()
 					if typeof(val_variant) == TYPE_STRING:
 						val_variant = val_variant.to_float()
@@ -1933,6 +2057,61 @@ class UnityAnimationClip:
 					# FIXME: How does the last optional transition argument work?
 					# It says it's used for easing, but I don't see it on blendshape or position tracks?!
 					anim.track_insert_key(valtrack, ts, value)
+
+		for bone_idx in range(len(humanoid_track_sets)):
+			var is_position_track: bool = false
+			var is_rotation_track: bool = false
+			var gd_track: int = -1
+			var bone_name: String
+			if bone_idx == human_trait.BoneCount:
+				gd_track = anim.add_track(Animation.TYPE_POSITION_3D)
+				anim.track_set_path(gd_track, "%GeneralSkeleton:Hips")
+				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
+				is_position_track = true
+				bone_name = "RootT"
+			elif bone_idx == 0:
+				gd_track = anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(gd_track, "%GeneralSkeleton:Hips")
+				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
+				is_rotation_track = true
+				bone_name = "RootQ"
+			else:
+				var godot_human_name: String = human_trait.GodotHumanNames[bone_idx]
+				gd_track = anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(gd_track, "%GeneralSkeleton:" + godot_human_name)
+				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
+				bone_name = godot_human_name
+
+			var humanoid_track_set: Array = humanoid_track_sets[bone_idx]
+			var keyframe_iters: Array[KeyframeIterator]
+			keyframe_iters.resize(len(humanoid_track_set))
+			for i in range(len(humanoid_track_set)):
+				# may contain null if no animation curve exists.
+				if typeof(humanoid_track_set[i]) == TYPE_DICTIONARY:
+					# This is the outer object (["curve"]["m_Curve"])
+					keyframe_iters[i] = KeyframeIterator.new(humanoid_track_set[i]["curve"])
+			var key_iter := LockstepKeyframeiterator.new(keyframe_iters, bone_name)
+			var last_ts: float = 0.0
+			var same_ts: bool = false
+			while not key_iter.is_eof:
+				var val_variant: Variant = key_iter.next()
+				var ts: float = key_iter.timestamp
+				if ts == last_ts:
+					if same_ts:
+						log_fail("Failed to make timestamp " + str(ts) + " progress in keyframe iterator for humanoid idx " + str(bone_idx))
+						break
+					same_ts = true
+				else:
+					same_ts = false
+				if is_position_track:
+					anim.position_track_insert_key(gd_track, ts, Vector3(-1, 1, 1) * val_variant)
+				elif is_rotation_track:
+					if val_variant.is_equal_approx(Quaternion.IDENTITY):
+						log_fail("We got an identity hips rotation quaternion at timestamp " + str(ts))
+					anim.rotation_track_insert_key(gd_track, ts, Basis.FLIP_X.inverse() * Basis(val_variant) * Basis.FLIP_X)
+				else: # swing-twist muscle track
+					var value: Quaternion = humanoid_transform_util.calculate_humanoid_rotation(bone_idx, val_variant)
+					anim.rotation_track_insert_key(gd_track, ts, value)
 
 		for track in keys["m_PositionCurves"]:
 			for keyframe in track["curve"]["m_Curve"]:
@@ -1946,9 +2125,6 @@ class UnityAnimationClip:
 			anim.track_set_interpolation_type(postrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 			while not key_iter.is_eof:
-				var prev_slope: Vector3 = key_iter.prev_slope
-				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
@@ -1965,9 +2141,6 @@ class UnityAnimationClip:
 			anim.track_set_interpolation_type(rottrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 			while not key_iter.is_eof:
-				var prev_slope: Vector3 = key_iter.prev_slope
-				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				# NOTE: value is assumed to be YXZ in Godot terms, but it has 6 different modes in Unity.
@@ -2001,9 +2174,6 @@ class UnityAnimationClip:
 			anim.track_set_interpolation_type(rottrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 			while not key_iter.is_eof:
-				var prev_slope: Quaternion = key_iter.prev_slope
-				var next_slope: Quaternion = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z) || is_inf(prev_slope.w) || is_inf(next_slope.w))
 				var value: Quaternion = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis(value) * Basis.FLIP_X)
@@ -2020,9 +2190,6 @@ class UnityAnimationClip:
 			anim.track_set_interpolation_type(scaletrack, Animation.INTERPOLATION_LINEAR)
 			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
 			while not key_iter.is_eof:
-				var prev_slope: Vector3 = key_iter.prev_slope
-				var next_slope: Vector3 = key_iter.next_slope
-				key_iter.is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.scale_track_insert_key(scaletrack, ts, value)
