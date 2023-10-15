@@ -436,30 +436,25 @@ func state_with_body(new_body: CollisionObject3D) -> RefCounted:
 
 
 func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
-	if not avatar_meta.humanoid_bone_map_dict or not avatar_meta.transform_fileid_to_local_rotation_post:
+	if not avatar_meta.humanoid_bone_map_dict or not avatar_meta.transform_fileid_to_rotation_delta:
 		return self
 	var state = duplicate()
 	var avatar_state := AvatarState.new()
 	#avatar_state.current_avatar_object = new_avatar
 	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_dict.duplicate()
 
-	var transform_fileid_to_local_rotation_post: Dictionary = avatar_meta.transform_fileid_to_local_rotation_post
 	var transform_fileid_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
 	var fileid_to_skeleton_bone: Dictionary = avatar_meta.fileid_to_skeleton_bone
-	var human_bone_to_local_rotation: Dictionary
 	var human_bone_to_rotation_delta: Dictionary
 
 	var parent_fileid: int = 0
 
-	for i in transform_fileid_to_local_rotation_post:
+	for i in transform_fileid_to_rotation_delta:
 		if fileid_to_skeleton_bone.has(i):
 			if fileid_to_skeleton_bone[i] == "Hips":
 				parent_fileid = i
-			human_bone_to_local_rotation[fileid_to_skeleton_bone[i]] = transform_fileid_to_local_rotation_post[i]
-			if transform_fileid_to_rotation_delta.has(i):
-				human_bone_to_rotation_delta[fileid_to_skeleton_bone[i]] = transform_fileid_to_rotation_delta[i]
+			human_bone_to_rotation_delta[fileid_to_skeleton_bone[i]] = transform_fileid_to_rotation_delta[i]
 
-	avatar_state.human_bone_to_local_rotation = human_bone_to_local_rotation
 	avatar_state.human_bone_to_rotation_delta = human_bone_to_rotation_delta
 
 	avatar_state.excess_rotation_delta = Transform3D()
@@ -501,8 +496,6 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 				name_to_return = avatar.humanoid_bone_map_dict[orig_bone_name]
 				godot_bone_name = name_to_return
 			avatar.humanoid_bone_map_dict.erase(orig_bone_name)
-		if avatar.human_bone_to_local_rotation.has(godot_bone_name):
-			meta.transform_fileid_to_local_rotation_post[fileid] = avatar.human_bone_to_local_rotation[godot_bone_name]
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
 	return name_to_return

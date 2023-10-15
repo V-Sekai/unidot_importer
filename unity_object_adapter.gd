@@ -3751,7 +3751,6 @@ class UnityTransform:
 		var rotation_delta_post := Transform3D.IDENTITY
 		var has_post: bool = false
 		if meta.transform_fileid_to_rotation_delta.has(fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(fileID):
-			#rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
 			rotation_delta_post = meta.transform_fileid_to_rotation_delta.get(fileID, meta.prefab_transform_fileid_to_rotation_delta.get(fileID, Transform3D.IDENTITY))
 			rotation_delta_post = rotation_delta_post.affine_inverse()
 			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))

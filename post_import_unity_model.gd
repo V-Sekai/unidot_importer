@@ -56,7 +56,6 @@ class ParseState:
 	var fileid_to_utype: Dictionary = {}.duplicate()
 	var fileid_to_gameobject_fileid: Dictionary = {}.duplicate()
 	var type_to_fileids: Dictionary = {}.duplicate()
-	var transform_fileid_to_local_rotation_post: Dictionary = {}.duplicate()
 	var transform_fileid_to_rotation_delta: Dictionary = {}.duplicate()
 	var transform_fileid_to_parent_fileid: Dictionary = {}.duplicate()
 	var humanoid_original_transforms: Dictionary
@@ -312,8 +311,6 @@ class ParseState:
 			if not node.has_meta("humanoid_rotation_delta"):
 				node.set_meta("humanoid_rotation_delta", {})
 			node.get_meta("humanoid_rotation_delta")[node.get_bone_name(p_skel_bone)] = transform_fileid_to_rotation_delta[fileId_transform]
-		if humanoid_original_transforms.has(bone_name):
-			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[bone_name].affine_inverse() * node.get_bone_rest(p_skel_bone)
 
 		for child_bone in node.get_bone_children(p_skel_bone):
 			var orig_child_name: String = get_orig_name("bone_name", node.get_bone_name(child_bone))
@@ -432,8 +429,6 @@ class ParseState:
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
-		if humanoid_original_transforms.has(node.name):
-			transform_fileid_to_local_rotation_post[fileId_transform] = humanoid_original_transforms[node.name].affine_inverse() * node.transform
 
 		if node.get_child_count() >= 1 and node.get_child(0).name == "RootNode":
 			node = node.get_child(0)
@@ -1038,7 +1033,6 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.fileid_to_utype = ps.fileid_to_utype
 	metaobj.fileid_to_gameobject_fileid = ps.fileid_to_gameobject_fileid
 	metaobj.transform_fileid_to_rotation_delta = ps.transform_fileid_to_rotation_delta
-	metaobj.transform_fileid_to_local_rotation_post = ps.transform_fileid_to_local_rotation_post
 	metaobj.transform_fileid_to_parent_fileid = ps.transform_fileid_to_parent_fileid
 
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map

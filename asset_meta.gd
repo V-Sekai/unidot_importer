@@ -51,7 +51,6 @@ var importer  # unity_object_adapter.UnityAssetImporter subclass
 #####@export var prefab_fileID_to_parented_fileID: Dictionary = {}
 #####@export var prefab_fileID_to_parented_prefab: Dictionary = {}
 
-var prefab_transform_fileid_to_local_rotation_post: Dictionary = {} # int -> Transform
 var prefab_transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 var prefab_transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 var prefab_fileid_to_nodepath = {}
@@ -68,7 +67,6 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var prefab_main_gameobject_id = 0
 @export var prefab_main_transform_id = 0
 @export var prefab_source_id_pair_to_stripped_id: Dictionary = {} # Vector2i -> int. if not here, we do XOR.
-@export var transform_fileid_to_local_rotation_post: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
 @export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
@@ -323,10 +321,6 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 		self.prefab_transform_fileid_to_rotation_delta[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.transform_fileid_to_rotation_delta.get(target_fileid))
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_rotation_delta:
 		self.prefab_transform_fileid_to_rotation_delta[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(target_fileid))
-	for target_fileid in target_prefab_meta.transform_fileid_to_local_rotation_post:
-		self.prefab_transform_fileid_to_local_rotation_post[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.transform_fileid_to_local_rotation_post.get(target_fileid))
-	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_local_rotation_post:
-		self.prefab_transform_fileid_to_local_rotation_post[xor_or_stripped(target_fileid, prefab_fileid)] = (target_prefab_meta.prefab_transform_fileid_to_local_rotation_post.get(target_fileid))
 	for target_fileid in target_prefab_meta.transform_fileid_to_parent_fileid:
 		self.prefab_transform_fileid_to_parent_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.transform_fileid_to_parent_fileid.get(target_fileid), prefab_fileid)
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_parent_fileid:
