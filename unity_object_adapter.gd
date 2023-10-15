@@ -3748,10 +3748,12 @@ class UnityTransform:
 		var outdict: Dictionary
 		var rotation_delta: Transform3D
 		#var pos_rotation_delta: Transform3D
-		var rotation_delta_post: Transform3D
+		var rotation_delta_post := Transform3D.IDENTITY
 		var has_post: bool = false
-		if meta.transform_fileid_to_local_rotation_post.has(fileID) or meta.prefab_transform_fileid_to_local_rotation_post.has(fileID):
-			rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
+		if meta.transform_fileid_to_rotation_delta.has(fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(fileID):
+			#rotation_delta_post = meta.transform_fileid_to_local_rotation_post.get(fileID, meta.prefab_transform_fileid_to_local_rotation_post.get(fileID))
+			rotation_delta_post = meta.transform_fileid_to_rotation_delta.get(fileID, meta.prefab_transform_fileid_to_rotation_delta.get(fileID, Transform3D.IDENTITY))
+			rotation_delta_post = rotation_delta_post.affine_inverse()
 			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
 			has_post = true
 		if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
@@ -3768,17 +3770,28 @@ class UnityTransform:
 		if typeof(pos_tmp) == TYPE_VECTOR3:
 			var pos_vec: Vector3 = pos_tmp as Vector3
 			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)))
-			pos_vec = rotation_delta.basis * (pos_vec * Vector3(-1, 1, 1))
+			pos_vec = rotation_delta.basis * (pos_vec * Vector3(-1, 1, 1)) # * rotation_delta_post.basis #.get_rotation_quaternion()
 			outdict["position"] = pos_vec
 			log_debug("Position would be " + str(outdict["position"]))
 
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
 			var rot_quat: Quaternion = rot_vec as Quaternion
-			if has_post:
-				rot_quat = (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
-			else:
-				rot_quat = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
+			# Assuming t-pose, in a humanoid a lot of these expressions will cancel out nicely to godot's bone rest (T-pose)
+			# This is
+			# Previously:
+			# (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() *  this_unity_rest.affine_inverse() * node.get_bone_rest(p_skel_bone) = node.get_bone_rest(p_skel_bone)
+			# Quaternion.IDENTITY == (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * this_unity_rest.affine_inverse()
+			# node.get_bone_rest(p_skel_bone)
+
+			# Now:
+			# this_unity_global_rest = parent_unity_global_rest * ... * this_unity_rest
+			# par_global_rest.affine_inverse() * parent_unity_global_rest * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * this_unity_rest.affine_inverse() * parent_unity_global_rest.affine_inverse() * par_global_rest * this_bone_rest
+			# par_global_rest.affine_inverse() * parent_unity_global_rest * parent_unity_global_rest.affine_inverse() * par_global_rest * this_bone_rest
+			# par_global_rest.affine_inverse() * par_global_rest * this_bone_rest
+			# this_bone_rest
+			# WANT: this_bone_rest
+			rot_quat = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
 			outdict["quaternion"] = rot_quat
 
 		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot
@@ -3794,11 +3807,7 @@ class UnityTransform:
 				scale_vec.y = 1e-7
 			if scale_vec.z > -1e-7 && scale_vec.z < 1e-7:
 				scale_vec.z = 1e-7
-			### FIXME: # scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec)).get_scale()
-			if has_post:
-				scale_vec = (Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
-			else:
-				scale_vec = (rotation_delta.basis.inverse() * Basis.from_scale(scale_vec)).get_scale()
+			scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
 			outdict["scale"] = scale_vec
 		return outdict
 
