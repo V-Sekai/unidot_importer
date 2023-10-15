@@ -51,6 +51,7 @@ class AvatarState:
 	var human_bone_to_local_rotation: Dictionary # human name -> local rotation correction post
 	var human_bone_to_rotation_delta: Dictionary # human name -> global rotation correction
 	var excess_rotation_delta: Transform3D
+	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
 
 var active_avatars: Array[AvatarState]
@@ -163,6 +164,8 @@ class Skelley:
 	var bone0_parent_list: Array = [].duplicate()
 	var bone0_parents: Dictionary = {}.duplicate()
 	var found_prefab_instance: RefCounted = null  # UnityPrefabInstance
+
+	var skeleton_profile_humanoid := SkeletonProfileHumanoid.new()
 
 	func initialize(bone0: RefCounted):  # UnityTransform
 		var current_parent: RefCounted = bone0  # UnityTransform or UnityPrefabInstance
@@ -442,6 +445,7 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 	var avatar_state := AvatarState.new()
 	#avatar_state.current_avatar_object = new_avatar
 	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_dict.duplicate()
+	avatar_state.humanoid_skeleton_hip_position = avatar_meta.humanoid_skeleton_hip_position
 
 	var transform_fileid_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
 	var fileid_to_skeleton_bone: Dictionary = avatar_meta.fileid_to_skeleton_bone
@@ -487,6 +491,7 @@ func apply_excess_rotation_delta(node: Node3D, fileID: int):
 			meta.log_debug(0, "Applying excess rotation delta to node " + str(node.name) + ": " + str(avatar_state.excess_rotation_delta))
 			avatar_state.excess_rotation_delta = Transform3D.IDENTITY
 
+var last_humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
 func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int) -> String:
 	var name_to_return: String = ""
@@ -495,6 +500,8 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 			if name_to_return.is_empty():
 				name_to_return = avatar.humanoid_bone_map_dict[orig_bone_name]
 				godot_bone_name = name_to_return
+				if godot_bone_name == "Hips":
+					last_humanoid_skeleton_hip_position = avatar.humanoid_skeleton_hip_position
 			avatar.humanoid_bone_map_dict.erase(orig_bone_name)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]

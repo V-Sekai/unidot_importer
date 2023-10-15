@@ -218,7 +218,6 @@ class UnityObject:
 			skel.set_bone_pose_position(bone_idx, props["position"])
 		if props.has("scale"):
 			skel.set_bone_pose_scale(bone_idx, props["scale"])
-		skel.set_bone_rest(bone_idx, skel.get_bone_pose(bone_idx))
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props: Dictionary = self.convert_properties(skel, uprops)
@@ -2971,6 +2970,16 @@ class UnityGameObject:
 				# state.add_fileID(ret, transform)
 		# TODO: do we need to configure GameObject here? IsActive, Name on a skeleton bone?
 		transform.configure_skeleton_bone(godot_skeleton, skeleton_bone_name)
+		var rest_bone_pose := godot_skeleton.get_bone_pose(skeleton_bone_index)
+		if avatar_bone_name == "Root":
+			rest_bone_pose = Transform3D()
+		if not avatar_bone_name.is_empty():
+			var sph : SkeletonProfileHumanoid = skelley.skeleton_profile_humanoid
+			rest_bone_pose.basis = Basis(sph.get_reference_pose(sph.find_bone(avatar_bone_name)).basis.get_rotation_quaternion()).scaled(rest_bone_pose.basis.get_scale())
+			if avatar_bone_name == "Hips":
+				rest_bone_pose.origin = state.last_humanoid_skeleton_hip_position
+				godot_skeleton.motion_scale = state.last_humanoid_skeleton_hip_position.y
+		godot_skeleton.set_bone_rest(skeleton_bone_index, rest_bone_pose)
 		if ret != null:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 			for new_skelley in list_of_skelleys:

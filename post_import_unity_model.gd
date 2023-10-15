@@ -59,6 +59,7 @@ class ParseState:
 	var transform_fileid_to_rotation_delta: Dictionary = {}.duplicate()
 	var transform_fileid_to_parent_fileid: Dictionary = {}.duplicate()
 	var humanoid_original_transforms: Dictionary
+	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
 	var all_name_map: Dictionary = {}.duplicate()
 
@@ -303,6 +304,9 @@ class ParseState:
 		p_global_rest *= node.get_bone_rest(p_skel_bone)
 		if humanoid_original_transforms.has(bone_name):
 			p_pre_retarget_global_rest *= humanoid_original_transforms.get(bone_name)
+			if bone_name == "Hips":
+				humanoid_skeleton_hip_position = node.get_bone_rest(p_skel_bone).origin
+				humanoid_skeleton_hip_position.y = node.motion_scale
 		else:
 			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
 
@@ -1037,6 +1041,7 @@ func _post_import(p_scene: Node) -> Object:
 
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map
+	metaobj.humanoid_skeleton_hip_position = ps.humanoid_skeleton_hip_position
 
 	if not asset_database.in_package_import:
 		asset_database.save()
