@@ -1,5 +1,6 @@
 # -!- coding: utf-8 -!-
 #
+# Copyright 2023 V-Sekai contributors
 # Copyright 2022-2023 lox9973
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -131,6 +132,19 @@ const BoneName : Array[String] = [
 	"UpperChest",
 ]
 
+const HandBones: Dictionary = {
+	"Left Thumb Proximal": "left", "Left Thumb Intermediate": "left", "Left Thumb Distal": "left",
+	"Left Index Proximal": "left", "Left Index Intermediate": "left", "Left Index Distal": "left",
+	"Left Middle Proximal": "left", "Left Middle Intermediate": "left", "Left Middle Distal": "left",
+	"Left Ring Proximal": "left", "Left Ring Intermediate": "left", "Left Ring Distal": "left",
+	"Left Little Proximal": "left", "Left Little Intermediate": "left", "Left Little Distal": "left",
+	"Right Thumb Proximal": "right", "Right Thumb Intermediate": "right", "Right Thumb Distal": "right",
+	"Right Index Proximal": "right", "Right Index Intermediate": "right", "Right Index Distal": "right",
+	"Right Middle Proximal": "right", "Right Middle Intermediate": "right", "Right Middle Distal": "right",
+	"Right Ring Proximal": "right", "Right Ring Intermediate": "right", "Right Ring Distal": "right",
+	"Right Little Proximal": "right", "Right Little Intermediate": "right", "Right Little Distal": "right",
+}
+
 const MuscleName : Array[String] = [
 	"Spine Front-Back", "Spine Left-Right", "Spine Twist Left-Right",
 	"Chest Front-Back", "Chest Left-Right", "Chest Twist Left-Right",
@@ -209,8 +223,11 @@ const TraitMapping : Dictionary = {
 	"Right Little 3 Stretched": "RightHand.Little.3 Stretched",
 }
 
-const IKPrefixNames : Array[String] = ["Root", "LeftHand", "RightHand", "LeftFoot", "RightFoot"]
+const IKPrefixNames : Array[String] = ["Root", "Motion", "LeftFoot", "RightFoot", "LeftHand", "RightHand"]
 const IKSuffixNames : Dictionary = {"T.x": 0, "T.y": 1, "T.z": 2, "Q.x": 0, "Q.y": 1, "Q.z": 2, "Q.w": 3}
+
+# Unity documentation only lists the following as having TDOF, but it seems that any bone can have it.
+#const TDOFBoneNames : Array[String] = ["Spine", "Chest", "Neck", "LeftShoulder", "RightShoulder", "LeftUpperLeg", "RightUpperLeg"]
 
 const BoneCount := len(BoneName)
 const MuscleCount := len(MuscleName)
@@ -265,12 +282,6 @@ const MuscleDefaultMin : Array[float] = [ # HumanTrait.GetMuscleDefaultMin
 	-20,-25,-40,-40,-50,-20,-45,-45,-50,-7.5,-45,-45,-50,-7.5,-45,-45,-50,-20,-45,-45,
 	-20,-25,-40,-40,-50,-20,-45,-45,-50,-7.5,-45,-45,-50,-7.5,-45,-45,-50,-20,-45,-45,
 ]
-
-const HumanParents: Array[int] = [
-	-1,  0,  0,  1,  2,  3,  4,  0,  7, 54,  9, 54, 54, 11, 12, 13, 14, 15, 16,  5, 
-	 6, 10, 10, 10, 17, 24, 25, 17, 27, 28, 17, 30, 31, 17, 33, 34, 17, 36, 37, 18, 
-	39, 40, 18, 42, 43, 18, 45, 46, 18, 48, 49, 18, 51, 52,  8,
-];
 
 # Right-handed PreQ values for Godot's standard humanoid rig.
 const preQ_exported: Array[Quaternion] = [
@@ -390,184 +401,6 @@ const postQ_inverse_exported: Array[Quaternion] = [
 	Quaternion(-0.56563, 0.42434, -0.56563, -0.42434), # UpperChest
 ]
 
-const sgn: Array[Vector3] = [
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,-1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(-1,-1,1),
-	Vector3(-1,1,-1),
-	Vector3(1,-1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,-1),
-	Vector3(1,1,-1),
-	Vector3(1,1,-1),
-	Vector3(1,1,-1),
-	Vector3(-1,-1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,-1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,1,-1),
-	Vector3(-1,-1,1),
-	Vector3(-1,1,1),
-	Vector3(-1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,-1),
-	Vector3(1,1,-1),
-	Vector3(1,-1,-1),
-	Vector3(1,1,1),
-	Vector3(-1,1,1),
-	Vector3(-1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,-1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,-1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,1,1),
-	Vector3(1,-1,-1),
-	Vector3(1,1,-1),
-	Vector3(1,1,-1),
-]
-
-# Reference t-pose PreQ with all bones Y-up (identity quaternion)
-# CAUTION: These are **left handed**
-const PreQ_VRM_Tpose : Array[Quaternion] = [
-	Quaternion(+0.00000,+0.00000,+0.00000,+1.00000), # Hips
-	Quaternion(-0.62644,+0.34855,-0.59144,+0.36918), # LeftUpperLeg
-	Quaternion(-0.59144,+0.36918,-0.62644,+0.34855), # RightUpperLeg
-	Quaternion(-0.04422,+0.69691,-0.04313,+0.71450), # LeftLowerLeg
-	Quaternion(-0.04313,+0.71450,-0.04422,+0.69691), # RightLowerLeg
-	Quaternion(-0.50000,+0.50000,-0.50000,+0.50000), # LeftFoot
-	Quaternion(-0.50000,+0.50000,-0.50000,+0.50000), # RightFoot
-	Quaternion(+0.46815,+0.52994,-0.46815,-0.52994), # Spine
-	Quaternion(+0.52661,+0.47189,-0.52661,-0.47189), # Chest
-	Quaternion(+0.46642,+0.53160,-0.46748,-0.53040), # Neck
-	Quaternion(-0.50000,-0.50000,+0.50000,+0.50000), # Head
-	Quaternion(+0.03047,+0.00261,+0.99590,-0.08517), # LeftShoulder
-	Quaternion(-0.00261,-0.03047,-0.08518,+0.99590), # RightShoulder
-	Quaternion(+0.24793,-0.00420,+0.90224,-0.35282), # LeftUpperArm
-	Quaternion(+0.00420,-0.24793,-0.35282,+0.90224), # RightUpperArm
-	Quaternion(+0.47584,+0.52201,+0.52305,-0.47697), # LeftLowerArm
-	Quaternion(-0.52202,-0.47584,-0.47697,+0.52305), # RightLowerArm
-	Quaternion(+0.04117,+0.00004,+0.99915,-0.00109), # LeftHand
-	Quaternion(-0.00004,-0.04117,-0.00109,+0.99915), # RightHand
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # LeftToes
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # RightToes
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # LeftEye
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # RightEye
-	Quaternion(0,0,0,1), # Jaw
-	Quaternion(+0.25516,+0.62821,+0.58070,-0.45060), # LeftThumbProximal
-	Quaternion(+0.09906,+0.69392,+0.70013,-0.13590), # LeftThumbIntermediate
-	Quaternion(+0.09906,+0.69392,+0.70013,-0.13590), # LeftThumbDistal
-	Quaternion(+0.15036,+0.02227,+0.94561,-0.28760), # LeftIndexProximal
-	Quaternion(+0.05321,+0.01854,+0.94281,-0.32854), # LeftIndexIntermediate
-	Quaternion(+0.05321,+0.01854,+0.94281,-0.32854), # LeftIndexDistal
-	Quaternion(+0.06963,+0.00934,+0.94994,-0.30443), # LeftMiddleProximal
-	Quaternion(+0.01913,+0.00746,+0.93156,-0.36300), # LeftMiddleIntermediate
-	Quaternion(+0.01913,+0.00746,+0.93156,-0.36300), # LeftMiddleDistal
-	Quaternion(-0.03589,+0.00104,+0.95494,-0.29463), # LeftRingProximal
-	Quaternion(+0.00600,+0.00186,+0.95500,-0.29653), # LeftRingIntermediate
-	Quaternion(+0.00600,+0.00186,+0.95500,-0.29653), # LeftRingDistal
-	Quaternion(-0.07607,+0.00044,+0.95380,-0.29066), # LeftLittleProximal
-	Quaternion(-0.02491,-0.00770,+0.95502,-0.29538), # LeftLittleIntermediate
-	Quaternion(-0.02491,-0.00770,+0.95502,-0.29538), # LeftLittleDistal
-	Quaternion(+0.62827,+0.25540,+0.45053,-0.58057), # RightThumbProximal
-	Quaternion(+0.69394,+0.09930,+0.13583,-0.70010), # RightThumbIntermediate
-	Quaternion(+0.69394,+0.09930,+0.13583,-0.70010), # RightThumbDistal
-	Quaternion(+0.02227,+0.15036,+0.28761,-0.94561), # RightIndexProximal
-	Quaternion(+0.01854,+0.05320,+0.32854,-0.94281), # RightIndexIntermediate
-	Quaternion(+0.01854,+0.05320,+0.32854,-0.94281), # RightIndexDistal
-	Quaternion(+0.00934,+0.06962,+0.30443,-0.94994), # RightMiddleProximal
-	Quaternion(+0.00746,+0.01913,+0.36299,-0.93157), # RightMiddleIntermediate
-	Quaternion(+0.00746,+0.01913,+0.36299,-0.93157), # RightMiddleDistal
-	Quaternion(+0.00104,-0.03589,+0.29463,-0.95494), # RightRingProximal
-	Quaternion(+0.00186,+0.00599,+0.29654,-0.95500), # RightRingIntermediate
-	Quaternion(+0.00186,+0.00599,+0.29654,-0.95500), # RightRingDistal
-	Quaternion(+0.00044,-0.07606,+0.29066,-0.95380), # RightLittleProximal
-	Quaternion(-0.00770,-0.02490,+0.29537,-0.95503), # RightLittleIntermediate
-	Quaternion(-0.00770,-0.02490,+0.29537,-0.95503), # RightLittleDistal
-	Quaternion(+0.56563,+0.42434,-0.56563,-0.42434), # UpperChest
-]
-
-# Reference t-pose PostQ with all bones Y-up (identity quaternion)
-# CAUTION: These are **left handed**
-const PostQ_VRM_Tpose: Array[Quaternion] = [
-	Quaternion(+0.00000,+0.00000,+0.00000,+1.00000), # Hips
-	Quaternion(-0.50952,+0.48977,-0.48105,+0.51876), # LeftUpperLeg
-	Quaternion(-0.48105,+0.51876,-0.50952,+0.48977), # RightUpperLeg
-	Quaternion(-0.49312,+0.50616,-0.48097,+0.51894), # LeftLowerLeg
-	Quaternion(-0.48097,+0.51894,-0.49312,+0.50616), # RightLowerLeg
-	Quaternion(-0.50000,+0.50000,-0.50000,+0.50000), # LeftFoot
-	Quaternion(-0.50000,+0.50000,-0.50000,+0.50000), # RightFoot
-	Quaternion(+0.46815,+0.52994,-0.46815,-0.52994), # Spine
-	Quaternion(+0.52661,+0.47189,-0.52661,-0.47189), # Chest
-	Quaternion(+0.46642,+0.53160,-0.46748,-0.53040), # Neck
-	Quaternion(-0.50000,-0.50000,+0.50000,+0.50000), # Head
-	Quaternion(+0.03047,+0.00261,+0.99590,-0.08517), # LeftShoulder
-	Quaternion(-0.00261,-0.03047,-0.08518,+0.99590), # RightShoulder
-	Quaternion(+0.00419,+0.00010,+0.99972,-0.02326), # LeftUpperArm
-	Quaternion(-0.00010,-0.00419,-0.02326,+0.99972), # RightUpperArm
-	Quaternion(+0.02834,+0.70648,+0.70654,-0.02988), # LeftLowerArm
-	Quaternion(-0.70648,-0.02834,-0.02988,+0.70654), # RightLowerArm
-	Quaternion(+0.04117,+0.00004,+0.99915,-0.00109), # LeftHand
-	Quaternion(-0.00004,-0.04117,-0.00109,+0.99915), # RightHand
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # LeftToes
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # RightToes
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # LeftEye
-	Quaternion(+0.70711,+0.00000,+0.70711,+0.00000), # RightEye
-	Quaternion(0,0,0,1), # Jaw
-	Quaternion(+0.25711,+0.64267,+0.65871,-0.29491), # LeftThumbProximal
-	Quaternion(+0.23444,+0.65380,+0.66711,-0.26935), # LeftThumbIntermediate
-	Quaternion(+0.23444,+0.65380,+0.66711,-0.26935), # LeftThumbDistal
-	Quaternion(+0.07773,+0.00016,+0.99697,-0.00204), # LeftIndexProximal
-	Quaternion(+0.05634,+0.00093,+0.99827,-0.01654), # LeftIndexIntermediate
-	Quaternion(+0.05634,+0.00093,+0.99827,-0.01654), # LeftIndexDistal
-	Quaternion(+0.03295,+0.00060,+0.99929,-0.01826), # LeftMiddleProximal
-	Quaternion(+0.02051,+0.00108,+0.99839,-0.05279), # LeftMiddleIntermediate
-	Quaternion(+0.02051,+0.00108,+0.99839,-0.05279), # LeftMiddleDistal
-	Quaternion(+0.00251,+0.00002,+0.99997,-0.00784), # LeftRingProximal
-	Quaternion(+0.00628,-0.00011,+0.99982,+0.01768), # LeftRingIntermediate
-	Quaternion(+0.00628,-0.00011,+0.99982,+0.01768), # LeftRingDistal
-	Quaternion(+0.00035,+0.00000,+0.99999,-0.00435), # LeftLittleProximal
-	Quaternion(-0.02607,+0.00049,+0.99948,+0.01878), # LeftLittleIntermediate
-	Quaternion(-0.02607,+0.00049,+0.99948,+0.01878), # LeftLittleDistal
-	Quaternion(-0.64270,-0.25738,-0.29486,+0.65860), # RightThumbProximal
-	Quaternion(-0.65382,-0.23468,-0.26929,+0.66703), # RightThumbIntermediate
-	Quaternion(-0.65382,-0.23468,-0.26929,+0.66703), # RightThumbDistal
-	Quaternion(-0.00016,-0.07773,-0.00204,+0.99697), # RightIndexProximal
-	Quaternion(-0.00093,-0.05633,-0.01654,+0.99827), # RightIndexIntermediate
-	Quaternion(-0.00093,-0.05633,-0.01654,+0.99827), # RightIndexDistal
-	Quaternion(-0.00060,-0.03295,-0.01826,+0.99929), # RightMiddleProximal
-	Quaternion(-0.00108,-0.02050,-0.05278,+0.99840), # RightMiddleIntermediate
-	Quaternion(-0.00108,-0.02050,-0.05278,+0.99840), # RightMiddleDistal
-	Quaternion(-0.00002,-0.00251,-0.00784,+0.99997), # RightRingProximal
-	Quaternion(+0.00011,-0.00627,+0.01767,+0.99982), # RightRingIntermediate
-	Quaternion(+0.00011,-0.00627,+0.01767,+0.99982), # RightRingDistal
-	Quaternion(-0.00000,-0.00036,-0.00435,+0.99999), # RightLittleProximal
-	Quaternion(-0.00049,+0.02606,+0.01879,+0.99948), # RightLittleIntermediate
-	Quaternion(-0.00049,+0.02606,+0.01879,+0.99948), # RightLittleDistal
-	Quaternion(+0.56563,+0.42434,-0.56563,-0.42434), # UpperChest
-]
-
 const Signs: Array[Vector3] = [
 	Vector3(+1,+1,+1), # Hips
 	Vector3(+1,+1,+1), # LeftUpperLeg
@@ -630,6 +463,21 @@ const Signs: Array[Vector3] = [
 # assert(len(MuscleName) === len(MuscleDefaultMax))
 # assert(len(MuscleName) === len(MuscleDefaultMin))
 
+# RootQ uses the position, not the rotation, of Left/Right Upper Leg/Arm
+# The position of a bone does not depend on its rotation
+const rootQAffectingBones: Dictionary = {
+	0: true, # Hips
+	#1: true, # LeftUpperLeg
+	#2: true, # RightUpperLeg
+	7: true, # Spine
+	8: true, # Chest
+	54: true, # UpperChest
+	11: true, # LeftShoulder
+	12: true, # RightShoulder
+	#13: true, # LeftUpperArm
+	#14: true, # RightUpperArm
+}
+
 const boneIndexToMono: Array[HumanBodyBones] = [ # HumanTrait.GetBoneIndexToMono (internal)
 	HumanBodyBones.Hips,
 	HumanBodyBones.LeftUpperLeg,
@@ -686,6 +534,123 @@ const boneIndexToMono: Array[HumanBodyBones] = [ # HumanTrait.GetBoneIndexToMono
 	HumanBodyBones.RightLittleProximal,
 	HumanBodyBones.RightLittleIntermediate,
 	HumanBodyBones.RightLittleDistal,
+]
+
+const boneIndexToParent: Array[int] = [ # HumanTrait.GetBoneIndexToMono (internal)
+	0, #HumanBodyBones.Hips,
+	0, #HumanBodyBones.Hips,
+	0, #HumanBodyBones.Hips,
+	1, #HumanBodyBones.LeftUpperLeg,
+	2, #HumanBodyBones.RightUpperLeg,
+	3, #HumanBodyBones.LeftLowerLeg,
+	4, #HumanBodyBones.RightLowerLeg,
+	0, #HumanBodyBones.Hips,
+	7, #HumanBodyBones.Spine,
+	8, #HumanBodyBones.Chest,
+	9, #HumanBodyBones.UpperChest,
+	10, #HumanBodyBones.Neck,
+	9, #HumanBodyBones.UpperChest,
+	9, #HumanBodyBones.UpperChest,
+	12, #HumanBodyBones.LeftShoulder,
+	13, #HumanBodyBones.RightShoulder,
+	14, #HumanBodyBones.LeftUpperArm,
+	15, #HumanBodyBones.RightUpperArm,
+	16, #HumanBodyBones.LeftLowerArm,
+	17, #HumanBodyBones.RightLowerArm,
+	5, #HumanBodyBones.LeftFoot,
+	6, #HumanBodyBones.RightFoot,
+	11, #HumanBodyBones.Head,
+	11, #HumanBodyBones.Head,
+	11, #HumanBodyBones.Head,
+]
+
+const bone_lengths: Array[float] = [
+	0.10307032899633, # Hips
+	0.42552330971818, # LeftUpperLeg
+	0.4255239384901, # RightUpperLeg
+	0.42702378815645, # LeftLowerLeg
+	0.4270232737067, # RightLowerLeg
+	0.13250420705574, # LeftFoot
+	0.13250419276546, # RightFoot
+	0.09717579233836, # Spine
+	0.0882577559016, # Chest
+	0.1665140084667, # UpperChest
+	0.09364062941212, # Neck
+	0.1726370036846, # Head
+	0.1039340043854, # LeftShoulder
+	0.10393849867558, # RightShoulder
+	0.26700124954128, # LeftUpperArm
+	0.26700124954128, # RightUpperArm
+	0.27167462539484, # LeftLowerArm
+	0.27167462539484, # RightLowerArm
+	0.0901436357993, # LeftHand
+	0.09013411133379, # RightHand
+	0.0889776497306, # LeftToes
+	0.0889776497306, # RightToes
+	0.02, # LeftEye
+	0.02, # RightEye
+	0.01, # Jaw
+]
+
+# Extracted from imported avatar of three-vrm-girl.vrm
+const human_bone_mass: Array[float] = [
+	0.145455, # Hips
+	0.121212, # LeftUpperLeg
+	0.121212,
+	0.0484849, # LeftLowerLeg
+	0.0484849,
+	0.00969697, # LeftFoot
+	0.00969697,
+	0.030303, # Spine
+	0.145455, # Chest
+	0.145455, # UpperChest
+	0.0121212, # Neck
+	0.0484849, # Head
+	0.00606061, # LeftShoulder
+	0.00606061,
+	0.0242424, # LeftUpperArm
+	0.0242424,
+	0.0181818, # LeftLowerArm
+	0.0181818,
+	0.00606061, # LeftHand
+	0.00606061,
+	0.00242424, # LeftToes
+	0.00242424,
+	0, # LeftEye
+	0,
+	0 # Jaw
+]
+
+# ShaderMotion uses a simplified approach for center of mass:
+# const spreadMassQ = [[7, [21.04, -29.166, -29.166]], [8, [21.04, -18.517, -18.517]], ];
+
+# From skeleton_position_printer.gd run on Xbot VRM
+const xbot_positions : Array[Vector3] = [
+	Vector3(0, 1, 0), #Vector3(-0, 1, 0.014906),
+	Vector3(0.078713, -0.064749, -0.01534),
+	Vector3(-0.078713, -0.064749, -0.01534),
+	Vector3(0, 0.42551, 0.003327),
+	Vector3(0, 0.425511, 0.003317),
+	Vector3(0, 0.426025, 0.029196),
+	Vector3(0, 0.426025, 0.029188),
+	Vector3(-0, 0.097642, 0.001261),
+	Vector3(-0, 0.096701, -0.009598),
+	Vector3(-0, 0.087269, -0.013171),
+	Vector3(0, 0.159882, -0.02413),
+	Vector3(0, 0.092236, 0.016159),
+	Vector3(0.043831, 0.104972, -0.025203),
+	Vector3(-0.043826, 0.104974, -0.025203),
+	Vector3(-0.021406, 0.101581, -0.005031),
+	Vector3(0.021406, 0.101586, -0.005033),
+	Vector3(-0, 0.267001, 0),
+	Vector3(0, 0.267001, 0),
+	Vector3(0, 0.271675, 0),
+	Vector3(0, 0.271675, -0.000001),
+	Vector3(0, 0.102715, -0.083708),
+	Vector3(0, 0.102715, -0.083708),
+	Vector3(0.02, 0.04, 0),
+	Vector3(-0.02, 0.04, 0),
+	Vector3(0, 0.02, 0),
 ]
 
 static func bone_name_to_index() -> Dictionary: # String -> int

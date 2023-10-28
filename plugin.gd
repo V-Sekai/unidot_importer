@@ -44,6 +44,27 @@ func recursive_print_scene():
 	recursive_print(get_tree().edited_scene_root)
 
 
+func anim_import():
+	const uoa = preload("./unity_object_adapter.gd")
+	for anim_tres in get_editor_interface().get_selected_paths():
+		var nod = get_editor_interface().get_selection().get_selected_nodes()[0] as AnimationMixer
+		var anim_raw = ResourceLoader.load(anim_tres)
+		anim_raw.meta.initialize(preload("./asset_database.gd").new().get_singleton())
+		for obj in anim_raw.objects:
+			if obj.ends_with(":AnimationClip"):
+				if nod != null:
+					nod.get_animation_library("").remove_animation(anim_raw.objects[obj]["m_Name"])
+				var ac = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, obj.split(":")[0].to_int(), 74)
+				ac.keys = anim_raw.objects[obj]
+				var animator = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 95)
+				#var animgo = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 1)
+				#var animtr = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 4)
+				var anim = ac.create_animation_clip_at_node(animator, null)
+				anim.take_over_path(anim_raw.meta.path)
+				ResourceSaver.save(anim, anim_raw.meta.path)
+				if nod != null:
+					nod.get_animation_library("").add_animation(anim_raw.objects[obj]["m_Name"], anim)
+
 func _enter_tree():
 	print("run enter tree")
 	add_tool_menu_item("Import Unity Package...", self.show_importer)
@@ -51,7 +72,7 @@ func _enter_tree():
 	add_tool_menu_item("Reimport large unity package...", self.show_reimport)
 	add_tool_menu_item("Show last import logs", self.show_importer_logs)
 	#add_tool_menu_item("Queue Test...", self.queue_test)
-	#add_tool_menu_item("Print scene nodes with owner...", self.recursive_print_scene)
+	#add_tool_menu_item("Print scene nodes with owner...", self.anim_import) # self.recursive_print_scene)
 
 
 func _exit_tree():

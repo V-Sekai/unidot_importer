@@ -1660,7 +1660,7 @@ class UnityAnimationClip:
 			return default_gameobject_component_path(unipath, unicomp)
 		var animator_go: UnityGameObject = animator.gameObject
 		var path_split: PackedStringArray = unipath.split("/")
-		var current_fileID: int = animator_go.fileID
+		var current_fileID: int = 0 if animator_go == null else animator_go.fileID
 		var animator_nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(current_fileID, animator.meta.fileid_to_nodepath.get(current_fileID, NodePath()))
 		var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
 		var extra_path: String = ""
@@ -1713,19 +1713,34 @@ class UnityAnimationClip:
 
 		var timestamp: float = 0.0
 
-		func _init(curve: Dictionary):
-			self.keyframes = curve["m_Curve"]
-			self.curve = curve
-			self.init_key = keyframes[0]
-			self.final_key = keyframes[-1]
-			self.prev_key = self.init_key
-			self.next_key = self.init_key # if len(keyframes) == 1 else keyframes[1]
+		func _init(p_curve: Dictionary):
+			curve = p_curve
+			keyframes = curve["m_Curve"]
+			init_key = keyframes[0]
+			final_key = keyframes[-1]
+			prev_key = init_key
+			next_key = init_key # if len(keyframes) == 1 else keyframes[1]
 			if prev_key.has("outSlope"):
 				has_slope = true # serializedVersion=3 has inSlope/outSlope while version=2 does not
 				# Assets can actually mix and match version 2 and 3 even for related tracks.
 				prev_slope = prev_key["outSlope"]
 				next_slope = next_key["inSlope"]
-			self.is_constant = false
+			is_constant = false
+
+		func reset():
+			key_idx = 0
+			prev_key = init_key
+			next_key = init_key
+			is_eof = false
+			timestamp = 0.0
+			is_constant = false
+
+		func debug() -> String:
+			var s: String = ""
+			s += "{" + str(is_eof) + "," + str(timestamp) + "," + str("const" if is_constant else "linear")
+			s += "," + str(prev_slope) + "," + str(next_slope)
+			s += " @" + str(key_idx) + ":" + str(prev_key["time"]) + "=>" + str(next_key["time"]) + "}"
+			return s
 
 		func get_next_timestamp(timestep: float = -1.0) -> float:
 			if is_eof:
@@ -1755,26 +1770,30 @@ class UnityAnimationClip:
 			if typeof(next_slope) == TYPE_STRING:
 				next_slope = next_slope.to_float()
 			if typeof(prev_slope) == TYPE_FLOAT:
-				is_constant = is_inf(prev_slope) || is_inf(next_slope)
+				is_constant = not (is_finite(prev_slope) && is_finite(next_slope))
 				# is_constant = (typeof(key_iter.prev_slope) == TYPE_STRING || typeof(key_iter.next_slope) == TYPE_STRING || is_inf(key_iter.prev_slope) || is_inf(key_iter.next_slope))
 			elif typeof(prev_slope) == TYPE_VECTOR3:
-				is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z))
+				is_constant = not (is_finite(prev_slope.x) && is_finite(next_slope.x) && is_finite(prev_slope.y) && is_finite(next_slope.y) && is_finite(prev_slope.z) && is_finite(next_slope.z))
 			elif typeof(prev_slope) == TYPE_QUATERNION:
-				is_constant = (is_inf(prev_slope.x) || is_inf(next_slope.x) || is_inf(prev_slope.y) || is_inf(next_slope.y) || is_inf(prev_slope.z) || is_inf(next_slope.z) || is_inf(prev_slope.w) || is_inf(next_slope.w))
+				is_constant = not (is_finite(prev_slope.x) && is_finite(next_slope.x) && is_finite(prev_slope.y) && is_finite(next_slope.y) && is_finite(prev_slope.z) && is_finite(next_slope.z) && is_finite(prev_slope.w) && is_finite(next_slope.w))
 
 			if len(keyframes) == 1:
 				timestamp = 0.0
 				is_eof = true
 				return fixup_strings(init_key["value"])
-			if is_constant and timestamp < next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP:
+			var constant_end_timestamp: float = next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP
+			if is_constant and timestamp < constant_end_timestamp:
 				# Make a new keyframe with the previous value CONSTANT_KEYFRAME_TIMESTAMP before the next.
-				timestamp = next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP
+				if timestep <= 0:
+					timestamp = constant_end_timestamp
+				else:
+					timestamp = min(timestamp + timestep, constant_end_timestamp)
 				return fixup_strings(prev_key["value"])
 			if timestep <= 0:
 				timestamp = next_key["time"]
 			else:
 				timestamp += timestep
-			if timestamp >= next_key["time"]:
+			if timestamp >= next_key["time"] - CONSTANT_KEYFRAME_TIMESTAMP:
 				prev_key = next_key
 				prev_slope = prev_key.get("outSlope")
 				timestamp = prev_key["time"]
@@ -1789,7 +1808,9 @@ class UnityAnimationClip:
 			# and clip length, to decide whether to use default linear interpolation or add more keyframes.
 			# We could also have a setting to use cubic instead of linear for more smoothness but less accuracy.
 			# FIXME: Assuming linear interpolation
-			return lerp(fixup_strings(prev_key["value"]), fixup_strings(next_key["value"]), (timestamp - prev_key["time"]) / (next_key["time"] - prev_key["time"]))
+			if not is_equal_approx(next_key["time"], prev_key["time"]) and timestamp >= prev_key["time"] and timestamp <= next_key["time"]:
+				return lerp(fixup_strings(prev_key["value"]), fixup_strings(next_key["value"]), (timestamp - prev_key["time"]) / (next_key["time"] - prev_key["time"]))
+			return fixup_strings(next_key["value"])
 
 	class LockstepKeyframeiterator:
 		extends RefCounted
@@ -1798,13 +1819,35 @@ class UnityAnimationClip:
 
 		var timestamp: float = 0.0
 		var is_eof: bool = false
-		var bone_name: String
+		var perform_right_handed_position_conversion: bool = false
 		var results: Array[float]
 
-		func _init(iters: Array[KeyframeIterator], name: String):
+		func _init(iters: Array[KeyframeIterator], is_position: bool):
 			kf_iters = iters
-			bone_name = name
 			results.resize(len(kf_iters))
+			if len(results) == 4:
+				results[3] = 1 # normalized quaternion
+			if is_position:
+				perform_right_handed_position_conversion = true
+
+		func reset():
+			for iter in kf_iters:
+				if iter != null:
+					iter.reset()
+			is_eof = false
+			timestamp = 0.0
+
+		func debug() -> String:
+			var s: String = ""
+			s += str(is_eof) + "," + str(timestamp) + "," + str(results) + ":["
+			for iter in kf_iters:
+				if iter == null:
+					s += "null"
+				else:
+					s += iter.debug()
+				s += ","
+			s += "]"
+			return s
 
 		func get_next_timestamp(timestep: float = -1.0) -> float:
 			var next_timestamp: Variant = null
@@ -1826,8 +1869,10 @@ class UnityAnimationClip:
 			if typeof(next_timestamp) != TYPE_FLOAT:
 				is_eof = true
 				return 0.0
-			else:
+			elif timestep <= 0:
 				return next_timestamp
+			else:
+				return minf(timestamp + timestep, next_timestamp)
 
 		func next(timestep: float = -1.0) -> Variant:
 			var valid_components: int = 0
@@ -1840,10 +1885,17 @@ class UnityAnimationClip:
 						var key_iter: KeyframeIterator = kf_iters[i]
 						if key_iter.is_eof:
 							continue
-						var res: Variant = key_iter.next(timestamp - key_iter.timestamp)
-						if typeof(res) == TYPE_STRING:
-							res = res.to_float()
-						results[i] = res
+						var res: Variant
+						if timestep <= 0.0:
+							res = key_iter.next(timestamp - key_iter.timestamp)
+						else:
+							res = key_iter.next(timestep)
+						if i == 3:
+							if len(results) < 4:
+								push_error("results len is not 4: " + str(results))
+						results[i] = res as float
+						if not is_finite(results[i]):
+							push_error("We got a nan oh nooo " + str(i) + " from " + str(res) + " at " + str(key_iter.timestamp) + " eof=" + str(key_iter.is_eof) + " const=" + str(key_iter.is_constant) + "key_idx=" + str(key_iter.key_idx))
 						valid_components += 1
 						if key_iter.is_eof:
 							new_eof_components += 1
@@ -1851,13 +1903,15 @@ class UnityAnimationClip:
 			if new_eof_components == valid_components:
 				is_eof = true
 			if len(results) == 3:
+				if perform_right_handed_position_conversion:
+					return Vector3(-results[0], results[1], results[2])
 				return Vector3(results[0], results[1], results[2])
 			elif len(results) == 4:
 				if valid_components == 0:
-					push_error("next() called when all sub-tracks are eof or null")
+					pass # push_error("next() called when all sub-tracks are eof or null")
 				elif Quaternion(results[0], results[1], results[2], results[3]).normalized().is_equal_approx(Quaternion.IDENTITY):
-					push_error("next() valid components " + str(valid_components) + " returned an identity quaternion: " + str(results))
-				return Quaternion(results[0], results[1], results[2], results[3]).normalized()
+					pass # push_error("next() valid components " + str(valid_components) + " returned an identity quaternion: " + str(results))
+				return Quaternion(results[0], -results[1], -results[2], results[3]).normalized()
 			return results
 
 	func adapt_track_nodepaths_for_node(animator: RefCounted, node_parent: Node, clip: Animation) -> Array:
@@ -1967,6 +2021,8 @@ class UnityAnimationClip:
 		for pfx in human_trait.IKPrefixNames:
 			for sfx in human_trait.IKSuffixNames:
 				special_humanoid_transforms[pfx + sfx] = human_trait.IKSuffixNames[sfx]
+		for pfx in human_trait.BoneName:
+			special_humanoid_transforms[pfx + "TDOF"] = ""
 
 		# m_AnimationClipSettings[m_StartTime,m_StopTime,m_LoopTime,
 		# m_KeepOriginPositionY/XZ/Orientation,m_HeightFromFeet,m_CycleOffset],
@@ -1978,6 +2034,7 @@ class UnityAnimationClip:
 		var resolved_to_default: Dictionary = {}
 		var max_ts: float = 0.0
 		var humanoid_track_sets: Array[Array]
+		var has_humanoid: bool = false
 		for i in range(human_trait.BoneCount + 1):
 			if i == 0:
 				humanoid_track_sets.append([null, null, null, null])
@@ -2004,10 +2061,12 @@ class UnityAnimationClip:
 				elif attr.begins_with("RootQ."):
 					# hips rotation
 					humanoid_track_sets[0][special_humanoid_transforms[attr]] = track
+				has_humanoid = true
 			elif classID == 95 and muscle_name_to_index.has(attr) or human_trait.TraitMapping.has(attr):
 				# Humanoid muscle parameters
 				var bone_idx_axis: Vector2i = muscle_index_to_bone_and_axis[muscle_name_to_index[human_trait.TraitMapping.get(attr, attr)]]
 				humanoid_track_sets[bone_idx_axis.x][bone_idx_axis.y] = track
+				has_humanoid = true
 			elif classID == 137 and attr.begins_with("blendShape."):
 				var bstrack = anim.add_track(Animation.TYPE_BLEND_SHAPE)
 				nodepath = NodePath(str(nodepath) + ":" + attr.substr(11))
@@ -2056,62 +2115,139 @@ class UnityAnimationClip:
 					# FIXME: How does the last optional transition argument work?
 					# It says it's used for easing, but I don't see it on blendshape or position tracks?!
 					anim.track_insert_key(valtrack, ts, value)
+		if has_humanoid:
+			var key_iters: Array[LockstepKeyframeiterator]
+			key_iters.resize(human_trait.BoneCount + 1)
+			var used_ts: Dictionary
+			var keyframe_timestamps: Array[float] # will sort
+			var keyframe_affects_rootQ: Dictionary
+			#var transforms: Array[Transform3D]
+			#transforms.resize(human_trait.BoneCount)
+			for bone_idx in range(0, human_trait.BoneCount + 1):
+				var humanoid_track_set: Array = humanoid_track_sets[bone_idx]
+				var keyframe_iters: Array[KeyframeIterator]
+				keyframe_iters.resize(len(humanoid_track_set))
+				for i in range(len(humanoid_track_set)):
+					# may contain null if no animation curve exists.
+					if typeof(humanoid_track_set[i]) == TYPE_DICTIONARY:
+						# This is the outer object (["curve"]["m_Curve"])
+						keyframe_iters[i] = KeyframeIterator.new(humanoid_track_set[i]["curve"])
+				var is_position_track: bool = bone_idx == human_trait.BoneCount
+				var key_iter := LockstepKeyframeiterator.new(keyframe_iters, is_position_track)
+				key_iters[bone_idx] = key_iter
+				var last_ts: float = 0.0
+				var same_ts: bool = false
+				var itercnt: int = 0
+				while not key_iter.is_eof and itercnt < 100000:
+					itercnt += 1
+					key_iter.next()
+					var ts: float = key_iter.timestamp
+					if human_trait.rootQAffectingBones.has(bone_idx) and not keyframe_affects_rootQ.has(ts):
+						keyframe_affects_rootQ[ts] = true
+					if not used_ts.has(ts):
+						keyframe_timestamps.append(ts)
+						used_ts[ts] = true
+				key_iter.reset()
+			keyframe_timestamps.sort()
+			var timestamp_count := len(keyframe_timestamps)
+			var body_bone_count := len(human_trait.boneIndexToParent)
 
-		for bone_idx in range(len(humanoid_track_sets)):
-			var is_position_track: bool = false
-			var is_rotation_track: bool = false
-			var gd_track: int = -1
-			var bone_name: String
-			if bone_idx == human_trait.BoneCount:
-				gd_track = anim.add_track(Animation.TYPE_POSITION_3D)
-				anim.track_set_path(gd_track, "%GeneralSkeleton:Hips")
-				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
-				is_position_track = true
-				bone_name = "RootT"
-			elif bone_idx == 0:
-				gd_track = anim.add_track(Animation.TYPE_ROTATION_3D)
-				anim.track_set_path(gd_track, "%GeneralSkeleton:Hips")
-				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
-				is_rotation_track = true
-				bone_name = "RootQ"
-			else:
+			for bone_idx in range(1, human_trait.BoneCount):
 				var godot_human_name: String = human_trait.GodotHumanNames[bone_idx]
-				gd_track = anim.add_track(Animation.TYPE_ROTATION_3D)
+				var gd_track: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 				anim.track_set_path(gd_track, "%GeneralSkeleton:" + godot_human_name)
 				anim.track_set_interpolation_type(gd_track, Animation.INTERPOLATION_LINEAR)
-				bone_name = godot_human_name
+				var bone_name: String = godot_human_name
 
-			var humanoid_track_set: Array = humanoid_track_sets[bone_idx]
-			var keyframe_iters: Array[KeyframeIterator]
-			keyframe_iters.resize(len(humanoid_track_set))
-			for i in range(len(humanoid_track_set)):
-				# may contain null if no animation curve exists.
-				if typeof(humanoid_track_set[i]) == TYPE_DICTIONARY:
-					# This is the outer object (["curve"]["m_Curve"])
-					keyframe_iters[i] = KeyframeIterator.new(humanoid_track_set[i]["curve"])
-			var key_iter := LockstepKeyframeiterator.new(keyframe_iters, bone_name)
-			var last_ts: float = 0.0
-			var same_ts: bool = false
-			while not key_iter.is_eof:
-				var val_variant: Variant = key_iter.next()
-				var ts: float = key_iter.timestamp
-				if ts == last_ts:
-					if same_ts:
-						log_fail("Failed to make timestamp " + str(ts) + " progress in keyframe iterator for humanoid idx " + str(bone_idx))
-						break
-					same_ts = true
-				else:
-					same_ts = false
-				if is_position_track:
-					anim.position_track_insert_key(gd_track, ts, Vector3(-1, 1, 1) * val_variant)
-				elif is_rotation_track:
-					if val_variant.is_equal_approx(Quaternion.IDENTITY):
-						log_fail("We got an identity hips rotation quaternion at timestamp " + str(ts))
-					anim.rotation_track_insert_key(gd_track, ts, Basis.FLIP_X.inverse() * Basis(val_variant) * Basis.FLIP_X)
-				else: # swing-twist muscle track
+				var key_iter := key_iters[bone_idx]
+				var itercnt: int = 0
+				while not key_iter.is_eof and itercnt < 100000:
+					itercnt += 1
+					var val_variant: Variant = key_iter.next()
+					var ts: float = key_iter.timestamp
+
+					# swing-twist muscle track
 					var value: Quaternion = humanoid_transform_util.calculate_humanoid_rotation(bone_idx, val_variant)
 					anim.rotation_track_insert_key(gd_track, ts, value)
+				key_iter.reset()
 
+			if not keyframe_timestamps.is_empty():
+				# Hips position track
+				var gd_track_pos: int = anim.add_track(Animation.TYPE_POSITION_3D)
+				anim.track_set_path(gd_track_pos, "%GeneralSkeleton:Hips")
+				anim.track_set_interpolation_type(gd_track_pos, Animation.INTERPOLATION_LINEAR)
+				var key_iter_pos := key_iters[human_trait.BoneCount] # LockstepKeyframeiterator.new(keyframe_iters)
+
+				# Hips rotation track
+				var gd_track_rot: int = anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(gd_track_rot, "%GeneralSkeleton:Hips")
+				anim.track_set_interpolation_type(gd_track_rot, Animation.INTERPOLATION_LINEAR)
+				var key_iter_rot := key_iters[0] # LockstepKeyframeiterator.new(keyframe_iters)
+
+				var last_ts: float = 0
+				var body_positions: Array[Vector3]
+				var body_rotations: Array[Quaternion]
+				body_positions.resize(body_bone_count)
+				body_rotations.resize(body_bone_count)
+				# We need to evaluate the position tracks at each timestep and calculate
+				# the human pose so we can apply the center of mass corerction
+				for ts_idx in range(len(keyframe_timestamps)):
+					var ts: float = keyframe_timestamps[ts_idx]
+					body_positions[0] = human_trait.xbot_positions[0] # Hips position is hardcoded
+					body_rotations[0] = Quaternion.IDENTITY # rest Hips rotation in Godot is always identity
+					for body_bone_idx in range(1, body_bone_count):
+						var bone_idx: int = human_trait.boneIndexToMono[body_bone_idx]
+						var parent_body_bone_idx: int = human_trait.boneIndexToParent[body_bone_idx]
+						var local_bone_pos: Vector3 = human_trait.xbot_positions[body_bone_idx]
+						var key_iter := key_iters[bone_idx]
+						var pre_dbg: String = key_iter.debug()
+						var val_variant: Variant = key_iter.next(ts - last_ts)
+						var swing_twist: Vector3 = val_variant as Vector3
+						# swing-twist muscle track
+						var local_rot: Quaternion = humanoid_transform_util.calculate_humanoid_rotation(bone_idx, swing_twist)
+						if not local_rot.is_normalized():
+							push_error("local_rot " + str(body_bone_idx) + " is not normalized!")
+							return
+						if (key_iter.timestamp != ts) and not key_iter.is_eof:
+							push_warning("State was: " + pre_dbg)
+							push_error("bone " + str(human_trait.GodotHumanNames[bone_idx]) + " timestamp " + str(key_iter.timestamp) + " is not ts " + str(ts) + " from " + str(last_ts) + " dbg " + key_iter.debug())
+						var par_position := body_positions[parent_body_bone_idx]
+						var par_rotation := body_rotations[parent_body_bone_idx]
+						if not par_rotation.is_normalized():
+							push_error("par_rotation " + str(parent_body_bone_idx) + " is not normalized!")
+							return
+						body_positions[body_bone_idx] = par_position + par_rotation * local_bone_pos
+						body_rotations[body_bone_idx] = par_rotation * local_rot
+						if not body_rotations[body_bone_idx].is_normalized():
+							push_error("body_rotation " + str(body_bone_idx) + " is not normalized!")
+							return
+
+					# Calulcate center of mass
+					var pre_dbg_rot: String = key_iter_rot.debug()
+					var val_rotation_variant: Variant = key_iter_rot.next(ts - last_ts)
+					var root_q: Quaternion = val_rotation_variant as Quaternion
+					if not root_q.is_normalized():
+						push_error("root q is not normalized!")
+						return
+					if (key_iter_rot.timestamp != ts) and not key_iter_rot.is_eof:
+						push_warning("RootQ State was: " + pre_dbg_rot)
+						push_error("RootQ timestamp " + str(key_iter_rot.timestamp) + " is not ts " + str(ts) + " from " + str(last_ts) + " dbg " + key_iter_rot.debug())
+					var delta_q: Quaternion = humanoid_transform_util.get_hips_rotation_delta(body_positions, root_q)
+					if not delta_q.is_normalized():
+						push_error("delta_q is not normalized!")
+						return
+					if keyframe_affects_rootQ.has(ts):
+						anim.rotation_track_insert_key(gd_track_rot, ts, delta_q) # Hips rest rotation is identity
+
+					var pre_dbg_pos: String = key_iter_pos.debug()
+					var val_position_variant: Variant = key_iter_pos.next(ts - last_ts)
+					var root_t: Vector3 = val_position_variant as Vector3
+					if (key_iter_pos.timestamp != ts) and not key_iter_pos.is_eof:
+						push_warning("RootT State was: " + pre_dbg_pos)
+						push_error("RootT timestamp " + str(key_iter_pos.timestamp) + " is not ts " + str(ts) + " from " + str(last_ts) + " dbg " + key_iter_pos.debug())
+					var hips_pos: Vector3 = humanoid_transform_util.get_hips_position(body_positions, body_rotations, delta_q, root_t)
+					anim.position_track_insert_key(gd_track_pos, ts, hips_pos)
+					last_ts = ts
 		for track in keys["m_PositionCurves"]:
 			for keyframe in track["curve"]["m_Curve"]:
 				max_ts = maxf(max_ts, keyframe["time"])

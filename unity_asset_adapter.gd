@@ -23,6 +23,8 @@ const SILHOUETTE_FIX_THRESHOLD: float = 28.0
 
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg==")
 
+#const DEBUG_RAW_PARSED_ASSET_TYPES := ".anim.tres"
+const DEBUG_RAW_PARSED_ASSET_TYPES := ".disabled"
 
 func write_sentinel_png(sentinel_filename: String):
 	var f: FileAccess = FileAccess.open(sentinel_filename, FileAccess.WRITE)
@@ -361,7 +363,7 @@ class YamlHandler:
 				godot_resource.take_over_path(pkgasset.pathname)
 			godot_resource.resource_path = pkgasset.pathname
 			ResourceSaver.save(godot_resource, pkgasset.pathname)
-		else:
+		if godot_resource == null or pkgasset.pathname.ends_with(DEBUG_RAW_PARSED_ASSET_TYPES):
 			var rpa = raw_parsed_asset.new()
 			rpa.path = pkgasset.pathname
 			rpa.guid = pkgasset.guid
@@ -407,7 +409,7 @@ class SceneHandler:
 			packed_scene.resource_path = "res://" + pkgasset.pathname
 			ResourceSaver.save(packed_scene, "res://" + pkgasset.pathname)
 			EditorPlugin.new().get_editor_interface().reload_scene_from_path("res://" + pkgasset.pathname)
-			return true
+			return truea
 		return false
 
 
