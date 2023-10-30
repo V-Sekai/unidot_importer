@@ -478,6 +478,28 @@ const rootQAffectingBones: Dictionary = {
 	#14: true, # RightUpperArm
 }
 
+# Arm twist correction:
+const extraAffectingBones: Dictionary = {
+	1: 3, # LeftUpperLeg -> LeftLowerLeg
+	3: 5, # LeftLowerLeg -> LeftFoot
+	2: 4, # RightUpperLeg -> RightLowerLeg
+	4: 6, # RightLowerLeg -> RightFoot
+	13: 15, # LeftUpperArm -> LeftLowerArm
+	15: 17, # LeftLowerArm -> LeftHand
+	14: 16, # RightUpperArm -> RightLowerArm
+	16: 18, # RightLowerArm -> RightHand
+}
+const extraAffectedByBones: Dictionary = {
+	3: 1, # LeftLowerLeg <- LeftUpperLeg
+	5: 3, # LeftFoot <- LeftLowerLeg
+	4: 2, # RightLowerLeg <- RightUpperLeg
+	6: 4, # RightFoot <- RightLowerLeg
+	15: 13, # LeftLowerArm <- LeftUpperArm
+	17: 15, # LeftHand <- LeftLowerArm
+	16: 14, # RightLowerArm <- RightUpperArm
+	18: 16, # RightHand <- RightLowerArm
+}
+
 const boneIndexToMono: Array[HumanBodyBones] = [ # HumanTrait.GetBoneIndexToMono (internal)
 	HumanBodyBones.Hips,
 	HumanBodyBones.LeftUpperLeg,

@@ -18,7 +18,7 @@ extends RefCounted
 
 const human_trait = preload("./human_trait.gd")
 
-static func calculate_humanoid_rotation(bone_idx: int, muscle_triplet: Vector3) -> Quaternion:
+static func calculate_humanoid_rotation(bone_idx: int, muscle_triplet: Vector3, from_postq: bool = false) -> Quaternion:
 	var muscle_from_bone: PackedInt32Array = human_trait.MuscleFromBone[bone_idx]
 
 	for i in range(3):
@@ -26,6 +26,8 @@ static func calculate_humanoid_rotation(bone_idx: int, muscle_triplet: Vector3) 
 			human_trait.MuscleDefaultMax[muscle_from_bone[i]] if muscle_triplet[i] >= 0
 			else -human_trait.MuscleDefaultMin[muscle_from_bone[i]]) * human_trait.Signs[bone_idx][i]
 	var preQ : Quaternion = human_trait.preQ_exported[bone_idx]
+	if from_postq:
+		preQ = human_trait.postQ_inverse_exported[bone_idx].inverse().normalized()
 	if not preQ.is_normalized():
 		push_error("preQ is not normalized " + str(bone_idx))
 	var invPostQ : Quaternion = human_trait.postQ_inverse_exported[bone_idx]

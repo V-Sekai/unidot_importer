@@ -2121,6 +2121,11 @@ class UnityAnimationClip:
 			var used_ts: Dictionary
 			var keyframe_timestamps: Array[float] # will sort
 			var keyframe_affects_rootQ: Dictionary
+			var per_bone_keyframe_used_ts: Array[Dictionary]
+			var per_bone_timestamps: Array[PackedFloat64Array]
+			per_bone_keyframe_used_ts.resize(human_trait.BoneCount + 1)
+			per_bone_timestamps.resize(human_trait.BoneCount + 1)
+			#var donated_limb_keyframe_times_and_twists: Array[PackedVector2Array]
 			#var transforms: Array[Transform3D]
 			#transforms.resize(human_trait.BoneCount)
 			for bone_idx in range(0, human_trait.BoneCount + 1):
@@ -2138,6 +2143,7 @@ class UnityAnimationClip:
 				var last_ts: float = 0.0
 				var same_ts: bool = false
 				var itercnt: int = 0
+				var affecting_bone_idx: int = human_trait.extraAffectingBones.get(bone_idx, -1)
 				while not key_iter.is_eof and itercnt < 100000:
 					itercnt += 1
 					key_iter.next()
@@ -2147,8 +2153,16 @@ class UnityAnimationClip:
 					if not used_ts.has(ts):
 						keyframe_timestamps.append(ts)
 						used_ts[ts] = true
+					if not per_bone_keyframe_used_ts[bone_idx].has(ts):
+						per_bone_keyframe_used_ts[bone_idx][ts] = true
+						per_bone_timestamps[bone_idx].append(ts)
+					if affecting_bone_idx != -1 and not per_bone_keyframe_used_ts[affecting_bone_idx].has(ts):
+						per_bone_keyframe_used_ts[affecting_bone_idx][ts] = true
+						per_bone_timestamps[affecting_bone_idx].append(ts)
 				key_iter.reset()
 			keyframe_timestamps.sort()
+			per_bone_keyframe_used_ts.clear()
+			used_ts.clear()
 			var timestamp_count := len(keyframe_timestamps)
 			var body_bone_count := len(human_trait.boneIndexToParent)
 
@@ -2160,16 +2174,33 @@ class UnityAnimationClip:
 				var bone_name: String = godot_human_name
 
 				var key_iter := key_iters[bone_idx]
-				var itercnt: int = 0
-				while not key_iter.is_eof and itercnt < 100000:
-					itercnt += 1
-					var val_variant: Variant = key_iter.next()
-					var ts: float = key_iter.timestamp
-
+				var bone_timestamps: PackedFloat64Array = per_bone_timestamps[bone_idx]
+				bone_timestamps.sort()
+				var affected_by_bone_idx: int = human_trait.extraAffectedByBones.get(bone_idx, -1)
+				var affected_by_key_iter: LockstepKeyframeiterator = null
+				if affected_by_bone_idx != -1:
+					affected_by_key_iter = key_iters[affected_by_bone_idx]
+				var last_ts: float = 0
+				for ts_idx in range(len(bone_timestamps)):
+					var ts: float = bone_timestamps[ts_idx]
+					var val_variant: Variant = key_iter.next(ts - last_ts)
+					var this_swing_twist: Vector3 = val_variant as Vector3
+					var weight = 1.0
+					var pre_value := Quaternion.IDENTITY
+					if affected_by_bone_idx != -1:
+						weight = 0.5
+						this_swing_twist.x *= weight
+						var affected_by_variant: Variant = affected_by_key_iter.next(ts - last_ts)
+						var affected_by_twist: Vector3 = affected_by_variant as Vector3
+						affected_by_twist = Vector3(affected_by_twist.x * (1.0 - weight), 0, 0)
+						pre_value = humanoid_transform_util.calculate_humanoid_rotation(affected_by_bone_idx, affected_by_twist, true)
 					# swing-twist muscle track
-					var value: Quaternion = humanoid_transform_util.calculate_humanoid_rotation(bone_idx, val_variant)
-					anim.rotation_track_insert_key(gd_track, ts, value)
+					var value: Quaternion = humanoid_transform_util.calculate_humanoid_rotation(bone_idx, this_swing_twist)
+					anim.rotation_track_insert_key(gd_track, ts, pre_value * value)
+					last_ts = ts
 				key_iter.reset()
+				if affected_by_bone_idx != -1:
+					affected_by_key_iter.reset()
 
 			if not keyframe_timestamps.is_empty():
 				# Hips position track
