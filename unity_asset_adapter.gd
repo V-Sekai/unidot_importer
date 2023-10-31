@@ -357,6 +357,8 @@ class YamlHandler:
 		if main_asset != null:
 			godot_resource = main_asset.create_godot_resource()
 
+		if godot_resource == pkgasset.parsed_meta:
+			return false
 		if godot_resource != null:
 			# Save main resource at end, so that it can reference extra resources.
 			if FileAccess.file_exists(pkgasset.pathname):
@@ -409,7 +411,7 @@ class SceneHandler:
 			packed_scene.resource_path = "res://" + pkgasset.pathname
 			ResourceSaver.save(packed_scene, "res://" + pkgasset.pathname)
 			EditorPlugin.new().get_editor_interface().reload_scene_from_path("res://" + pkgasset.pathname)
-			return truea
+			return true
 		return false
 
 

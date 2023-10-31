@@ -28,6 +28,14 @@ const STRING_KEYS: Dictionary = {
 	"typelessdata": 1,  # Mesh m_VertexData; Texture image data
 	"m_IndexBuffer": 1,
 	"Hash": 1,
+	# Avatar:
+	"m_BoneName": 1,
+	"m_SkeletonNameIDArray": 1,
+	"m_HumanSkeletonIndexArray": 1,
+	"m_HumanSkeletonReverseIndexArray": 1,
+	"m_HumanBoneIndex": 1,
+	"m_HandBoneIndex": 1,
+	"m_ID": 1,
 }
 
 var debug_guid: String = ""

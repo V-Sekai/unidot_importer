@@ -87,7 +87,8 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var prefab_dependency_guids: Dictionary = {}
 @export var meta_dependency_guids: Dictionary = {}
 @export var autodetected_bone_map_dict: Dictionary = {}
-@export var humanoid_bone_map_dict: Dictionary = {}
+@export var humanoid_bone_map_dict: Dictionary = {} # fbx bone name -> godot humanoid bone name
+@export var humanoid_bone_map_crc32_dict: Dictionary = {} # CRC32(fbx bone name) -> godot humanoid bone name
 @export var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
 

@@ -20,6 +20,8 @@ const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
 const human_trait = preload("./humanoid/human_trait.gd")
 const humanoid_transform_util = preload("./humanoid/transform_util.gd")
 
+const ANIMATION_TREE_ACTIVE = false # Set to false to debug or avoid auto-playing animations
+
 const STRING_KEYS: Dictionary = {
 	"value": 1,
 	"m_Name": 1,
@@ -810,9 +812,121 @@ class UnityShader:
 
 class UnityAvatar:
 	extends UnityObject
-	pass
 
-# todo: create
+	static func read_transform(xform: Dictionary) -> Transform3D:
+		var translation: Vector3 = xform["t"] * Vector3(-1, 1, 1)
+		var quaternion: Quaternion = xform["q"]
+		quaternion.y = -quaternion.y
+		quaternion.z = -quaternion.z
+		var scale: Vector3 = xform["s"]
+		return Transform3D(Basis(Quaternion(quaternion)).scaled(scale), translation)
+
+	func create_godot_resource() -> Resource:
+		var fileid_to_human_bone_index: Dictionary
+		var fileid_to_skeleton_bone: Dictionary
+		var transform_fileid_to_rotation_delta: Dictionary
+		var transform_fileid_to_parent_fileid: Dictionary
+		var hip_position: Vector3
+
+		var avatar_keys = keys["m_Avatar"]
+		var skeleton_size := len(avatar_keys["m_AvatarSkeleton"]["m_Node"])
+		var human_size := len(avatar_keys["m_Human"]["m_Skeleton"]["m_Node"])
+		var crc32_skeleton_bones_buf := aligned_byte_buffer.new(avatar_keys["m_SkeletonNameIDArray"])
+		var crc32_skeleton_bones: PackedInt32Array = crc32_skeleton_bones_buf.uint32_subarray(0, skeleton_size)
+
+		var human_to_skeleton_bone_indices_buf := aligned_byte_buffer.new(avatar_keys["m_HumanSkeletonIndexArray"])
+		var human_to_skeleton_bone_indices: PackedInt32Array = human_to_skeleton_bone_indices_buf.uint32_subarray(0, human_size)
+
+		# These arrays are fixed, totaling len(human_trait.HumanBodyBones)
+		var human_bone_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_HumanBoneIndex"])
+		var human_bone_indices: PackedInt32Array = human_bone_indices_buf.uint32_subarray(0, 25) # 25 human bones excluding hands
+		while len(human_bone_indices) < 25:
+			human_bone_indices.append(-1)
+
+		var human_left_hand_indices: PackedInt32Array
+		if avatar_keys["m_Human"].get("m_HasLeftHand", 1) == 1:
+			var human_left_hand_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_LeftHand"]["m_HandBoneIndex"])
+			human_left_hand_indices = human_left_hand_indices_buf.uint32_subarray(0, 15) # 3 * 5 fingers
+		while len(human_left_hand_indices) < 15:
+			human_left_hand_indices.append(-1)
+		human_bone_indices.append_array(human_left_hand_indices)
+
+		var human_right_hand_indices: PackedInt32Array
+		if avatar_keys["m_Human"].get("m_HasRightHand", 1) == 1:
+			var human_right_hand_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_RightHand"]["m_HandBoneIndex"])
+			human_right_hand_indices = human_right_hand_indices_buf.uint32_subarray(0, 15) # 3 * 5 fingers
+		while len(human_right_hand_indices) < 15:
+			human_right_hand_indices.append(-1)
+		human_bone_indices.append_array(human_right_hand_indices)
+
+		var crc32_human_skeleton_bones: PackedInt32Array
+		for unity_human_skel_index in range(human_size):
+			var unity_skeleton_index: int = human_to_skeleton_bone_indices[unity_human_skel_index]
+			var crc32_orig_name: int = crc32_skeleton_bones[unity_skeleton_index]
+			crc32_human_skeleton_bones.append(crc32_orig_name)
+
+		for human_mono_bone_idx in range(human_trait.BoneCount):
+			var human_bone_idx: int = human_trait.boneIndexToMono[human_mono_bone_idx]
+			var godot_bone_name: String = human_trait.GodotHumanNames[human_bone_idx]
+			var unity_human_skel_index: int = human_bone_indices[human_mono_bone_idx]
+			if unity_human_skel_index == -1:
+				log_debug("Avatar: Godot bone " + godot_bone_name + " is not assigned")
+				continue
+			var crc32_orig_name: int = crc32_human_skeleton_bones[unity_human_skel_index]
+			log_debug("Avatar: Godot bone " + godot_bone_name + " has crc " + ("%08x" % (0xffffffff&crc32_orig_name)))
+			meta.humanoid_bone_map_crc32_dict[crc32_orig_name] = godot_bone_name
+			# We're pretending CRC32 are fileids. These are just used temporarily to indirect into transform_fileid_to_rotation_delta
+			fileid_to_skeleton_bone[crc32_orig_name] = godot_bone_name
+			fileid_to_human_bone_index[crc32_orig_name] = human_bone_idx
+
+		var human_skel_nodes: Array = avatar_keys["m_Human"]["m_Skeleton"]["m_Node"]
+		var human_skel_axes: Array = avatar_keys["m_Human"]["m_Skeleton"]["m_AxesArray"]
+		var root_xform: Transform3D = read_transform(avatar_keys["m_Human"]["m_RootX"])
+		var root_xform_delta: Transform3D = Transform3D(root_xform.basis.inverse(), Vector3(-root_xform.origin.x, 0, -root_xform.origin.z))
+		for unity_human_skel_index in range(human_size):
+			var crc32_orig_name: int = crc32_human_skeleton_bones[unity_human_skel_index]
+			var parent_id: int = human_skel_nodes[unity_human_skel_index]["m_ParentId"]
+			if parent_id > 0x7fffffff or parent_id < 0:
+				parent_id = -1
+			var axes_id: int = human_skel_nodes[unity_human_skel_index]["m_AxesId"]
+			if axes_id > 0x7fffffff or axes_id < 0:
+				axes_id = -1
+			var crc32_parent_name: int = crc32_human_skeleton_bones[parent_id]
+			if parent_id == -1 and axes_id == -1:
+				transform_fileid_to_rotation_delta[crc32_orig_name] = root_xform_delta
+			else:
+				transform_fileid_to_parent_fileid[crc32_orig_name] = crc32_parent_name
+				if axes_id != -1:
+					if not fileid_to_human_bone_index.has(crc32_orig_name):
+						log_warn("Bone hash %08x has parent %08x and axes_id=%d but missing from skeleton map" % [crc32_orig_name, crc32_parent_name, axes_id])
+						continue
+					var bone_index: int = fileid_to_human_bone_index[crc32_orig_name]
+					var gd_postqinv: Quaternion = human_trait.postQ_inverse_exported[bone_index]
+					var uni_postq: Quaternion = human_skel_axes[axes_id]["m_PostQ"]
+					uni_postq.y = -uni_postq.y
+					uni_postq.z = -uni_postq.z
+					if bone_index != 0:
+						transform_fileid_to_rotation_delta[crc32_orig_name] = root_xform_delta * Transform3D(Basis(gd_postqinv.inverse() * uni_postq.inverse()))
+
+		var humanDescriptionHuman: Array = keys["m_HumanDescription"]["m_Human"]
+		meta.humanoid_bone_map_dict = UnityModelImporter.generate_bone_map_dict_no_root(self, humanDescriptionHuman)
+
+		meta.humanoid_skeleton_hip_position = Vector3(0, root_xform.origin.y, 0)
+		meta.transform_fileid_to_parent_fileid = transform_fileid_to_parent_fileid
+		meta.transform_fileid_to_rotation_delta = transform_fileid_to_rotation_delta
+		meta.fileid_to_skeleton_bone = fileid_to_skeleton_bone
+		return meta # Indicates no resource will be written to disk
+
+
+class UnityAvatarMask:
+	extends UnityObject
+	pass
+	#func create_godot_resource() -> Resource:
+	#	# TODO: Create mask object on newer godot versions.
+	#	var ret = Resource.new()
+	#	var filtered_paths: Array[NodePath]
+	#	ret.set_meta("filtered_paths", filtered_paths)
+	#	return ret
 
 
 class UnityAnimatorRelated:
@@ -3546,7 +3660,7 @@ class UnityPrefabInstance:
 						existing_node.get_parent().add_child(animtree, true)
 						animtree.owner = state.owner
 						animtree.anim_player = animtree.get_path_to(existing_node)
-						animtree.active = true
+						animtree.active = ANIMATION_TREE_ACTIVE
 						animtree.set_script(anim_tree_runtime)
 						# Weird special case, likely to break.
 						# The original file was a .glb and doesn't have an AnimationTree node.
@@ -5065,7 +5179,7 @@ class UnityAnimator:
 		animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
-		animtree.active = true
+		animtree.active = ANIMATION_TREE_ACTIVE
 		animtree.set_script(anim_tree_runtime)
 		state.prefab_state.animator_node_to_object[animtree] = self
 		# TODO: Add AnimationTree as well.
@@ -5253,26 +5367,31 @@ class UnityModelImporter:
 		"UpperLeg": "UpperLeg",
 	}
 
-	func generate_bone_map_dict_from_human() -> Dictionary:
-		if not meta.autodetected_bone_map_dict.is_empty():
-			return meta.autodetected_bone_map_dict
-		var humanDescription: Dictionary = self.keys["humanDescription"]
+	static func generate_bone_map_dict_no_root(log_obj: UnityObject, humanDescriptionHuman: Array, humanNameKey := "m_HumanName", boneNameKey := "m_BoneName"):
 		var bone_map_dict: Dictionary = {}
-		for human in humanDescription["human"]:
-			var human_name: String = human["humanName"]
-			var bone_name: String = human["boneName"]
+		for human in humanDescriptionHuman:
+			var human_name: String = human[humanNameKey]
+			var bone_name: String = human[boneNameKey]
 			if human_name.begins_with("Left") or human_name.begins_with("Right"):
 				var leftright = "Left" if human_name.begins_with("Left") else "Right"
 				var human_key: String = human_name.substr(len(leftright))
 				if human_key in HANDED_UNITY_TO_BONE_MAP:
 					bone_map_dict[bone_name] = leftright + HANDED_UNITY_TO_BONE_MAP[human_key]
 				else:
-					log_warn("Unrecognized " + str(leftright) + " humanName " + str(human_name) + " boneName " + str(bone_name))
+					log_obj.log_warn("Unrecognized " + str(leftright) + " humanName " + str(human_name) + " boneName " + str(bone_name))
 			else:
 				if human_name in SINGULAR_UNITY_TO_BONE_MAP:
 					bone_map_dict[bone_name] = SINGULAR_UNITY_TO_BONE_MAP[human_name]
 				else:
-					log_warn("Unrecognized humanName " + str(human_name) + " boneName " + str(bone_name))
+					log_obj.log_warn("Unrecognized humanName " + str(human_name) + " boneName " + str(bone_name))
+		return bone_map_dict
+
+	func generate_bone_map_dict_from_human() -> Dictionary:
+		if not meta.autodetected_bone_map_dict.is_empty():
+			return meta.autodetected_bone_map_dict
+		var humanDescription: Dictionary = self.keys["humanDescription"]
+		var bone_map_dict: Dictionary = generate_bone_map_dict_no_root(self, humanDescription["human"], "humanName", "boneName")
+
 		if not meta.internal_data.get("humanoid_root_bone", "").is_empty():
 			bone_map_dict[meta.internal_data.get("humanoid_root_bone", "")] = "Root"
 		meta.humanoid_bone_map_dict = bone_map_dict
@@ -5451,7 +5570,7 @@ var _type_dictionary: Dictionary = {
 	# "AudioReverbZone": UnityAudioReverbZone,
 	# DISABLED FOR NOW: "AudioSource": UnityAudioSource,
 	"Avatar": UnityAvatar,
-	# "AvatarMask": UnityAvatarMask,
+	"AvatarMask": UnityAvatarMask,
 	# "BaseAnimationTrack": UnityBaseAnimationTrack,
 	# "BaseVideoTexture": UnityBaseVideoTexture,
 	"Behaviour": UnityBehaviour,

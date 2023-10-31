@@ -47,8 +47,8 @@ var prefab_state: PrefabState = null
 class AvatarState:
 	extends RefCounted
 
+	var crc32 := CRC32.new()
 	var humanoid_bone_map_dict: Dictionary # node name -> human name
-	var human_bone_to_local_rotation: Dictionary # human name -> local rotation correction post
 	var human_bone_to_rotation_delta: Dictionary # human name -> global rotation correction
 	var excess_rotation_delta: Transform3D
 	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
@@ -417,7 +417,7 @@ func remove_fileID_to_skeleton_bone(fileID: int):
 
 func add_fileID(child: Node, unityobj: RefCounted):
 	if owner != null:
-		unityobj.log_debug("Add fileID " + str(unityobj.fileID) + " type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
+		unityobj.log_debug("Add fileID " + str(unityobj.fileID) + " '" + str(unityobj.keys.get("m_Name", "")) + "' type " + str(unityobj.utype) + " " + str(owner.name) + " to " + str(child.name))
 		meta.fileid_to_nodepath[unityobj.fileID] = owner.get_path_to(child)
 	# FIXME??
 	#else:
@@ -444,7 +444,11 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 	var state = duplicate()
 	var avatar_state := AvatarState.new()
 	#avatar_state.current_avatar_object = new_avatar
-	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_dict.duplicate()
+	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_crc32_dict.duplicate()
+	if avatar_meta.humanoid_bone_map_crc32_dict.is_empty():
+		for orig_bone_name in avatar_meta.humanoid_bone_map_dict:
+			avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.humanoid_bone_map_dict[orig_bone_name]
+
 	avatar_state.humanoid_skeleton_hip_position = avatar_meta.humanoid_skeleton_hip_position
 
 	var transform_fileid_to_rotation_delta: Dictionary = avatar_meta.transform_fileid_to_rotation_delta
@@ -468,8 +472,6 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 		meta.log_debug(parent_fileid, "Calculating excess rotation delta: " + str(avatar_state.excess_rotation_delta))
 		parent_fileid = avatar_meta.transform_fileid_to_parent_fileid.get(parent_fileid, 0)
 	# FIXME: Should we be applying this to "Root" instead of "Hips"?
-	if "Hips" in avatar_state.human_bone_to_local_rotation:
-		avatar_state.human_bone_to_local_rotation["Hips"] = avatar_state.excess_rotation_delta * avatar_state.human_bone_to_local_rotation["Hips"] * avatar_state.excess_rotation_delta.affine_inverse()
 	if "Hips" in avatar_state.human_bone_to_rotation_delta:
 		avatar_state.human_bone_to_rotation_delta["Hips"] = avatar_state.excess_rotation_delta * avatar_state.human_bone_to_rotation_delta["Hips"] * avatar_state.excess_rotation_delta.affine_inverse()
 
@@ -496,15 +498,20 @@ var last_humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int) -> String:
 	var name_to_return: String = ""
 	for avatar in active_avatars:
-		if avatar.humanoid_bone_map_dict.has(orig_bone_name):
+		var crc32_name := avatar.crc32.crc32(orig_bone_name)
+		if avatar.humanoid_bone_map_dict.has(crc32_name):
 			if name_to_return.is_empty():
-				name_to_return = avatar.humanoid_bone_map_dict[orig_bone_name]
+				name_to_return = avatar.humanoid_bone_map_dict[crc32_name]
 				godot_bone_name = name_to_return
 				if godot_bone_name == "Hips":
 					last_humanoid_skeleton_hip_position = avatar.humanoid_skeleton_hip_position
-			avatar.humanoid_bone_map_dict.erase(orig_bone_name)
+			avatar.humanoid_bone_map_dict.erase(crc32_name)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
+		elif meta.transform_fileid_to_parent_fileid.has(fileid):
+			var parent_fileid: int = meta.transform_fileid_to_parent_fileid[fileid]
+			if meta.transform_fileid_to_rotation_delta.has(parent_fileid):
+				meta.transform_fileid_to_rotation_delta[fileid] = meta.transform_fileid_to_rotation_delta[parent_fileid]
 	return name_to_return
 
 func state_with_meta(new_meta: Resource) -> RefCounted:
@@ -714,3 +721,31 @@ func add_bones_to_prefabbed_skeletons(uniq_key: String, target_prefab_meta: Reso
 			skelley.godot_skeleton.set_bone_parent(idx, parent_bone_index)
 			# skelley.godot_skeleton.set_bone_rest(idx, bone.godot_transform) # Set later on.
 			fileid_to_skeleton_nodepath[bone.fileID] = godot_skeleton_nodepath
+
+
+class CRC32:
+	extends RefCounted
+
+	var table: PackedInt32Array
+
+	func _init():
+		var poly: int = 0xedb88320
+		for byte in range(256):
+			var crc: int = 0
+			for bit in range(8):
+				if (byte ^ crc) & 1:
+					crc = (crc >> 1) ^ poly
+				else:
+					crc >>= 1
+				byte >>= 1
+			table.append(crc)
+
+	func crc32(str: String) -> int:
+		var buf := str.to_utf8_buffer()
+		var value: int = 0xffffffff
+		for byt in buf:
+			value = (table[(byt ^ value) & 0xff] ^ (value >> 8)) & 0xffffffff
+		var ret: int = 0xffffffff ^ value
+		if ret > 0x7fffffff:
+			return ret - 0x100000000
+		return ret
