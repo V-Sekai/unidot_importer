@@ -1,3 +1,7 @@
+# This file is part of Unidot Importer. See LICENSE.txt for full MIT license.
+# Copyright (c) 2021-present Lyuma <xn.lyuma@gmail.com> and contributors
+# SPDX-License-Identifier: MIT
+@tool
 extends RefCounted
 
 # Based on "Simple MD4 digest implementation in pure Python" by bonsaiviking:

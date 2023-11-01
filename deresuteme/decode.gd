@@ -1,6 +1,6 @@
-extends RefCounted
 # -!- coding: utf-8 -!-
 #
+# Copyright 2021-present Lyuma and contributors
 # Copyright 2016 Hector Martin <marcan@marcan.st>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +14,9 @@ extends RefCounted
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
+@tool
+extends RefCounted
 
 const object_adapter_class: GDScript = preload("../unity_object_adapter.gd")
 
