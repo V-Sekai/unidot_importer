@@ -20,7 +20,7 @@ const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
 const human_trait = preload("./humanoid/human_trait.gd")
 const humanoid_transform_util = preload("./humanoid/transform_util.gd")
 
-const ANIMATION_TREE_ACTIVE = false # Set to false to debug or avoid auto-playing animations
+const ANIMATION_TREE_ACTIVE = true # false # Set to false to debug or avoid auto-playing animations
 
 const STRING_KEYS: Dictionary = {
 	"value": 1,
@@ -882,6 +882,7 @@ class UnityAvatar:
 		var human_skel_nodes: Array = avatar_keys["m_Human"]["m_Skeleton"]["m_Node"]
 		var human_skel_axes: Array = avatar_keys["m_Human"]["m_Skeleton"]["m_AxesArray"]
 		var root_xform: Transform3D = read_transform(avatar_keys["m_Human"]["m_RootX"])
+		var hips_y: float = root_xform.origin.y
 		var root_xform_delta: Transform3D = Transform3D(root_xform.basis.inverse(), Vector3(-root_xform.origin.x, 0, -root_xform.origin.z))
 		for unity_human_skel_index in range(human_size):
 			var crc32_orig_name: int = crc32_human_skeleton_bones[unity_human_skel_index]
@@ -907,11 +908,13 @@ class UnityAvatar:
 					uni_postq.z = -uni_postq.z
 					if bone_index != 0:
 						transform_fileid_to_rotation_delta[crc32_orig_name] = root_xform_delta * Transform3D(Basis(gd_postqinv.inverse() * uni_postq.inverse()))
+					if bone_index == 0: # Hips
+						hips_y = (transform_fileid_to_rotation_delta[crc32_parent_name] * read_transform(avatar_keys["m_Human"]["m_SkeletonPose"]["m_X"][unity_human_skel_index])).origin.y
 
 		var humanDescriptionHuman: Array = keys["m_HumanDescription"]["m_Human"]
 		meta.humanoid_bone_map_dict = UnityModelImporter.generate_bone_map_dict_no_root(self, humanDescriptionHuman)
 
-		meta.humanoid_skeleton_hip_position = Vector3(0, root_xform.origin.y, 0)
+		meta.humanoid_skeleton_hip_position = Vector3(0, hips_y, 0)
 		meta.transform_fileid_to_parent_fileid = transform_fileid_to_parent_fileid
 		meta.transform_fileid_to_rotation_delta = transform_fileid_to_rotation_delta
 		meta.fileid_to_skeleton_bone = fileid_to_skeleton_bone
