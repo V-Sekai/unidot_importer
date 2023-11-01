@@ -3219,7 +3219,9 @@ class UnityGameObject:
 				state = state.state_with_avatar_meta(sub_avatar_meta)
 				if godot_skeleton.name != "GeneralSkeleton":
 					log_fail("Skelley object should have ensured godot_skeleton with avatar is named GeneralSkeleton")
-				godot_skeleton.unique_name_in_owner = true
+					godot_skeleton.unique_name_in_owner = true
+				log_warn("Humanoid Animator component on skeleton bone " + str(skeleton_bone_name) + " does not fully support unique_name_in_owner")
+				# TODO: Implement scene saving for partial skeleton humanoid avatar
 		state.apply_excess_rotation_delta(godot_skeleton, transform.fileID)
 		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID)
 		if not avatar_bone_name.is_empty():
@@ -3330,6 +3332,7 @@ class UnityGameObject:
 		var has_collider: bool = false
 		var extra_fileID: Array = [self]
 		var transform: UnityTransform = self.transform
+		var sub_avatar_meta = null
 		var name_map = {}
 		name_map[1] = self.fileID
 		name_map[4] = transform.fileID
@@ -3349,9 +3352,11 @@ class UnityGameObject:
 				log_debug("Has a collider " + self.name)
 				has_collider = true
 			if component.type == "Animator":
-				var sub_avatar_meta = component.get_avatar_meta()
+				sub_avatar_meta = component.get_avatar_meta()
 				if sub_avatar_meta != null:
 					state = state.state_with_avatar_meta(sub_avatar_meta)
+					if state.owner == null or ret == state.owner:
+						sub_avatar_meta = null
 		var is_staticbody: bool = false
 		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
 			ret = StaticBody3D.new()
@@ -3369,6 +3374,9 @@ class UnityGameObject:
 		for ext in extra_fileID:
 			state.add_fileID(ret, ext)
 		var skip_first: bool = true
+		var orig_meta_owner: Node = state.owner
+		if sub_avatar_meta != null:
+			state = state.state_with_owner(ret)
 
 		var animator_node_to_object: Dictionary
 		for component_ref in components:
@@ -3424,6 +3432,16 @@ class UnityGameObject:
 			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
 			# If not found, we can't recreate the animationLibrary
 			obj.setup_post_children(animtree)
+		if sub_avatar_meta != null:
+			var sub_scene_filename: String = meta.path.substr(0, len(meta.path) - 5) + "." + str(self.name) + ".tscn"
+			var ps: PackedScene = PackedScene.new()
+			ps.pack(ret)
+			ps.take_over_path(sub_scene_filename)
+			ResourceSaver.save(ps, sub_scene_filename)
+			ret.scene_file_path = sub_scene_filename
+			orig_meta_owner.set_editable_instance(ret, true)
+			#ps = ResourceLoader.load(sub_scene_filename)
+			#ret = ps.instantiate()
 
 		return ret
 

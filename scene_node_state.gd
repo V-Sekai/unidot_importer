@@ -4,6 +4,8 @@ extends RefCounted
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 var object_adapter_class_inst = object_adapter_class.new()
 
+# NOTE: All new member variables must be copied/added to `func duplicate()`
+
 var owner: Node = null
 var body: CollisionObject3D = null
 var database: Resource = null  # asset_database instance
@@ -15,6 +17,8 @@ var skelley_parents: Dictionary = {}.duplicate()
 # Dictionary from any transform uniq_key -> convert_scene.Skelley
 var uniq_key_to_skelley: Dictionary = {}.duplicate()
 
+var active_avatars: Array[AvatarState]
+var prefab_state: PrefabState = null
 
 # State shared across recursive instances of scene_node_state.
 class PrefabState:
@@ -39,8 +43,6 @@ class PrefabState:
 	var main_cameras: Array = [].duplicate()
 	var animator_node_to_object: Dictionary = {}.duplicate()
 
-
-var prefab_state: PrefabState = null
 #var root_nodepath: Nodepath = Nodepath("/")
 
 
@@ -53,8 +55,6 @@ class AvatarState:
 	var excess_rotation_delta: Transform3D
 	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
-
-var active_avatars: Array[AvatarState]
 
 
 func set_main_name_map(name_map: Dictionary, prefab_name_map: Dictionary = {}):
@@ -387,6 +387,8 @@ func duplicate() -> RefCounted:
 	state.skelley_parents = skelley_parents
 	state.uniq_key_to_skelley = uniq_key_to_skelley
 	state.prefab_state = prefab_state
+	state.active_avatars = active_avatars
+
 	return state
 
 
