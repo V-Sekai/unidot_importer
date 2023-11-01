@@ -1,3 +1,8 @@
+# Copyright (c) 2021-present. This file is part of V-Sekai https://v-sekai.org/.
+# Lyuma <xn.lyuma@gmail.com> & contributors
+# post_import_unity_model.gd
+# SPDX-License-Identifier: MIT
+
 @tool
 extends EditorScenePostImport
 

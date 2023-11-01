@@ -1,3 +1,8 @@
+# Copyright (c) 2021-present. This file is part of V-Sekai https://v-sekai.org/.
+# Lyuma <xn.lyuma@gmail.com> & contributors
+# monoscript.gd
+# SPDX-License-Identifier: MIT
+
 extends RefCounted
 
 # Based on "Simple MD4 digest implementation in pure Python" by bonsaiviking:

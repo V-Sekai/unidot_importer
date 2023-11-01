@@ -1,3 +1,8 @@
+# Copyright (c) 2021-present. This file is part of V-Sekai https://v-sekai.org/.
+# Lyuma <xn.lyuma@gmail.com> & contributors
+# bone_map_editor_plugin.gd
+# SPDX-License-Identifier: MIT
+
 #**************************************************************************/
 #*  bone_map_editor_plugin.cpp                                            */
 #**************************************************************************/

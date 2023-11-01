@@ -1,3 +1,8 @@
+# Copyright (c) 2021-present. This file is part of V-Sekai https://v-sekai.org/.
+# Lyuma <xn.lyuma@gmail.com> & contributors
+# unity_object_parser.gd
+# SPDX-License-Identifier: MIT
+
 extends RefCounted
 
 ############ FIXME: This should be Array(fileId, guid, utype)

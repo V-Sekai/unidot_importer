@@ -1,3 +1,8 @@
+# Copyright (c) 2021-present. This file is part of V-Sekai https://v-sekai.org/.
+# Lyuma <xn.lyuma@gmail.com> & contributors
+# anim_tree.gd
+# SPDX-License-Identifier: MIT
+
 @tool
 extends AnimationTree
 
