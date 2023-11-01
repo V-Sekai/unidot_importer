@@ -425,11 +425,12 @@ class ParseState:
 				animplayer = child
 				break
 
-		p_global_rest *= node.transform
-		if humanoid_original_transforms.has(node.name):
-			p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
-		else:
-			p_pre_retarget_global_rest *= node.transform
+		if not (node is AnimationPlayer):
+			p_global_rest *= node.transform
+			if humanoid_original_transforms.has(node.name):
+				p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
+			else:
+				p_pre_retarget_global_rest *= node.transform
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest

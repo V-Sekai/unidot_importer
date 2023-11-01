@@ -3261,14 +3261,18 @@ class UnityGameObject:
 				rest_bone_pose.origin = state.last_humanoid_skeleton_hip_position
 				godot_skeleton.motion_scale = state.last_humanoid_skeleton_hip_position.y
 		godot_skeleton.set_bone_rest(skeleton_bone_index, rest_bone_pose)
+		var smrs: Array[UnitySkinnedMeshRenderer]
 		if ret != null:
 			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 			for new_skelley in list_of_skelleys:
 				ret.add_child(godot_skeleton, true)
 				godot_skeleton.owner = state.owner
+				for smr in new_skelley.skinned_mesh_renderers:
+					smrs.append(smr)
 
 		var skip_first: bool = true
 
+		var animator_node_to_object: Dictionary
 		for component_ref in components:
 			if skip_first:
 				#Is it a fair assumption that Transform is always the first component???
@@ -3278,6 +3282,8 @@ class UnityGameObject:
 				if ret == null:
 					log_fail("Unable to create godot node " + component.type + " on null skeleton", "bone", self)
 				var tmp = component.create_godot_node(state, ret)
+				if tmp is AnimationPlayer or tmp is AnimationTree:
+					animator_node_to_object[tmp] = component
 				component.configure_node(tmp)
 				var component_key = component.get_component_key()
 				if not name_map.has(component_key):
@@ -3301,8 +3307,18 @@ class UnityGameObject:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
+		for smr in smrs:
+			var smrnode: Node = smr.create_skinned_mesh(state)
+			if smrnode != null:
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into node Skeleton " + str(state.owner.get_path_to(smrnode)))
+
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
+		for animtree in animator_node_to_object:
+			var obj: RefCounted = animator_node_to_object[animtree]
+			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
+			# If not found, we can't recreate the animationLibrary
+			obj.setup_post_children(animtree)
 
 	func create_godot_node(xstate: RefCounted, new_parent: Node3D) -> Node:  # -> Node3D:
 		var state: Object = xstate
@@ -3351,6 +3367,7 @@ class UnityGameObject:
 			state.add_fileID(ret, ext)
 		var skip_first: bool = true
 
+		var animator_node_to_object: Dictionary
 		for component_ref in components:
 			if skip_first:
 				#Is it a fair assumption that Transform is always the first component???
@@ -3358,12 +3375,15 @@ class UnityGameObject:
 			else:
 				var component = meta.lookup(component_ref.values()[0])
 				var tmp = component.create_godot_node(state, ret)
+				if tmp is AnimationPlayer or tmp is AnimationTree:
+					animator_node_to_object[tmp] = component
 				component.configure_node(tmp)
 				var component_key = component.get_component_key()
 				if not name_map.has(component_key):
 					name_map[component_key] = component.fileID
 
 		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
+		var smrs: Array[UnitySkinnedMeshRenderer]
 		for new_skelley in list_of_skelleys:
 			if not new_skelley.godot_skeleton:
 				log_fail("Skelley " + str(new_skelley) + " is missing a godot_skeleton")
@@ -3374,6 +3394,8 @@ class UnityGameObject:
 				new_skelley.godot_skeleton.owner = state.owner
 				if not state.active_avatars.is_empty():
 					new_skelley.godot_skeleton.unique_name_in_owner = true
+				for smr in new_skelley.skinned_mesh_renderers:
+					smrs.append(smr)
 
 		var prefab_name_map = name_map.duplicate()
 		for child_ref in transform.children_refs:
@@ -3387,8 +3409,18 @@ class UnityGameObject:
 				name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 				prefab_name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
 
+		for smr in smrs:
+			var smrnode: Node = smr.create_skinned_mesh(state)
+			if smrnode != null:
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into nested Skeleton " + str(state.owner.get_path_to(smrnode)))
+
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
+		for animtree in animator_node_to_object:
+			var obj: RefCounted = animator_node_to_object[animtree]
+			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
+			# If not found, we can't recreate the animationLibrary
+			obj.setup_post_children(animtree)
 
 		return ret
 
@@ -3636,6 +3668,7 @@ class UnityPrefabInstance:
 			for key in asset.keys:
 				# log_debug("Legacy prefab override fileID " + str(fileID) + " key " + str(key) + " value " + str(asset.keys[key]))
 				fileID_to_keys[fileID][key] = asset.keys[key]
+		var animator_node_to_object: Dictionary
 		for fileID in fileID_to_keys:
 			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID, target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID, target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
@@ -3670,7 +3703,7 @@ class UnityPrefabInstance:
 					else:
 						animtree = existing_node
 					virtual_unity_object.keys = uprops
-					state.prefab_state.animator_node_to_object[animtree] = virtual_unity_object
+					animator_node_to_object[animtree] = virtual_unity_object
 					virtual_unity_object.assign_controller(animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"])
 			log_debug("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
@@ -3820,6 +3853,8 @@ class UnityPrefabInstance:
 				if attachment == null:
 					log_fail("Unable to create godot node " + component.type + " on null attachment ", "attachment", component)
 				var tmp = component.create_godot_node(state, attachment)
+				if tmp is AnimationPlayer or tmp is AnimationTree:
+					animator_node_to_object[tmp] = component
 				component.configure_node(tmp)
 				var ckey = component.get_component_key()
 				if not comp_map.has(ckey):
@@ -3867,6 +3902,7 @@ class UnityPrefabInstance:
 			log_debug("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
+			var smrs: Array[UnitySkinnedMeshRenderer]
 			for new_skelley in list_of_skelleys:
 				if new_skelley.godot_skeleton != null:
 					if not state.active_avatars.is_empty():
@@ -3875,6 +3911,8 @@ class UnityPrefabInstance:
 					new_skelley.godot_skeleton.owner = state.owner
 					if not state.active_avatars.is_empty():
 						new_skelley.godot_skeleton.unique_name_in_owner = true
+				for smr in new_skelley.skinned_mesh_renderers:
+					smrs.append(smr)
 
 			var name_map = {}
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
@@ -3891,6 +3929,15 @@ class UnityPrefabInstance:
 					if gameobject_asset != null:
 						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_data[0])
 			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
+			for smr in smrs:
+				var smrnode: Node = smr.create_skinned_mesh(state)
+				if smrnode != null:
+					smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
+			for animtree in animator_node_to_object:
+				var obj: RefCounted = animator_node_to_object[animtree]
+				# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
+				# If not found, we can't recreate the animationLibrary
+				obj.setup_post_children(animtree)
 
 			state.body = orig_state_body
 
@@ -4497,7 +4544,7 @@ class UnitySkinnedMeshRenderer:
 			idx += 1
 		return new_node
 
-	func create_skinned_mesh(state: RefCounted) -> Node:
+	func get_skelley(state: RefCounted) -> RefCounted: # Skelley
 		var bones: Array = self.bones
 		if len(self.bones) == 0:
 			return null
@@ -4510,10 +4557,15 @@ class UnitySkinnedMeshRenderer:
 		var skelley: RefCounted = state.uniq_key_to_skelley.get(first_bone_key, null)  # Skelley
 		if skelley == null:
 			log_fail("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key, "bones", first_bone_obj)
+		return skelley
+
+	func create_skinned_mesh(state: RefCounted) -> Node:
+		var skelley: RefCounted = get_skelley(state) # Skelley
+		if skelley == null:
 			return null
 		var gdskel: Skeleton3D = skelley.godot_skeleton
 		if gdskel == null:
-			log_fail("Unable to find skeleton to add a mesh " + name + " for " + first_bone_key, "bones", first_bone_obj)
+			log_fail("Unable to find skeleton to add a mesh " + name + " for " + meta.lookup(bones[0]).uniq_key, "bones", meta.lookup(bones[0]))
 			return null
 		var component_name: String = type
 		if not self.gameObject.is_stripped:
@@ -5106,7 +5158,6 @@ class UnityAnimation:
 		var animplayer: AnimationPlayer = AnimationPlayer.new()
 		state.add_child(animplayer, new_parent, self)
 		animplayer.name = "Animation"
-		state.prefab_state.animator_node_to_object[animplayer] = self
 		# TODO: Add AnimationTree as well.
 		return animplayer
 
@@ -5181,7 +5232,6 @@ class UnityAnimator:
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = ANIMATION_TREE_ACTIVE
 		animtree.set_script(anim_tree_runtime)
-		state.prefab_state.animator_node_to_object[animtree] = self
 		# TODO: Add AnimationTree as well.
 		assign_controller(animplayer, animtree, keys["m_Controller"])
 		return animtree

@@ -243,6 +243,17 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
 	#pkgasset.parsed_meta.fileid_to_prefab_ref = {}
 
+	for asset in pkgasset.parsed_asset.assets.values():
+		if str(asset.type) == "SkinnedMeshRenderer":
+			var skelley: RefCounted = asset.get_skelley(node_state)
+			if skelley != null:
+				skelley.skinned_mesh_renderers.append(asset)
+	for skelley in skelleys_with_no_parent:
+		for smr in skelley.skinned_mesh_renderers:
+			var ret: Node = smr.create_skinned_mesh(node_state)
+			if ret != null:
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into top-level Skeleton " + str(scene_contents.get_path_to(ret)))
+
 	node_state.env = env
 	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
 
@@ -279,18 +290,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	if scene_contents == null:
 		pkgasset.log_fail("Failed to parse scene " + pkgasset.pathname)
 		return null
-
-	for asset in pkgasset.parsed_asset.assets.values():
-		if str(asset.type) == "SkinnedMeshRenderer":
-			var ret: Node = asset.create_skinned_mesh(node_state)
-			if ret != null:
-				asset.log_debug("Finally added SkinnedMeshRenderer " + str(asset.uniq_key) + " into Skeleton" + str(scene_contents.get_path_to(ret)))
-
-	for animtree in node_state.prefab_state.animator_node_to_object:
-		var obj: RefCounted = node_state.prefab_state.animator_node_to_object[animtree]  # UnityAnimator
-		# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
-		# If not found, we can't recreate the animationLibrary
-		obj.setup_post_children(animtree)
 
 	if not is_prefab:
 		# Remove redundant directional light.

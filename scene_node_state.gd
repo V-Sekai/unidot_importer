@@ -157,6 +157,7 @@ class Skelley:
 	var bones_set: Dictionary = {}.duplicate()
 	var uniq_key_to_bone: Dictionary = {}.duplicate()
 	var godot_skeleton: Skeleton3D = Skeleton3D.new()
+	var skinned_mesh_renderers: Array[RefCounted] # UnitySkinnedMehsRenderer objects.
 
 	# Temporary private storage:
 	var intermediate_bones: Array = [].duplicate()
