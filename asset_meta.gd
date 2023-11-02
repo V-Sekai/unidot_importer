@@ -224,11 +224,11 @@ func toposort_prefab_recurse_toplevel(database, guid_to_meta):
 	return tt.output
 
 
-func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionary, gameobject_id: int, new_map: Dictionary) -> int:
-	var gameobject_renames: Dictionary = self.gameobject_fileid_to_rename
-	var transform_new_children: Dictionary = self.transform_fileid_to_children
-	var gameobject_new_components: Dictionary = self.gameobject_fileid_to_components
-	var gameobject_to_prefab_ids: Dictionary = self.transform_fileid_to_prefab_ids
+func remap_prefab_gameobject_names_inner(prefab_id: int, target_prefab_meta: Resource, original_map: Dictionary, gameobject_id: int, new_map: Dictionary) -> int:
+	var gameobject_renames: Dictionary = target_prefab_meta.gameobject_fileid_to_rename
+	var transform_new_children: Dictionary = target_prefab_meta.transform_fileid_to_children
+	var gameobject_new_components: Dictionary = target_prefab_meta.gameobject_fileid_to_components
+	var gameobject_to_prefab_ids: Dictionary = target_prefab_meta.transform_fileid_to_prefab_ids
 	var ret: Dictionary = {}.duplicate()
 	var my_id: int = xor_or_stripped(gameobject_id, prefab_id)
 	if new_map.has(my_id):
@@ -265,23 +265,23 @@ func remap_prefab_gameobject_names_inner(prefab_id: int, original_map: Dictionar
 	#	ret[prefab_name] = target_prefab_meta.remap_prefab_gameobject_names_inner(target_prefab_id ^ prefab_id, pgntfac, target_prefab_meta.prefab_main_gameobject_id, new_map)
 	# Note: overwrites of name should respect m_RootOrder (we may need to store m_RootOrder here too)
 	new_map[my_id] = ret
-	return prefab_main_gameobject_id
+	return target_prefab_meta.prefab_main_gameobject_id
 
 
-func remap_prefab_gameobject_names_update(prefab_id: int, original_map: Dictionary, new_map: Dictionary):
+func remap_prefab_gameobject_names_update(prefab_id: int, target_prefab_meta: Resource, original_map: Dictionary, new_map: Dictionary):
 	#log_debug(prefab_id, "Remap update " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	for key in original_map:
 		if not new_map.has(key):
 			#log_debug(prefab_id, "REMAP PREFAB %s %s %s" % [str(prefab_id), str(key), str(original_map)])
-			remap_prefab_gameobject_names_inner(prefab_id, original_map, key, new_map)
+			remap_prefab_gameobject_names_inner(prefab_id, target_prefab_meta, original_map, key, new_map)
 			#log_debug(prefab_id, "REMAP OUT %s" % [str(new_map)])
 	#log_debug(prefab_id, "Remap update done " + str(prefab_id) + "/" + str(original_map) + " -> " + str(new_map))
 	return new_map
 
 
-func remap_prefab_gameobject_names(prefab_id: int, original_map: Dictionary) -> Dictionary:
+func remap_prefab_gameobject_names(prefab_id: int, target_prefab_meta: Resource, original_map: Dictionary) -> Dictionary:
 	var new_map: Dictionary = {}.duplicate()
-	remap_prefab_gameobject_names_update(prefab_id, original_map, new_map)
+	remap_prefab_gameobject_names_update(prefab_id, target_prefab_meta, original_map, new_map)
 	return new_map
 
 
@@ -304,7 +304,7 @@ func calculate_prefab_nodepaths(database: Resource):
 	if self.prefab_id_to_guid.is_empty():
 		self.prefab_gameobject_name_to_fileid_and_children = {}
 	else:
-		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(0, self.gameobject_name_to_fileid_and_children)
+		self.prefab_gameobject_name_to_fileid_and_children = self.remap_prefab_gameobject_names(0, self, self.gameobject_name_to_fileid_and_children)
 
 
 func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
@@ -365,7 +365,12 @@ func calculate_prefab_nodepaths_recursive():
 
 
 func xor_or_stripped(fileID: int, prefab_fileID: int) -> int:
-	return prefab_source_id_pair_to_stripped_id.get(Vector2i(prefab_fileID, fileID), prefab_fileID ^ fileID)
+	#if fileID == -12901736176340512 or prefab_fileID == 1386572426:
+	#	var s: String
+	#	for ke in prefab_source_id_pair_to_stripped_id:
+	#		s += ",(" + str((ke.x << 32) | ke.y) + "," + str((ke.z << 32) | ke.w) + "): " + str(prefab_source_id_pair_to_stripped_id[ke])
+	#	log_debug(prefab_fileID, s)
+	return prefab_source_id_pair_to_stripped_id.get(Vector4i(prefab_fileID >> 32, prefab_fileID & 0xffffffff, fileID >> 32, fileID & 0xffffffff), prefab_fileID ^ fileID)
 
 
 # This overrides a built-in resource, storing the resource inside the database itself.
@@ -663,7 +668,7 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 			type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 		type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 		if output_obj.is_stripped:
-			prefab_source_id_pair_to_stripped_id[Vector2i(output_obj.prefab_instance[1], output_obj.prefab_source_object[1])] = output_obj.fileID
+			prefab_source_id_pair_to_stripped_id[Vector4i(output_obj.prefab_instance[1] >> 32, output_obj.prefab_instance[1] & 0xffffffff, output_obj.prefab_source_object[1] >> 32, output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
 		if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 			fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 		if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
@@ -711,7 +716,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 				type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 			type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 			if output_obj.is_stripped:
-				prefab_source_id_pair_to_stripped_id[Vector2i(output_obj.prefab_instance[1], output_obj.prefab_source_object[1])] = output_obj.fileID
+				prefab_source_id_pair_to_stripped_id[Vector4i(output_obj.prefab_instance[1] >> 32, output_obj.prefab_instance[1] & 0xffffffff, output_obj.prefab_source_object[1] >> 32, output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
 			if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 				fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 			if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:

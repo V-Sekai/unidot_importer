@@ -1021,11 +1021,12 @@ class UnityRuntimeAnimatorController:
 	func adapt_animation_player_at_node(animator: RefCounted, anim_player: AnimationPlayer):
 		var node_parent: Node = anim_player.get_parent()
 		var virtual_animation_clip: UnityAnimationClip = adapter.instantiate_unity_object(meta, 0, 0, "AnimationClip")
-
+		log_debug("Current fileid_to_nodepath: " + str(meta.fileid_to_nodepath.keys()) + " prefab " + str(meta.prefab_fileid_to_nodepath.keys()))
 		for library_name in anim_player.get_animation_library_list():
 			var library: AnimationLibrary = anim_player.get_animation_library(library_name)
 			for clip_name in library.get_animation_list():
 				var clip = library.get_animation(clip_name)
+				log_debug("Adapting AnimationClip " + clip_name + " at node " + str(node_parent.name))
 				virtual_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
 
 	func create_godot_resource() -> Resource:
@@ -1795,7 +1796,7 @@ class UnityAnimationClip:
 		if extra_path.is_empty() and (typeof(unicomp) != TYPE_INT or unicomp != 1):
 			current_fileID = current_obj.get(unicomp, current_fileID)
 		var nodepath: NodePath = animator.meta.prefab_fileid_to_nodepath.get(current_fileID, animator.meta.fileid_to_nodepath.get(current_fileID, NodePath()))
-		log_debug("Resolving %d from %s and %s to %s" % [current_fileID, str(animator.meta.prefab_fileid_to_nodepath.keys()), str(animator.meta.fileid_to_nodepath.keys()), str(nodepath)])
+		log_debug("Resolving %d to %s" % [current_fileID, str(nodepath)])
 		if nodepath == NodePath():
 			log_debug("Returning default nodepath because some path failed to resolve.")
 			if typeof(unicomp) == TYPE_INT:
@@ -3642,8 +3643,9 @@ class UnityPrefabInstance:
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
 		var gntfac = target_prefab_meta.gameobject_name_to_fileid_and_children
 		#state.prefab_state.prefab_gameobject_name_map[meta.xor_or_stripped(self.meta.prefab_main_gameobject_id, self.fileID] =
-		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, gntfac, ps.prefab_gameobject_name_map)
-		target_prefab_meta.remap_prefab_gameobject_names_update(self.fileID, pgntfac, ps.prefab_gameobject_name_map)
+		meta.remap_prefab_gameobject_names_update(self.fileID, target_prefab_meta, gntfac, ps.prefab_gameobject_name_map)
+		meta.remap_prefab_gameobject_names_update(self.fileID, target_prefab_meta, pgntfac, ps.prefab_gameobject_name_map)
+		#log_debug("Resulting name_map: " + str(ps.prefab_gameobject_name_map))
 		meta.remap_prefab_fileids(self.fileID, target_prefab_meta)
 
 		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
