@@ -66,7 +66,6 @@ class ParseState:
 
 	var all_name_map: Dictionary = {}.duplicate()
 
-	var scale_correction_factor: float = 1.0
 	var is_obj: bool = false
 	var is_dae: bool = false
 	var default_obj_mesh_name: String = "default"
@@ -287,11 +286,6 @@ class ParseState:
 	func iterate_skeleton(node: Skeleton3D, p_path: PackedStringArray, p_skel_bone: int, p_attachments_by_bone_name: Dictionary, p_parent_transform_id: int, p_global_rest:= Transform3D(), p_pre_retarget_global_rest:= Transform3D()):
 		#metaobj.log_debug(0, "Skeleton iterate_skeleton " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
 
-		if scale_correction_factor != 1.0:
-			var rest: Transform3D = node.get_bone_rest(p_skel_bone)
-			node.set_bone_rest(p_skel_bone, Transform3D(rest.basis, scale_correction_factor * rest.origin))
-			node.set_bone_pose_position(p_skel_bone, scale_correction_factor * rest.origin)
-
 		assert(p_skel_bone != -1)
 
 		var fileId_go: int = register_component(node, p_path, "Transform", 0, p_skel_bone, p_parent_transform_id)
@@ -383,13 +377,6 @@ class ParseState:
 
 	func iterate_node(node: Node, p_path: PackedStringArray, from_skinned_parent: bool, p_parent_transform_id: int, p_global_rest := Transform3D(), p_pre_retarget_global_rest := Transform3D()):
 		metaobj.log_debug(0, "Conventional iterate_node " + str(node.get_class()) + ", " + str(p_path) + ", " + str(node.name))
-		if node is MeshInstance3D:
-			if is_obj and node.mesh != null:
-				#node_name = "default"
-				node.name = default_obj_mesh_name  # Does this make sense?? For compatibility?
-		if node is Node3D:
-			node.position *= scale_correction_factor
-
 		#for child in node.get_children():
 		#	iterate_node(child, p_path, false)
 		var fileId_go: int = 0
@@ -464,7 +451,12 @@ class ParseState:
 						self.all_name_map[fileId_go][orig_child_name] = new_id
 			else:
 				if not (child is AnimationPlayer):
-					var orig_child_name: String = get_orig_name("nodes", child.name)
+					var child_name: String = child.name
+					if child is MeshInstance3D:
+						if is_obj and child.mesh != null:
+							#node_name = "default"
+							child_name = default_obj_mesh_name  # Does this make sense?? For compatibility?
+					var orig_child_name: String = get_orig_name("nodes", child_name)
 					if len(p_path) == 1 and node.get_parent() == null:
 						preserve_hierarchy_orig_root_node_name = orig_child_name
 						p_path.push_back("root")
@@ -522,7 +514,6 @@ class ParseState:
 					anim = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 				else:
 					if anim != null:
-						adjust_animation(anim)
 						var respath: String = get_resource_path(godot_anim_name, ".tres")
 						if FileAccess.file_exists(respath):
 							anim.take_over_path(respath)
@@ -658,7 +649,6 @@ class ParseState:
 						skin = metaobj.get_godot_resource(external_objects_by_id.get(-fileId))
 				else:
 					if mesh != null:
-						adjust_mesh_scale(mesh)
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
 						if FileAccess.file_exists(respath):
 							mesh.take_over_path(respath)
@@ -666,7 +656,6 @@ class ParseState:
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
-						adjust_skin_scale(skin)
 						var skel: Skeleton3D = node.get_parent() as Skeleton3D
 						if skel != null and skel.has_meta("humanoid_rotation_delta"):
 							skin.set_meta("humanoid_rotation_delta", skel.get_meta("humanoid_rotation_delta").duplicate())
@@ -684,132 +673,6 @@ class ParseState:
 						saved_skins_by_name[mesh_name] = skin
 		is_obj = false
 
-	func adjust_skin_scale(skin: Skin):
-		if scale_correction_factor == 1.0:
-			return
-		# MESH and SKIN data divide, to compensate for object position multiplying.
-		for i in range(skin.get_bind_count()):
-			var transform = skin.get_bind_pose(i)
-			skin.set_bind_pose(i, Transform3D(transform.basis, transform.origin * scale_correction_factor))
-
-	func adjust_mesh_scale(mesh: ArrayMesh, is_shadow: bool = false):
-		if scale_correction_factor == 1.0:
-			return
-		# MESH and SKIN data divide, to compensate for object position multiplying.
-		var surf_count: int = mesh.get_surface_count()
-		var surf_data_by_mesh = [].duplicate()
-		for surf_idx in range(surf_count):
-			var prim: int = mesh.surface_get_primitive_type(surf_idx)
-			var fmt_compress_flags: int = mesh.surface_get_format(surf_idx)
-			var arr: Array = mesh.surface_get_arrays(surf_idx)
-			var name: String = mesh.surface_get_name(surf_idx)
-			var bsarr: Array = mesh.surface_get_blend_shape_arrays(surf_idx)
-			var lods: Dictionary = {}  # mesh.surface_get_lods(surf_idx) # get_lods(mesh, surf_idx)
-			var mat: Material = mesh.surface_get_material(surf_idx)
-			#metaobj.log_debug(0, "About to multiply mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
-			var vert_arr_len: int = len(arr[ArrayMesh.ARRAY_VERTEX])
-			var i: int = 0
-			while i < vert_arr_len:
-				arr[ArrayMesh.ARRAY_VERTEX][i] = arr[ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor
-				i += 1
-			#metaobj.log_debug(0, "Done multiplying mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
-			for bsidx in range(len(bsarr)):
-				i = 0
-				var ilen: int = len(bsarr[bsidx][ArrayMesh.ARRAY_VERTEX])
-				while i < ilen:
-					bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] = (bsarr[bsidx][ArrayMesh.ARRAY_VERTEX][i] * scale_correction_factor)
-					i += 1
-				bsarr[bsidx].resize(3)
-				#metaobj.log_debug(0, "format flags: " + str(fmt_compress_flags & 7) + "|" + str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0]))+"|"+str(typeof(bsarr[bsidx][0])))
-				#metaobj.log_debug(0, "Len arr " + str(len(arr)) + " bsidx " + str(bsidx) + " len bsarr[bsidx] " + str(len(bsarr[bsidx])))
-				#for i in range(len(arr)):
-				#	if i >= ArrayMesh.ARRAY_INDEX or typeof(arr[i]) == TYPE_NIL:
-				#		bsarr[bsidx][i] = null
-				#	elif typeof(bsarr[bsidx][i]) == TYPE_NIL or len(bsarr[bsidx][i]) == 0:
-				#		bsarr[bsidx][i] = arr[i].duplicate()
-				#		bsarr[bsidx][i].resize(0)
-				#		bsarr[bsidx][i].resize(len(arr[i]))
-
-			surf_data_by_mesh.push_back({"prim": prim, "arr": arr, "bsarr": bsarr, "lods": lods, "fmt_compress_flags": fmt_compress_flags, "name": name, "mat": mat})
-		mesh.clear_surfaces()
-		for surf_idx in range(surf_count):
-			var prim: int = surf_data_by_mesh[surf_idx].get("prim")
-			var arr: Array = surf_data_by_mesh[surf_idx].get("arr")
-			var bsarr: Array = surf_data_by_mesh[surf_idx].get("bsarr")
-			var lods: Dictionary = surf_data_by_mesh[surf_idx].get("lods")
-			var fmt_compress_flags: int = surf_data_by_mesh[surf_idx].get("fmt_compress_flags")
-			var name: String = surf_data_by_mesh[surf_idx].get("name")
-			var mat: Material = surf_data_by_mesh[surf_idx].get("mat")
-			#metaobj.log_debug(0, "Adding mesh vertices by " + str(scale_correction_factor) + ": " + str(arr[ArrayMesh.ARRAY_VERTEX][0]))
-			mesh.add_surface_from_arrays(prim, arr, bsarr, lods, fmt_compress_flags)
-			mesh.surface_set_name(surf_idx, name)
-			mesh.surface_set_material(surf_idx, mat)
-			#metaobj.log_debug(0, "Get mesh vertices by " + str(scale_correction_factor) + ": " + str(mesh.surface_get_arrays(surf_idx)[ArrayMesh.ARRAY_VERTEX][0]))
-		if not is_shadow and mesh.shadow_mesh != mesh and mesh.shadow_mesh != null:
-			adjust_mesh_scale(mesh.shadow_mesh, true)
-
-	func adjust_animation_scale(anim: Animation):
-		if scale_correction_factor == 1.0:
-			return
-		# ANIMATION and NODES multiply by scale
-		for trackidx in range(anim.get_track_count()):
-			var path: String = anim.get("tracks/" + str(trackidx) + "/path")
-			if path.ends_with(":x") or path.ends_with(":y") or path.ends_with(":z"):
-				path = path.substr(0, len(path) - 2)  # To make matching easier.
-			metaobj.log_debug(0, "ANIM Type is " + str(anim.get("tracks/" + str(trackidx) + "/type")))
-			match anim.get("tracks/" + str(trackidx) + "/type"):
-				"position":
-					var xform_keys: PackedFloat32Array = anim.get("tracks/" + str(trackidx) + "/keys")
-					var i: int = 0
-					var ilen: int = len(xform_keys)
-					while i < ilen:
-						xform_keys[i + 2] *= scale_correction_factor
-						xform_keys[i + 3] *= scale_correction_factor
-						xform_keys[i + 4] *= scale_correction_factor
-						i += 5
-					anim.set("tracks/" + str(trackidx) + "/keys", xform_keys)
-				"value":
-					if path.ends_with(":position") or path.ends_with(":transform"):
-						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
-						var track_values: Array = track_dict.get("values")
-						var i: int = 0
-						var ilen: int = len(track_values)
-						if path.ends_with(":transform"):
-							while i < ilen:
-								track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
-								i += 1
-						else:
-							while i < ilen:
-								track_values[i] *= scale_correction_factor
-								i += 1
-						track_dict["values"] = track_values
-						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
-				"bezier":
-					if path.ends_with(":position") or path.ends_with(":transform"):
-						var track_dict: Dictionary = anim.get("tracks/" + str(trackidx) + "/keys")
-						var track_values: Variant = track_dict.get("points")  # Some sort of packed array?
-						var i: int = 0
-						var ilen: int = len(track_values)
-						# VALUE, inX, inY, outX, outY
-						if path.ends_with(":transform"):
-							while i < ilen:
-								if ((i % 5) % 2) != 1:
-									track_values[i] = Transform3D(track_values[i].basis, track_values[i].origin * scale_correction_factor)
-								i += 1
-						else:
-							while i < ilen:
-								if ((i % 5) % 2) != 1:
-									track_values[i] *= scale_correction_factor
-								i += 1
-						track_dict["points"] = track_values
-						anim.set("tracks/" + str(trackidx) + "/keys", track_dict)
-
-	func adjust_animation(anim: Animation):
-		adjust_animation_scale(anim)
-		# Root motion?
-		# Splitting up animation?
-
-
 func _post_import(p_scene: Node) -> Object:
 	var source_file_path: String = get_source_file()
 	var godot_import_config: ConfigFile = ConfigFile.new()
@@ -821,17 +684,6 @@ func _post_import(p_scene: Node) -> Object:
 	var asset_database: asset_database_class = asset_database_class.new().get_singleton()
 	default_material = asset_database.default_material_reference
 	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)
-
-	var apply_root_scale: bool = godot_import_config.get_value("params", "nodes/apply_root_scale", false)
-	var godot_root_scale: float = godot_import_config.get_value("params", "nodes/root_scale", 1.0)
-	if not (godot_root_scale > 0):
-		if metaobj != null:
-			metaobj.log_warn(0, "Invalid root_scale: " + str(godot_root_scale))
-		godot_root_scale = 1.0
-	if p_scene is Node3D:
-		if not apply_root_scale:
-			p_scene.scale /= godot_root_scale
-	#print ("todo post import replace " + str(source_file_path))
 
 	var f: FileAccess
 	if metaobj == null:
@@ -866,13 +718,6 @@ func _post_import(p_scene: Node) -> Object:
 				var prof_name: String = prop["name"].trim_prefix("bone_map/")
 				bone_map_dict[prof_name] = bone_map.get_skeleton_bone_name(prof_name)
 		ps.bone_map_dict = bone_map_dict
-	if metaobj.internal_data.has("scale_correction_factor"):
-		var scf: float = metaobj.internal_data.get("scale_correction_factor")
-		if godot_root_scale != scf:
-			metaobj.log_warn(0, "Mismatched godot_root_scale=" + str(godot_root_scale) + " and scale_correction_factor=" + str(scf))
-	ps.scale_correction_factor = godot_root_scale  # metaobj.internal_data.get("scale_correction_factor", 1.0)
-	if apply_root_scale:
-		ps.scale_correction_factor = 1.0
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
 	ps.importMaterials = (metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1)
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
@@ -883,8 +728,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.default_material = default_material
 	ps.is_obj = source_file_path.ends_with(".obj")
 	ps.is_dae = source_file_path.ends_with(".dae")
-	metaobj.log_debug(0, "Path " + str(source_file_path) + " correcting scale by " + str(ps.scale_correction_factor))
-	#### Setting root_scale through the .import ConfigFile doesn't seem to be working foro me. ## p_scene.scale /= ps.scale_correction_factor
+	metaobj.log_debug(0, "Path " + str(source_file_path))
 	var external_objects: Dictionary = metaobj.importer.get_external_objects()
 	ps.external_objects_by_type_name = external_objects
 
