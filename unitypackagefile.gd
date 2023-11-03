@@ -74,15 +74,16 @@ var guid_to_pkgasset: Dictionary = {}.duplicate()
 
 func external_tar_with_filename(source_file: String):
 	var stdout = [].duplicate()
-	var tmpdir = "temp_unityimp"
+	var tmpdir = ".godot"
 	var d: DirAccess = DirAccess.open("res://" + tmpdir)
-	d.make_dir("TAR_TEMP")
-	var full_tmpdir: String = tmpdir + "/TAR_TEMP"
+	d.make_dir("unidot_extracted_tar")
+	var full_tmpdir: String = tmpdir + "/unidot_extracted_tar"
 	var tar_args: Array = ["-C", full_tmpdir, "-zxvf", source_file.replace("res://", "")]
 	#if str(OS.get_name()) == "Windows" or str(OS.get_name()) == "UWP":
 	print("Running tar with " + str(tar_args))
 	var out_lines: Array = [].duplicate()
 	if source_file.is_empty():
+		# Re-import the previously imported/extracted tar packages.
 		var dirlist: DirAccess = DirAccess.open("res://" + full_tmpdir)
 		dirlist.list_dir_begin()
 		while true:
