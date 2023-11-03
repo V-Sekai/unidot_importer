@@ -66,6 +66,7 @@ class ParseState:
 
 	var all_name_map: Dictionary = {}.duplicate()
 
+	var root_rotation_delta: Transform3D = Transform3D.IDENTITY
 	var is_obj: bool = false
 	var is_dae: bool = false
 	var default_obj_mesh_name: String = "default"
@@ -199,17 +200,11 @@ class ParseState:
 			if len(child_node.get_parentless_bones()) > 1:
 				return false
 			var root_bone_idx: int = child_node.get_parentless_bones()[0]
-			root_node.transform = root_node.transform * child_node.transform * child_node.get_bone_pose(root_bone_idx)
-			child_node.set_bone_rest(root_bone_idx, Transform3D.IDENTITY)
-			child_node.set_bone_pose_position(root_bone_idx, Vector3.ZERO)
-			child_node.set_bone_pose_rotation(root_bone_idx, Quaternion.IDENTITY)
-			child_node.set_bone_pose_scale(root_bone_idx, Vector3.ONE)
-			humanoid_original_transforms[child_node.get_bone_name(root_bone_idx)] = Transform3D.IDENTITY
+			root_rotation_delta = root_rotation_delta * child_node.transform * child_node.get_bone_pose(root_bone_idx)
 			toplevel_node = child_node
 			return true
 		if child_node is Node3D:
-			root_node.transform = root_node.transform * child_node.transform
-			child_node.transform = Transform3D.IDENTITY
+			root_rotation_delta = root_rotation_delta * child_node.transform
 			toplevel_node = child_node
 			return true
 		return false
@@ -306,6 +301,7 @@ class ParseState:
 			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
+			metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
 			if not node.has_meta("humanoid_rotation_delta"):
 				node.set_meta("humanoid_rotation_delta", {})
@@ -421,7 +417,11 @@ class ParseState:
 				p_pre_retarget_global_rest *= node.transform
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
+			metaobj.log_debug(0, "node " + node.name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
+
+		if len(p_path) == 1:
+			p_pre_retarget_global_rest *= root_rotation_delta
 
 		if node.get_child_count() >= 1 and node.get_child(0).name == "RootNode":
 			node = node.get_child(0)
@@ -847,10 +847,11 @@ func _post_import(p_scene: Node) -> Object:
 		# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
 		# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
 		var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
+		# * ps.toplevel_node.transform)
 		if up_axis.to_upper() == "X_UP":
-			ps.toplevel_node.transform = (Transform3D(Basis.from_euler(Vector3(0, 0, PI / -2.0)), Vector3.ZERO) * ps.toplevel_node.transform)
+			ps.root_rotation_delta = Transform3D(Basis.from_euler(Vector3(0, 0, PI / -2.0)), Vector3.ZERO)
 		if up_axis.to_upper() == "Z_UP":
-			ps.toplevel_node.transform = (Transform3D(Basis.from_euler(Vector3(PI / -2.0, 0, 0)), Vector3.ZERO) * ps.toplevel_node.transform)
+			ps.root_rotation_delta = Transform3D(Basis.from_euler(Vector3(PI / -2.0, 0, 0)), Vector3.ZERO)
 
 	var toplevel_path: PackedStringArray = PackedStringArray().duplicate()
 	toplevel_path.push_back("//RootNode")
@@ -871,6 +872,8 @@ func _post_import(p_scene: Node) -> Object:
 	# GameObject references always point to the toplevel node:
 	metaobj.prefab_main_gameobject_id = root_go_id
 	metaobj.prefab_main_transform_id = ps.all_name_map[root_go_id][4]
+	if !ps.root_rotation_delta.is_equal_approx(Transform3D.IDENTITY):
+		metaobj.transform_fileid_to_rotation_delta[metaobj.prefab_main_transform_id] = ps.root_rotation_delta
 	ps.fileid_to_nodepath[metaobj.prefab_main_gameobject_id] = NodePath(".")  # Prefab name always toplevel.
 	ps.fileid_to_nodepath[metaobj.prefab_main_transform_id] = NodePath(".")
 	ps.fileid_to_skeleton_bone.erase(metaobj.prefab_main_gameobject_id)
