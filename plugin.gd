@@ -50,7 +50,7 @@ func recursive_print_scene():
 func anim_import():
 	const uoa = preload("./unity_object_adapter.gd")
 	for anim_tres in get_editor_interface().get_selected_paths():
-		var nod = get_editor_interface().get_selection().get_selected_nodes()[0] as AnimationMixer
+		var nod = get_editor_interface().get_selection().get_selected_nodes()[0] # as AnimationMixer
 		var anim_raw = ResourceLoader.load(anim_tres)
 		anim_raw.meta.initialize(preload("./asset_database.gd").new().get_singleton())
 		for obj in anim_raw.objects:
