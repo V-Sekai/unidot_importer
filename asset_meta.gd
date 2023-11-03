@@ -93,7 +93,9 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var humanoid_bone_map_dict: Dictionary = {} # fbx bone name -> godot humanoid bone name
 @export var humanoid_bone_map_crc32_dict: Dictionary = {} # CRC32(fbx bone name) -> godot humanoid bone name
 @export var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
-
+@export var imported_animation_paths: Dictionary # anim_name -> file_path
+@export var imported_mesh_paths: Dictionary # mesh_name (with and without "Root Scene_") -> file_path
+@export var imported_material_paths: Dictionary # material_name -> file_path
 
 class ParsedAsset:
 	extends RefCounted

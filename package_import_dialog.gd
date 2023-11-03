@@ -762,6 +762,7 @@ func do_import_step():
 		#var loaded_asset: Resource = load(tw.asset.pathname)
 		if loaded_asset != null:
 			tw.asset.parsed_meta.insert_resource_path(tw.asset.parsed_meta.main_object_id, tw.asset.pathname)
+		asset_adapter.finished_import(tw.asset, loaded_asset)
 		on_file_completed_godot_import(tw, loaded_asset != null)
 
 	asset_database.log_debug([null, 0, "", 0], "Done Queueing work: state=" + str(tree_dialog_state))

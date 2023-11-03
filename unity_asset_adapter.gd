@@ -126,6 +126,14 @@ class AssetHandler:
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return ""
 
+	func finished_import(pkgasset: Object, res: Resource):
+		if res == null:
+			var dres = DirAccess.open("res://")
+			pkgasset.log_fail("Due to failed import, renaming " + pkgasset.pathname + " to " + pkgasset.pathname + ".failed_import")
+			dres.rename(pkgasset.pathname, pkgasset.pathname + ".failed_import")
+		else:
+			pkgasset.log_debug("Successfully imported " + str(pkgasset.pathname) + " as " + str(res.resource_name) + " " + str(res))
+
 
 class DefaultHandler:
 	extends AssetHandler
@@ -467,7 +475,7 @@ class BaseModelHandler:
 			return true
 
 		cfile.set_value_compare("remap", "importer", "scene")
-		cfile.set_value_compare("params", "import_script/path", post_import_material_remap_script.resource_path)
+		cfile.set_value("params", "import_script/path", post_import_material_remap_script.resource_path)
 		# I think these are the default settings now?? The option no longer exists???
 		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
@@ -533,12 +541,69 @@ class BaseModelHandler:
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
 		anim_player_settings["optimizer/max_linear_error"] = optim_setting.get("max_linear_error", 0.0)
 		anim_player_settings["optimizer/max_angular_error"] = optim_setting.get("max_angular_error", 0.0)
-		cfile.set_value_compare("params", "_subresources", subresources)
+		cfile.set_value("params", "_subresources", subresources)
 		#cfile.set_value_compare("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
 		#cfile.set_value_compare("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
 		#cfile.set_value_compare("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
+
+	func finished_import(pkgasset: Object, res: Resource):
+		super.finished_import(pkgasset, res)
+		if res != null:
+			pass
+		var cfile := ConfigFile.new()
+		var import_file_path: String = "res://" + pkgasset.pathname + ".import"
+		if cfile.load(import_file_path) != OK:
+			pkgasset.log_fail("Unable to load " + str(import_file_path) + " to remove post-import script")
+			return
+		cfile.set_value("params", "import_script/path", "")
+		var subresources: Dictionary = cfile.get_value("params", "_subresources", {})
+		if not subresources.has("animations"):
+			subresources["animations"] = {}
+		var unused_anims: Dictionary = pkgasset.parsed_meta.imported_animation_paths.duplicate()
+		for take_name in subresources["animations"]:
+			var anim_properties = subresources["animations"][take_name]
+			var active_slices: Dictionary
+			var has_slices: bool = false
+			for keys in anim_properties:
+				var key: String = keys
+				if key.begins_with("slice_") and key.ends_with("/name") and anim_properties[key]:
+					# Slice has a name, so it is active
+					has_slices = true
+					if unused_anims.has(anim_properties[key]):
+						active_slices[key.split('/')[0]] = unused_anims[anim_properties[key]]
+						unused_anims.erase(anim_properties[key])
+			for slice_key in active_slices:
+				anim_properties[slice_key + "/save_to_file/enabled"] = true
+				anim_properties[slice_key + "/save_to_file/keep_custom_tracks"] = true
+				anim_properties[slice_key + "/save_to_file/path"] = active_slices[slice_key]
+		for take_name in unused_anims:
+			if not (subresources["animations"].has(take_name)):
+				subresources["animations"][take_name] = {}
+			subresources["animations"][take_name]["save_to_file/enabled"] = true
+			subresources["animations"][take_name]["save_to_file/keep_custom_tracks"] = true
+			subresources["animations"][take_name]["save_to_file/path"] = unused_anims[take_name]
+		if not subresources.has("meshes"):
+			subresources["meshes"] = {}
+		for mesh_name in pkgasset.parsed_meta.imported_mesh_paths:
+			if not (subresources["meshes"].has(mesh_name)):
+				subresources["meshes"][mesh_name] = {}
+			subresources["meshes"][mesh_name]["save_to_file/enabled"] = true
+			subresources["meshes"][mesh_name]["save_to_file/make_streamable"] = ""
+			subresources["meshes"][mesh_name]["save_to_file/path"] = pkgasset.parsed_meta.imported_mesh_paths[mesh_name]
+		if not subresources.has("materials"):
+			subresources["materials"] = {}
+		for material_name in pkgasset.parsed_meta.imported_material_paths:
+			if not (subresources["materials"].has(material_name)):
+				subresources["materials"][material_name] = {}
+			subresources["materials"][material_name]["use_external/enabled"] = true
+			subresources["materials"][material_name]["use_external/path"] = pkgasset.parsed_meta.imported_material_paths[material_name]
+		cfile.set_value("params", "_subresources", subresources)
+		#cfile.set_value_compare("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
+		#cfile.set_value_compare("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
+		#cfile.set_value_compare("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
+		cfile.save(import_file_path)
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		# super.write_godot_asset(pkgasset, temp_path)
@@ -1416,3 +1481,9 @@ func write_godot_import(pkgasset: Object) -> bool:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 	return asset_handler.write_godot_import(pkgasset, false)
+
+
+func finished_import(pkgasset: Object, loaded_resource: Resource) -> void:
+	var path = pkgasset.orig_pathname
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	return asset_handler.finished_import(pkgasset, loaded_resource)

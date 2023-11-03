@@ -267,9 +267,14 @@ class ParseState:
 		# SCRIPT ERROR: Invalid type in function 'register_resource' in base 'RefCounted (ParseState)'.
 		# The Object-derived class of argument 5 (null instance) is not a subclass of the expected argument class. (Resource)
 		var gltf_type = "meshes"
+		if p_type == "Mesh":
+			metaobj.imported_mesh_paths[p_name] = str(p_resource.resource_path)
+			metaobj.imported_mesh_paths["Root Scene_" + p_name] = str(p_resource.resource_path)
 		if p_type == "Material":
+			metaobj.imported_material_paths[p_name] = str(p_resource.resource_path)
 			gltf_type = "materials"
 		if p_type == "AnimationClip":
+			metaobj.imported_animation_paths[p_name] = str(p_resource.resource_path)
 			gltf_type = "animations"
 		metaobj.insert_resource(fileId_object, p_resource)
 		metaobj.log_debug(0, "Register " + str(metaobj.guid) + ":" + str(fileId_object) + ": " + str(p_type) + " '" + str(p_name) + "' " + str(p_resource))
