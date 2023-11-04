@@ -1426,7 +1426,7 @@ var file_handlers: Dictionary = {
 
 
 func create_temp_dir() -> String:
-	var tmpdir = ".godot/unidot_temp"
+	var tmpdir = "temp_unityimp"
 	var dres = DirAccess.open("res://")
 	dres.make_dir_recursive(tmpdir)
 	var f = FileAccess.open(tmpdir + "/.gdignore", FileAccess.WRITE_READ)
