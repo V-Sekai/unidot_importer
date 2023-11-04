@@ -834,21 +834,21 @@ class UnityAvatar:
 		var avatar_keys = keys["m_Avatar"]
 		var skeleton_size := len(avatar_keys["m_AvatarSkeleton"]["m_Node"])
 		var human_size := len(avatar_keys["m_Human"]["m_Skeleton"]["m_Node"])
-		var crc32_skeleton_bones_buf := aligned_byte_buffer.new(avatar_keys["m_SkeletonNameIDArray"])
+		var crc32_skeleton_bones_buf: Variant = aligned_byte_buffer.new(avatar_keys["m_SkeletonNameIDArray"])
 		var crc32_skeleton_bones: PackedInt32Array = crc32_skeleton_bones_buf.uint32_subarray(0, skeleton_size)
 
-		var human_to_skeleton_bone_indices_buf := aligned_byte_buffer.new(avatar_keys["m_HumanSkeletonIndexArray"])
+		var human_to_skeleton_bone_indices_buf: Variant = aligned_byte_buffer.new(avatar_keys["m_HumanSkeletonIndexArray"])
 		var human_to_skeleton_bone_indices: PackedInt32Array = human_to_skeleton_bone_indices_buf.uint32_subarray(0, human_size)
 
 		# These arrays are fixed, totaling len(human_trait.HumanBodyBones)
-		var human_bone_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_HumanBoneIndex"])
+		var human_bone_indices_buf: Variant = aligned_byte_buffer.new(avatar_keys["m_Human"]["m_HumanBoneIndex"])
 		var human_bone_indices: PackedInt32Array = human_bone_indices_buf.uint32_subarray(0, 25) # 25 human bones excluding hands
 		while len(human_bone_indices) < 25:
 			human_bone_indices.append(-1)
 
 		var human_left_hand_indices: PackedInt32Array
 		if avatar_keys["m_Human"].get("m_HasLeftHand", 1) == 1:
-			var human_left_hand_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_LeftHand"]["m_HandBoneIndex"])
+			var human_left_hand_indices_buf: Variant = aligned_byte_buffer.new(avatar_keys["m_Human"]["m_LeftHand"]["m_HandBoneIndex"])
 			human_left_hand_indices = human_left_hand_indices_buf.uint32_subarray(0, 15) # 3 * 5 fingers
 		while len(human_left_hand_indices) < 15:
 			human_left_hand_indices.append(-1)
@@ -856,7 +856,7 @@ class UnityAvatar:
 
 		var human_right_hand_indices: PackedInt32Array
 		if avatar_keys["m_Human"].get("m_HasRightHand", 1) == 1:
-			var human_right_hand_indices_buf := aligned_byte_buffer.new(avatar_keys["m_Human"]["m_RightHand"]["m_HandBoneIndex"])
+			var human_right_hand_indices_buf: Variant = aligned_byte_buffer.new(avatar_keys["m_Human"]["m_RightHand"]["m_HandBoneIndex"])
 			human_right_hand_indices = human_right_hand_indices_buf.uint32_subarray(0, 15) # 3 * 5 fingers
 		while len(human_right_hand_indices) < 15:
 			human_right_hand_indices.append(-1)
