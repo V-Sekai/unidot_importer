@@ -898,10 +898,6 @@ func _post_import(p_scene: Node) -> Object:
 
 	if not asset_database.in_package_import:
 		asset_database.save()
-
-	var outps:= PackedScene.new()
-	outps.pack(p_scene)
-	ResourceSaver.save(outps, "res://tmp_scene.tscn")
 	return p_scene
 
 
