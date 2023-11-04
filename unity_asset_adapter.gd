@@ -145,6 +145,7 @@ class ImageHandler:
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var user_path_base = OS.get_user_data_dir()
+		var is_psd: bool = (data_buf[0] == 0x38 and data_buf[1] == 0x42 and data_buf[2] == 0x50 and data_buf[3] == 0x53)
 		var is_tiff: bool = (data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00) or (data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A)
 		var is_png: bool = (data_buf[0] == 0x89 and data_buf[1] == 0x50 and data_buf[2] == 0x4E and data_buf[3] == 0x47) or is_tiff
 		var full_output_path: String = pkgasset.pathname
@@ -154,10 +155,11 @@ class ImageHandler:
 		elif is_png and path.get_extension().to_lower() != "png":
 			pkgasset.log_debug("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".png"
-		pkgasset.log_debug("PREPROCESS_IMAGE " + str(is_tiff) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
+		pkgasset.log_debug("PREPROCESS_IMAGE " + str(is_tiff or is_psd) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
 		var temp_output_path: String = tmpdir + "/" + full_output_path
-		if is_tiff:
-			var outfile: FileAccess = FileAccess.open(temp_output_path.get_basename() + ".tif", FileAccess.WRITE_READ)
+		if is_tiff or is_psd:
+			var ext: String = '.tif' if is_tiff else '.psd'
+			var outfile: FileAccess = FileAccess.open(temp_output_path.get_basename() + ext, FileAccess.WRITE_READ)
 			outfile.store_buffer(data_buf)
 			outfile.flush()
 			outfile = null
@@ -169,8 +171,8 @@ class ImageHandler:
 					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
 					return ""
 				addon_path = addon_path.substr(6)
-			var ret = OS.execute(addon_path, [temp_output_path.get_basename() + ".tif", temp_output_path], stdout)
-			d.remove(temp_output_path.get_basename() + ".tif")
+			var ret = OS.execute(addon_path, [temp_output_path.get_basename() + ext, temp_output_path], stdout)
+			d.remove(temp_output_path.get_basename() + ext)
 			var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
 			pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
 			res_file = null
@@ -1394,8 +1396,9 @@ var file_handlers: Dictionary = {
 	# "exr": image_handler,
 	"hdr": image_handler,
 	"dds": image_handler,
-	"tif": image_handler,
-	"tiff": image_handler,
+	"psd": image_handler, # convert.exe
+	"tif": image_handler, # convert.exe
+	"tiff": image_handler, # convert.exe
 	"webp": image_handler,
 	"svg": image_handler,
 	"svgz": image_handler,
