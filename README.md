@@ -1,30 +1,59 @@
 # Unidot Importer
 
-Unidot Importer is a Unity compatibility layer and `.unitypackage` importer for Godot 4.x.
+Unidot Importer is a Unity asset translator and `.unitypackage` importer for Godot 4.x.
+
+It takes the original **source assets** and *translates* them into Godot native equivalents.
+For example, `.unity` and `.prefab` become `.tscn` and `.prefab.tscn`.
+
+FBX Files are currently ported to glTF but this may be made more flexible in the future.
+
+Raw mesh, anim, material assets and more are converted directly to godot `.tres/.res` equivalents.
+
+Due to being a translator, Unidot may safely be removed from the project when completed. (other than `runtime/anim_tree.gd`)
 
 ## Made for Godot Engine 4
 
-Please use the any stable Godot 4.0, 4.1, or later ( `master` branch of https://github.com/godotengine/godot ) with FBX2glTF configured in Editor Settings to run this addon.
+We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF. [please download the FBX2glTF exe](https://github.com/godotengine/FBX2glTF/releases) and configure FBX Import in Godot Editor Settings before using Unidot.
+
+Please use a version of Godot 4.0 or later with FBX2glTF configured in Editor Settings to run this addon.
 
 ## Features
 
+- `.unitypackage` importer and translation shim.
 - Translates Unity filetypes (such as .unity or .mat) to Godot native scene or resource types.
+- Animation and animation tree porting, including humanoid .anim format.
+- Support for humanoid armatures, including from prefabs, unpacked prefabs and model import.
+- Translates prefabs and inherited prefabs to native Godot scenes and inherited scenes.
 - Supports both binary and text YAML encoding
 - Implementation of an asset database for unity assets by GUID
-- `.unitypackage` importer and translation shim.
-- preliminary animation and animation tree porting.
-- We rely on automatic FBX to glTF translation during `.unitypackage` import using FBX2glTF. [please download the FBX2glTF exe](https://github.com/godotengine/FBX2glTF/releases) and configure FBX Import in Godot Editor Settings before using Unidot.
 
 Note that scripts and shaders will need to be ported by hand. However, it will be possible to map from the unity scripts/shaders to Godot equivalents after porting.
 
-Many import settings in Unity are not implemented in Godot Engine, such as recomputing tangents or specific texture compression settings.
-
 Canvas / UI is not implemented.
+
+## Supported asset types:
+
+* Mesh/MeshFilter/MeshRenderer/SkinnedMeshRenderer
+* Material (standard shader only)
+* Avatar
+* AnimationClip
+* AnimatorController (relies on small runtime helper script `unidot_importer/runtime/anim_tree.gd`)
+* AnimatorState/AnimatorStateMachine/AnimatorTransitionBase/BlendTree
+* PrefabInstance (prefabs)
+* GameObject/Transform/Collider/SkinnedMeshRenderer/MeshFilter/Animator/Light/Camera etc. (scenes)
+* Texture2D/CubeMap/Texture2DArray etc.
+* AssetImporter
+* AudioClip/AudioSource
+* Collider/Rigidbody
+* Terrain (limited support for detail meshes as MultiMeshInstance)
+* LightingSettings/PostProcessLayer
 
 ## Unsupported
 
-- Shader porting: a system will be added to create mappings of equivalent Godot Engine shaders, but porting must be done by hand.
-- C# Script porting
+* Shader: a system may someday be added to create mappings of equivalent Godot Engine shaders, but porting must be done by hand.
+* MonoBehaviour (C# Script porting)
+* AvatarMask (waiting for better Godot engine support)
+* Anything not listed above
 
 ## Installation notes:
 
@@ -34,7 +63,7 @@ Canvas / UI is not implemented.
 
   To install FBX support, one must download FBX2glTF from https://github.com/godotengine/FBX2glTF/releases and set it in the FBX2glTF.exe path in the Import category of **Editor Settings** (not Project Settings)
 
-3. To add TIFF / .tif support, install ImageMagick and copy convert.exe into this addon directory.
+3. To add TIFF / .tif and PSD / .psd support, install ImageMagick or GraphicsMagick and copy convert.exe into this addon directory.
 
 4. Finally, enable the Unidot Importer plugin in `Project Settings -> Plugins tab -> Unidot`
 
@@ -42,6 +71,6 @@ Canvas / UI is not implemented.
 
 ## A final note:
 
-This tool is designed to assist with importing or translating source assets made for Unity Engine. It assumes text serialization (such as within a `.unitypackage` archive) and typical asset conventions (for example, an assumption that most files contain only one asset).
+This tool is designed to assist with importing or translating source assets made for Unity Engine. It makes an assumption that (other than animator controllers) most yaml files contain only one object).
 
 Unidot solely translates existing usable source assets into equivalent Godot source assets. There are no plans to add functionality for decompiling asset bundles or ripping unity content. That is not the goal of this project.
