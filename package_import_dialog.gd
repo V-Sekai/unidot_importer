@@ -591,6 +591,13 @@ var _delay_tick: int = 0
 
 
 func on_import_fully_completed():
+	var da := DirAccess.open("res://")
+	print("Import is fully completed")
+	da.remove("res://_sentinel_file.png")
+	da.remove("res://_sentinel_file.png.import")
+	EditorPlugin.new().get_editor_interface().save_all_scenes()
+	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	editor_filesystem.scan()
 	import_finished = true
 	if not _keep_open_on_import:
 		if main_dialog:
@@ -654,8 +661,6 @@ func do_import_step():
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
-		editor_filesystem.scan()
-		EditorPlugin.new().get_editor_interface().save_all_scenes()
 		on_import_fully_completed()
 		return
 
@@ -948,8 +953,6 @@ func _do_import_step_tick():
 		asset_database.in_package_import = false
 		asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Saved database")
-		var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
-		editor_filesystem.scan()
 		call_deferred(&"on_import_fully_completed")
 	asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
 	import_step_reentrant = false
