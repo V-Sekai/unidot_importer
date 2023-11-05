@@ -95,6 +95,8 @@ class AssetHandler:
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		var path: String = pkgasset.pathname
+		if len(path) == 0:
+			pkgasset.log_fail("pkgasset.pathname is empty")
 		var data_buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, path, data_buf)
 		if len(output_path) == 0:
@@ -106,6 +108,8 @@ class AssetHandler:
 				outfile.flush()
 				outfile = null
 			output_path = pkgasset.pathname
+		if len(output_path) == 0:
+			pkgasset.log_fail("output_path became empty " + str(pkgasset.pathname))
 		pkgasset.log_debug("Updating file at " + output_path)
 		return output_path
 
@@ -1300,7 +1304,12 @@ class FbxHandler:
 			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
 				for node in json["nodes"]:
 					var node_name: String = node.get("name", "")
-					gltf_transform3d_into_json(node, humanoid_original_transforms[node_name])
+					if bone_map_dict.has(node_name):
+						node_name = bone_map_dict[node_name]
+					if humanoid_original_transforms.has(node_name):
+						gltf_transform3d_into_json(node, humanoid_original_transforms[node_name])
+					else:
+						pkgasset.log_warn("Unable to locate source avatar humanoid transform " + str(node_name))
 		# humanoid_original_transforms uses post-sanitized node names.
 		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
 
