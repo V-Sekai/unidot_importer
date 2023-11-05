@@ -2055,7 +2055,8 @@ class UnityAnimationClip:
 					new_track_names.append([clip.track_get_path(track_idx), "", []])
 					continue  # unsupported track type.
 			if not resolved_to_default_paths.has(resolved_key):
-				log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
+				if not resolved_key.begins_with("T%GeneralSkeleton"): # This is normal
+					log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
 				new_track_names.append([clip.track_get_path(track_idx), "", []])
 				continue
 			var orig_info: Array = resolved_to_default_paths[resolved_key]

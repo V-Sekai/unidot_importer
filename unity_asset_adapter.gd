@@ -292,8 +292,7 @@ class YamlHandler:
 	extends AssetHandler
 	const tarfile: GDScript = preload("./tarfile.gd")
 
-	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
-		var temp_path: String = tmpdir + "/" + pkgasset.pathname
+	func parse_yaml_or_binary(pkgasset: Object, temp_path: String) -> void:
 		var outfile: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE_READ)
 		var buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		outfile.store_buffer(buf)
@@ -307,10 +306,21 @@ class YamlHandler:
 			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_asset(sf)
 		if pkgasset.parsed_asset == null:
 			pkgasset.log_fail("Parse asset failed " + pkgasset.pathname + "/" + pkgasset.guid)
+
+	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
+		# .anim assets contain nested structs for each keyframe
+		# If importing dozens of animations at once, godot may run out of memory.
+		var temp_path: String = tmpdir + "/" + pkgasset.pathname
+		if get_file_extension_without_early_parse(pkgasset) == "":
+			parse_yaml_or_binary(pkgasset, temp_path)
 		pkgasset.log_debug("Done with " + temp_path + "/" + pkgasset.guid)
-		return preprocess_asset(pkgasset, tmpdir, thread_subdir, pkgasset.pathname, buf)
+		return preprocess_asset(pkgasset, tmpdir, thread_subdir, pkgasset.pathname, PackedByteArray())
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
+		var early_file_ext: String = get_file_extension_without_early_parse(pkgasset)
+		if early_file_ext != "":
+			var new_pathname = pkgasset.pathname.get_basename() + early_file_ext
+			return new_pathname
 		if pkgasset.parsed_asset == null:
 			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return ""
@@ -342,7 +352,18 @@ class YamlHandler:
 			return ASSET_TYPE_PREFAB
 		return ASSET_TYPE_YAML
 
+	func get_file_extension_without_early_parse(pkgasset: Object) -> String:
+		if get_asset_type(pkgasset) == ASSET_TYPE_ANIM:
+			# If we parse too many .anim files which are too big, we can use too much RAM
+			if pkgasset.asset_tar_header.get_size() > 50000:
+				# Returning a file extension here short-circuits the early parse.
+				# So we will parse the big animation files in the main thread one-by-one.
+				return ".anim.tres"
+		return ""
+
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
+		if get_file_extension_without_early_parse(pkgasset) != "":
+			parse_yaml_or_binary(pkgasset, temp_path)
 		if pkgasset.parsed_asset == null:
 			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has was not parsed as YAML")
 			return false
@@ -373,6 +394,11 @@ class YamlHandler:
 
 		if main_asset != null:
 			godot_resource = main_asset.create_godot_resource()
+
+		if get_file_extension_without_early_parse(pkgasset) != "" or get_asset_type(pkgasset) == ASSET_TYPE_ANIM:
+			pkgasset.parsed_asset.assets.clear()
+			pkgasset.parsed_asset = null
+			pkgasset.parsed_meta.parsed = null
 
 		if godot_resource == pkgasset.parsed_meta:
 			return false

@@ -7,13 +7,19 @@ extends Resource
 
 class ExtractedTarFile:
 	var fn: String = ""
+	var size: int
 
 	func _init(filename: String):
 		fn = filename
+		var f = FileAccess.open(fn, FileAccess.READ)
+		size = f.get_length()
+
+	func get_size() -> int:
+		return size
 
 	func get_data() -> PackedByteArray:
 		var f = FileAccess.open(fn, FileAccess.READ)
-		return f.get_buffer(f.get_length())
+		return f.get_buffer(size)
 
 	func get_string() -> String:
 		return get_data().get_string_from_utf8()

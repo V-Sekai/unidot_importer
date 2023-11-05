@@ -89,6 +89,9 @@ class TarHeader:
 	var offset: int = 0
 	var gd4hack_StringFile: Object = null
 
+	func get_size() -> int:
+		return size
+
 	func get_data() -> PackedByteArray:
 		return buffer.slice(offset, offset + size)
 
