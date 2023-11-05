@@ -1042,6 +1042,16 @@ class UnityAnimatorOverrideController:
 		var referenced_sm: AnimationRootNode = self.meta.get_godot_resource(controller_ref)
 		var lib_ref: Array = [null, -controller_ref[1], controller_ref[2], controller_ref[3]]
 		var referenced_library: AnimationLibrary = self.meta.get_godot_resource(lib_ref)
+		if referenced_sm == null or referenced_library == null:
+			log_fail("Override controller's base controller is missing. Creating dummy library")
+			var anim_library: AnimationLibrary = AnimationLibrary.new()
+			for clip in keys["m_Clips"]:
+				var orig_clip: Array = clip["m_OriginalClip"]
+				var override_clip: Array = clip["m_OverrideClip"]
+				var anim: Animation = self.meta.get_godot_resource(override_clip)
+				if anim != null:
+					anim_library.add_animation(anim.resource_name, anim)
+			return anim_library
 		var animation_guid_fileid_to_name: Dictionary = referenced_sm.get_meta(&"guid_fileid_to_animation_name", {})
 		var override_clips = {}.duplicate()
 		for clip in keys["m_Clips"]:
@@ -1270,7 +1280,11 @@ class UnityAnimatorController:
 						if not transition_count.has(trans_key):
 							transition_count[trans_key] = 0
 						transition_count[trans_key] += 1
-					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
+					if state_count.has(dst_state.uniq_key):
+						state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
+					else:
+						log_warn("state_count " + dst_state.uniq_key + " is missing for Any transition " + trans_key)
+						state_count[dst_state.uniq_key] = transition_count[trans_key]
 
 		for state_key in state_data:
 			var this_state: Dictionary = state_data[state_key]
@@ -1290,8 +1304,11 @@ class UnityAnimatorController:
 						if not transition_count.has(trans_key):
 							transition_count[trans_key] = 0
 						transition_count[trans_key] += 1
-					state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
-
+					if state_count.has(dst_state.uniq_key):
+						state_count[dst_state.uniq_key] = max(state_count[dst_state.uniq_key], transition_count[trans_key])
+					else:
+						log_warn("state_count " + dst_state.uniq_key + " is missing for normal transition " + trans_key)
+						state_count[dst_state.uniq_key] = transition_count[trans_key]
 		for state_key in state_data:
 			var this_state: Dictionary = state_data[state_key]
 			var anim_node = this_state["state"].create_animation_node(self, layer_index, animation_guid_fileid_to_name)
@@ -1320,6 +1337,9 @@ class UnityAnimatorController:
 					if not can_trans_to_self and dst_state.uniq_key == src_state_key:
 						continue
 					var trans_key: String = src_state_key + dst_state.uniq_key
+					if not state_data.has(dst_state.uniq_key) or not state_data.has(src_state_key):
+						log_fail("Missing state_data for dupe any state transition from " + src_state_key + " to " + dst_state.uniq_key)
+						continue
 					create_dupe_transitions(sm, transition_obj, state_data[src_state_key]["name"], state_data[dst_state.uniq_key]["name"], state_duplicates, transition_count.get(trans_key, 0), condition_list)
 					if not allow_dupe_transitions:
 						if not transition_count.has(trans_key):
@@ -1338,6 +1358,9 @@ class UnityAnimatorController:
 					if dst_state == null:
 						continue
 					var trans_key: String = state_key + dst_state.uniq_key
+					if not state_data.has(dst_state.uniq_key):
+						log_fail("Missing state_data for dupe normal transition from " + state_key + " to " + dst_state.uniq_key)
+						continue
 					create_dupe_transitions(sm, transition_obj, this_state["name"], state_data[dst_state.uniq_key]["name"], state_duplicates, transition_count.get(trans_key, 0), condition_list)
 					if not allow_dupe_transitions:
 						if not transition_count.has(trans_key):
@@ -1447,7 +1470,7 @@ class UnityAnimatorStateMachine:
 			var motion_ref: Array = child.keys["m_Motion"]
 			if out_guid_fid_to_anim_name.has(child.ref_to_anim_key(motion_ref)):
 				continue
-			var motion: UnityMotion = child.meta.lookup(motion_ref, true)
+			var motion: UnityMotion = child.meta.lookup(motion_ref, motion_ref[1] != 7400000)
 			if motion != null:
 				sm_path.append(basename)
 				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
@@ -2169,25 +2192,29 @@ class UnityAnimationClip:
 			var attr: String = track["attribute"]
 			var path: String = track.get("path", "")  # Some omit path if for the current GameObject...?
 			var classID: int = track["classID"]  # Todo: convet classID to class guid+id
-			if len(track["curve"].get("m_Curve", [])) == 0:
-				log_warn("Empty curve detected " + path + ":" + attr)
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_warn("Float curve is array")
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty float curve detected " + path + ":" + attr)
 				continue
-			for keyframe in track["curve"]["m_Curve"]:
+			for keyframe in track_curve["m_Curve"]:
 				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			if classID == 95 and special_humanoid_transforms.has(attr):
 				# Humanoid Root / IK target parameters
 				if attr.begins_with("RootT."):
 					# hips position (scaled by human scale?)
-					humanoid_track_sets[human_trait.BoneCount][special_humanoid_transforms[attr]] = track
+					humanoid_track_sets[human_trait.BoneCount][special_humanoid_transforms[attr]] = track_curve
 				elif attr.begins_with("RootQ."):
 					# hips rotation
-					humanoid_track_sets[0][special_humanoid_transforms[attr]] = track
+					humanoid_track_sets[0][special_humanoid_transforms[attr]] = track_curve
 				has_humanoid = true
 			elif classID == 95 and muscle_name_to_index.has(attr) or human_trait.TraitMapping.has(attr):
 				# Humanoid muscle parameters
 				var bone_idx_axis: Vector2i = muscle_index_to_bone_and_axis[muscle_name_to_index[human_trait.TraitMapping.get(attr, attr)]]
-				humanoid_track_sets[bone_idx_axis.x][bone_idx_axis.y] = track
+				humanoid_track_sets[bone_idx_axis.x][bone_idx_axis.y] = track_curve
 				has_humanoid = true
 			elif classID == 137 and attr.begins_with("blendShape."):
 				var bstrack = anim.add_track(Animation.TYPE_BLEND_SHAPE)
@@ -2195,7 +2222,7 @@ class UnityAnimationClip:
 				resolved_to_default["B" + str(nodepath)] = [path, attr, classID]
 				anim.track_set_path(bstrack, nodepath)
 				anim.track_set_interpolation_type(bstrack, Animation.INTERPOLATION_LINEAR)
-				var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+				var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 				while not key_iter.is_eof:
 					var val_variant: Variant = key_iter.next()
 					if typeof(val_variant) == TYPE_STRING:
@@ -2227,7 +2254,7 @@ class UnityAnimationClip:
 				resolved_to_default["V" + str(nodepath)] = [path, attr, classID]
 				anim.track_set_path(valtrack, nodepath)
 				anim.track_set_interpolation_type(valtrack, Animation.INTERPOLATION_LINEAR)
-				var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+				var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 				while not key_iter.is_eof:
 					var val_variant: Variant = key_iter.next()
 					if typeof(val_variant) == TYPE_STRING:
@@ -2258,7 +2285,7 @@ class UnityAnimationClip:
 					# may contain null if no animation curve exists.
 					if typeof(humanoid_track_set[i]) == TYPE_DICTIONARY:
 						# This is the outer object (["curve"]["m_Curve"])
-						keyframe_iters[i] = KeyframeIterator.new(humanoid_track_set[i]["curve"])
+						keyframe_iters[i] = KeyframeIterator.new(humanoid_track_set[i])
 				var is_position_track: bool = bone_idx == human_trait.BoneCount
 				var key_iter := LockstepKeyframeiterator.new(keyframe_iters, is_position_track)
 				key_iters[bone_idx] = key_iter
@@ -2402,32 +2429,46 @@ class UnityAnimationClip:
 					anim.position_track_insert_key(gd_track_pos, ts, hips_pos)
 					last_ts = ts
 		for track in keys["m_PositionCurves"]:
-			for keyframe in track["curve"]["m_Curve"]:
-				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_warn("position curve is array")
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty position curve detected " + path)
+				continue
+			for keyframe in track_curve["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			var postrack = anim.add_track(Animation.TYPE_POSITION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(postrack, nodepath)
 			anim.track_set_interpolation_type(postrack, Animation.INTERPOLATION_LINEAR)
-			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+			var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 			while not key_iter.is_eof:
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
 
 		for track in keys["m_EulerCurves"]:
-			for keyframe in track["curve"]["m_Curve"]:
-				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_warn("euler curve is array")
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty euler curve detected " + path)
+				continue
+			for keyframe in track_curve["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			var rottrack = anim.add_track(Animation.TYPE_ROTATION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(rottrack, nodepath)
 			anim.track_set_interpolation_type(rottrack, Animation.INTERPOLATION_LINEAR)
-			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+			var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 			while not key_iter.is_eof:
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
@@ -2451,39 +2492,62 @@ class UnityAnimationClip:
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis.from_euler(value * PI / 180.0, godot_euler_mode) * Basis.FLIP_X)
 
 		for track in keys["m_RotationCurves"]:
-			for keyframe in track["curve"]["m_Curve"]:
-				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_warn("rotation curve is array")
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty rotation curve detected " + path)
+				continue
+			for keyframe in track_curve["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			var rottrack = anim.add_track(Animation.TYPE_ROTATION_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(rottrack, nodepath)
 			anim.track_set_interpolation_type(rottrack, Animation.INTERPOLATION_LINEAR)
-			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+			var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 			while not key_iter.is_eof:
 				var value: Quaternion = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis(value) * Basis.FLIP_X)
 
 		for track in keys["m_ScaleCurves"]:
-			for keyframe in track["curve"]["m_Curve"]:
-				max_ts = maxf(max_ts, keyframe["time"])
 			var path: String = track.get("path", "")
 			var classID: int = 4
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_warn("scale curve is array")
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty scale curve detected " + path)
+				continue
+			for keyframe in track_curve["m_Curve"]:
+				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			var scaletrack = anim.add_track(Animation.TYPE_SCALE_3D)
 			resolved_to_default["T" + str(nodepath)] = [path, "", classID]
 			anim.track_set_path(scaletrack, nodepath)
 			anim.track_set_interpolation_type(scaletrack, Animation.INTERPOLATION_LINEAR)
-			var key_iter: KeyframeIterator = KeyframeIterator.new(track["curve"])
+			var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
 			while not key_iter.is_eof:
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
 				anim.scale_track_insert_key(scaletrack, ts, value)
 
 		for track in keys["m_PPtrCurves"]:
-			for keyframe in track["curve"]["m_Curve"]:
+			var path: String = track.get("path", "")
+			var classID: int = 4
+			var track_curve = track["curve"]
+			if typeof(track_curve) == TYPE_ARRAY:
+				log_debug("pptr curve is array: " + str(track_curve))
+				track_curve = {"m_Curve": track_curve}
+			if len(track_curve.get("m_Curve", [])) == 0:
+				log_warn("Empty pptr curve detected " + path)
+				continue
+			for keyframe in track_curve["m_Curve"]:
 				max_ts = maxf(max_ts, keyframe["time"])
 			log_warn("PPtr curves (material swaps) are not yet implemented")
 			# TYPE_VALUE track should mostly work for this.
