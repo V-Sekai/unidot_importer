@@ -10,6 +10,7 @@ const import_worker_class: GDScript = preload("./import_worker.gd")
 const meta_worker_class: GDScript = preload("./meta_worker.gd")
 const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
+const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
@@ -29,6 +30,7 @@ const STATE_DONE_IMPORT = 8
 var import_worker = import_worker_class.new()
 var meta_worker = meta_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
+var object_adapter = object_adapter_class.new()
 
 var main_dialog: AcceptDialog = null
 var file_dialog: FileDialog = null
@@ -303,9 +305,14 @@ func _meta_completed(tw: Object):
 	var importer_type: String = ""
 	if pkgasset.parsed_meta != null:
 		importer_type = pkgasset.parsed_meta.importer_type.replace("Importer", "")
+		if importer_type == "NativeFormat":
+			if pkgasset.parsed_meta.main_object_id != 0 and pkgasset.parsed_meta.main_object_id % 100000 == 0:
+				var clsid: int = pkgasset.parsed_meta.main_object_id / 100000
+				if object_adapter.utype_to_classname.has(clsid):
+					importer_type = "[" + object_adapter.utype_to_classname[clsid] + "]"
 	ti.set_text(1, importer_type.replace("Default", "Scene"))
 
-	var color = Color(0.7 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
+	var color = Color(0.3 + 0.4 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.3 + 0.4 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
 
 
@@ -326,13 +333,17 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 		return false
 
 	# Has children or it is checked.
+	var tooltip = p_ti.get_tooltip_text(0)
 	var text = p_ti.get_text(0)
 	#p_ti.add_button(1, log_icon, 1, false, "View Log")
 	p_ti.set_cell_mode(0, TreeItem.CELL_MODE_STRING)
 	p_ti.set_checked(0, false)
 	p_ti.set_selectable(0, false)
+	if len(text.get_basename()) > 25:
+		text = text.get_basename().substr(0, 30) + "..." + text.get_extension()
 	p_ti.set_text(0, text)
-	p_ti.set_expand_right(0, true)
+	p_ti.set_tooltip_text(0, tooltip)
+	#p_ti.set_expand_right(0, true)
 	p_ti.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
 	p_ti.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
 	p_ti.set_text(2, "Logs")
@@ -369,7 +380,7 @@ func _selected_package(p_path: String) -> void:
 	ti.set_expand_right(1, false)
 	ti.set_checked(0, true)
 	ti.set_icon_max_width(0, 24)
-	ti.set_text(1, "ahaha")
+	ti.set_text(1, "RootDirectory")
 	var tree_items = [ti]
 	for path in pkg.paths:
 		var pkgasset = pkg.path_to_pkgasset[path]
@@ -511,7 +522,7 @@ func _show_importer_common() -> void:
 	main_dialog_tree.columns = 2
 	main_dialog_tree.set_column_titles_visible(true)
 	main_dialog_tree.set_column_title(0, "Path")
-	main_dialog_tree.set_column_title(1, "Importer")
+	main_dialog_tree.set_column_title(1, "Importer             ")
 	main_dialog_tree.set_column_expand(0, true)
 	main_dialog_tree.set_column_expand(1, false)
 	main_dialog_tree.set_column_expand_ratio(0, 1.0)
