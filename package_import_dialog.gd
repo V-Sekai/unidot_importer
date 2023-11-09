@@ -33,7 +33,7 @@ var asset_adapter = asset_adapter_class.new()
 var object_adapter = object_adapter_class.new()
 
 var main_dialog: AcceptDialog = null
-var file_dialog: FileDialog = null
+var file_dialog: EditorFileDialog = null
 var main_dialog_tree: Tree = null
 
 var spinner_icon: AnimatedTexture = null
@@ -492,12 +492,12 @@ func show_reimport() -> void:
 
 
 func show_importer() -> void:
-	file_dialog = FileDialog.new()
+	file_dialog = EditorFileDialog.new()
 	file_dialog.set_title("Import Unity Package...")
 	file_dialog.add_filter("*.unitypackage")
-	file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
-	file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
 	file_dialog.file_selected.connect(self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
 	_show_importer_common()
