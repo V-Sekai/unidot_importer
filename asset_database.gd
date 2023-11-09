@@ -5,7 +5,6 @@
 extends Resource
 
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 
 const ASSET_DATABASE_PATH: String = "res://unity_asset_database.tres"

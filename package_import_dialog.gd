@@ -50,12 +50,13 @@ var tmpdir: String = ""
 var asset_database: Resource = null
 
 var tree_dialog_state: int = 0
+var path_to_tree_item: Dictionary
 var _currently_preprocessing_assets: int = 0
 var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
-var import_finished: bool = false
 var force_reimport_models_checkbox: CheckBox = null
+var import_finished: bool = false
 
 var asset_work_waiting_write: Array = [].duplicate()
 var asset_work_waiting_scan: Array = [].duplicate()
@@ -102,15 +103,31 @@ func _init():
 	editor_filesystem.resources_reload.connect(self._resource_reloaded)
 
 
-func _check_recursively(ti: TreeItem, is_checked: bool) -> void:
+func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bool) -> void:
 	if ti.is_selectable(0):
 		ti.set_checked(0, is_checked)
 	#var old_prefix: String = (checkbox_on_unicode if !is_checked else checkbox_off_unicode)
 	#var new_prefix: String  = (checkbox_on_unicode if is_checked else checkbox_off_unicode)
 	#ti.set_text(0, new_prefix + ti.get_text(0).substr(len(old_prefix)))
 	for chld in ti.get_children():
-		_check_recursively(chld, is_checked)
-
+		_check_recursively(chld, is_checked, process_dependencies)
+	if process_dependencies:
+		var path: String = ti.get_tooltip_text(0)
+		var asset = pkg.path_to_pkgasset.get(path)
+		var dep_guids: Dictionary
+		if asset:
+			for guid in asset.parsed_meta.dependency_guids:
+				dep_guids[guid] = 1
+			for guid in asset.parsed_meta.meta_dependency_guids:
+				dep_guids[guid] = 1
+		for guid in dep_guids:
+			var dep_asset = pkg.guid_to_pkgasset.get(guid)
+			if not dep_asset:
+				continue
+			var child = path_to_tree_item.get(dep_asset.orig_pathname)
+			if not child:
+				continue
+			_check_recursively(child, is_checked, process_dependencies)
 
 class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var fail_highlight: Dictionary
@@ -225,7 +242,8 @@ func _cell_selected() -> void:
 	if col == 0 or col == 1:
 		if ti != null:  # and col == 1:
 			var new_checked: bool = !ti.is_checked(0)
-			_check_recursively(ti, new_checked)
+			var process_dependencies: bool = Input.is_key_pressed(KEY_SHIFT)
+			_check_recursively(ti, new_checked, process_dependencies)
 	elif col >= 2:
 		ti.set_checked(col, not ti.is_checked(col))
 		var current_scroll = result_log_lineedit.scroll_vertical
@@ -409,6 +427,7 @@ func _selected_package(p_path: String) -> void:
 				ti.set_checked(0, true)
 				ti.set_selectable(0, true)
 			if i == len(path_names) - 1:
+				path_to_tree_item[path] = ti
 				ti.set_tooltip_text(0, path)
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.DARK_BLUE)
@@ -910,7 +929,7 @@ func _asset_processing_started(tw: Object):
 func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Array) -> int:
 	var ret: int = 0
 	if ti.is_checked(0) or ti.get_cell_mode(0) != TreeItem.CELL_MODE_CHECK:
-		var path = ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
+		var path = ti.get_tooltip_text(0)  # tooltip contains the path so no need to use metadata
 		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
 			if asset == null:

@@ -406,7 +406,7 @@ var objs: Array = [].duplicate()
 var meta: RefCounted = null
 
 
-func _init(meta: RefCounted, file_contents: PackedByteArray):
+func _init(meta: RefCounted, file_contents: PackedByteArray, only_references: bool):
 	self.meta = meta
 	self.s = Stream.new(file_contents)
 	#t = self.s.read_str() # UnityRaw? or no?
@@ -455,8 +455,13 @@ func _init(meta: RefCounted, file_contents: PackedByteArray):
 	var obj_headers: Array = self.decode_data_headers()
 	# meta.log_debug(0, "After headers... NOW AT: " + str(self.s.tell()))
 	# meta.log_debug(0, str(obj_headers))
-	self.decode_guids()
-	self.objs = self.decode_data(obj_headers)
+	if not self.decode_guids():
+		return
+	if s.get_position() == s.get_size():
+		meta.log_fail("Failed to initialize binary parser due to hitting end of stream")
+		return
+	if not only_references:
+		self.objs = self.decode_data(obj_headers)
 
 
 func decode_defs() -> Array:
@@ -495,7 +500,7 @@ func decode_defs() -> Array:
 #		s.seek(s.tell() - 2)
 
 
-func decode_guids() -> void:
+func decode_guids() -> bool:
 	# 02 00 00 00 01 00 00 00 5B 21 F1 AA FF FF FF FF 02 00 00 00 FA 19 14 BD FF FF FF FF
 	var unkcount: int = s.get_32()
 	s.skip(12 * unkcount)
@@ -503,6 +508,9 @@ func decode_guids() -> void:
 		s.skip(3)  # Undo the previous skip. FIXME: Probably wrong
 	var count: int = s.get_32()
 	meta.log_debug(0, "referenced guids count " + str(count) + " at " + str(s.tell()))
+	if count > 10000:
+		meta.log_error("More than 10000 guids referenced is probably an error.")
+		return false
 	# null GUID is implied!
 	referenced_guids.push_back(null)
 	referenced_reftypes.push_back(0)
@@ -516,10 +524,14 @@ func decode_guids() -> void:
 		referenced_reftypes.push_back(s.get_u32())
 		var path: String = s.read_str()
 		referenced_guids.push_back(guid)
+		meta.dependency_guids[guid] = 1
 		i += 1
 	if self.file_gen >= 20:
 		s.get_32()  # Unknown ref type
 	s.read_str()  # Seems to have an extra string here.
+	if s.get_position() == s.get_size():
+		return false
+	return true
 
 
 func decode_data_headers() -> Array:

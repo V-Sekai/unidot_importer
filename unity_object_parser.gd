@@ -76,6 +76,29 @@ func _init():
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
 
+static func parse_dependency_guids(yaml: String, asset_meta: Object) -> Dictionary:
+	var idx: int = 0
+	var dependencies: Dictionary
+	while true:
+		idx = yaml.find("guid:", idx)
+		if idx == -1:
+			break
+		var comma := yaml.find(",", idx)
+		var brace := yaml.find("}", idx)
+		var newline := yaml.find("}", idx)
+		if brace != -1 and brace < comma:
+			comma = brace
+		if newline != -1 and newline < comma:
+			idx = newline
+			continue
+		var guid_str := yaml.substr(idx + 5, comma - idx - 5).strip_edges()
+		dependencies[guid_str] = 1
+		idx = comma
+	if asset_meta:
+		asset_meta.dependency_guids = dependencies
+	return dependencies
+
+
 func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 	# WHAT THE FUCK IS THIS AND WHY DOES IT FIX line.begins_with("{") always returning false???
 	# EXPLOIT HEISENBUG NATURE TO FIX OUR PROBLEM

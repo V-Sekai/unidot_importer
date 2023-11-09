@@ -4,6 +4,8 @@
 @tool
 extends "./thread_worker.gd"
 
+const binary_parser: GDScript = preload("./deresuteme/decode.gd")
+const yaml_parser: GDScript = preload("./unity_object_parser.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
 const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
 
@@ -29,6 +31,15 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 	if tw.asset.metadata_tar_header != null:
 		var sf = tw.asset.metadata_tar_header.get_stringfile()
 		tw.asset.parsed_meta = asset_database.parse_meta(sf, path)
-		tw.asset.log_debug("Parsing " + path + ": " + str(tw.asset.parsed_meta))
-
+	var imp_type: String = tw.asset.parsed_meta.importer_type
+	tw.asset.parsed_meta.dependency_guids = {}
+	print(path + ": " + imp_type)
+	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or imp_type == "DefaultImporter":
+		if tw.asset.asset_tar_header != null:
+			var buf: PackedByteArray = tw.asset.asset_tar_header.get_data()
+			if buf[8] == 0 and buf[9] == 0:
+				binary_parser.new(tw.asset.parsed_meta, buf, true) # writes guid references
+			else:
+				yaml_parser.parse_dependency_guids(buf.get_string_from_utf8(), tw.asset.parsed_meta)
+	#print("" + path + ":" + str(tw.asset.parsed_meta.dependency_guids) + " : " + str(tw.asset.parsed_meta.meta_dependency_guids))
 	asset_processing_finished.emit(tw)
