@@ -34,6 +34,8 @@ func get_singleton() -> Object:
 		asset_database.preload_builtin_assets()
 		asset_database.save()
 		asset_database = load(ASSET_DATABASE_PATH)
+	else:
+		asset_database.preload_builtin_assets()
 	return asset_database
 
 
@@ -194,15 +196,10 @@ func preload_builtin_assets():
 	#mesh = ArrayMesh.new()
 	#mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, plane.surface_get_arrays(0), [], {})
 	unity_builtin.override_resource(10209, "Plane", plane)
-	var quad: PlaneMesh = PlaneMesh.new()
-	quad.orientation = PlaneMesh.FACE_Z
-	quad.size = Vector2(-1.0, 1.0)
-	var quad_mesh: ArrayMesh = ArrayMesh.new()
-	var quad_arrays: Array = quad.surface_get_arrays(0)
-	# GODOT BUG: Quad mesh has incorrect normal if axis flipped.
-	for i in range(len(quad_arrays[Mesh.ARRAY_NORMAL])):
-		quad_arrays[Mesh.ARRAY_NORMAL][i] = Vector3(0, 0, -1)
-	quad_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
+	var quad_mesh: QuadMesh = QuadMesh.new()
+	quad_mesh.orientation = PlaneMesh.FACE_Z
+	quad_mesh.flip_faces = true
+	quad_mesh.size = Vector2(-1.0, 1.0)
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
 	var unity_extra = asset_meta_class.new()

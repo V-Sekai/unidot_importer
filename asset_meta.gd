@@ -152,7 +152,10 @@ func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 		fieldstr = "." + field + ": "
 	var fileidstr: String = ""
 	if remote_ref[1] != 0:
-		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
+		var ref_guid_str = str(remote_ref[2])
+		if log_database_holder.database.guid_to_path.has(ref_guid_str):
+			ref_guid_str = log_database_holder.database.guid_to_path[ref_guid_str].get_file()
+		fileidstr = " ref " + ref_guid_str + ":" + str(remote_ref[1])
 	if fileid != 0:
 		fileidstr += " @" + str(fileid)
 	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
@@ -174,7 +177,10 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 		fieldstr = "." + field + ": "
 	var fileidstr = ""
 	if len(remote_ref) >= 2 and remote_ref[1] != 0:
-		fileidstr = " ref " + str(remote_ref[2]) + ":" + str(remote_ref[1])
+		var ref_guid_str = str(remote_ref[2])
+		if log_database_holder.database.guid_to_path.has(ref_guid_str):
+			ref_guid_str = log_database_holder.database.guid_to_path[ref_guid_str].get_file()
+		fileidstr = " ref " + ref_guid_str + ":" + str(remote_ref[1])
 	if fileid != 0:
 		fileidstr += " @" + str(fileid)
 	var seq_str: String = "%08d " % log_database_holder.database.global_log_count

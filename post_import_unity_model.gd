@@ -724,7 +724,7 @@ func _post_import(p_scene: Node) -> Object:
 				bone_map_dict[prof_name] = bone_map.get_skeleton_bone_name(prof_name)
 		ps.bone_map_dict = bone_map_dict
 	ps.extractLegacyMaterials = metaobj.importer.keys.get("materials", {}).get("materialLocation", 0) == 0
-	ps.importMaterials = (metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) == 1)
+	ps.importMaterials = (metaobj.importer.keys.get("materials", {}).get("materialImportMode", metaobj.importer.keys.get("materials", {}).get("importMaterials", 1)) != 0)
 	ps.materialSearch = metaobj.importer.keys.get("materials", {}).get("materialSearch", 1)
 	ps.legacy_material_name_setting = metaobj.importer.keys.get("materials", {}).get("materialName", 0)
 	ps.preserve_hierarchy = false
