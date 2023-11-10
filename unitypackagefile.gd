@@ -144,11 +144,10 @@ func external_tar_with_filename(source_file: String):
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
-			pkgasset.icon = ImageTexture.new()
 			var image = Image.new()
 			image.load_png_from_buffer(header.get_data())
 			image.resize(20, 20)
-			pkgasset.icon.create_from_image(image)
+			pkgasset.icon = ImageTexture.create_from_image(image)
 		if fnparts[1] == "asset.meta":
 			pkgasset.metadata_tar_header = header
 		if fnparts[1] == "asset":
@@ -218,11 +217,15 @@ func init_with_filename(source_file: String):
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
-			pkgasset.icon = ImageTexture.new()
 			var image = Image.new()
 			image.load_png_from_buffer(header.get_data())
-			image.resize(20, 20)
-			pkgasset.icon.create_from_image(image)
+			image.resize(16, 16)
+			image.convert(Image.FORMAT_RGBA8)
+			for x in range(16):
+				for y in range(16):
+					if (image.get_pixel(x, y).to_argb32() & 0xffffff) == 0x525252:
+						image.set_pixel(x, y, Color.TRANSPARENT)
+			pkgasset.icon = ImageTexture.create_from_image(image)
 		if fnparts[1] == "asset.meta":
 			pkgasset.metadata_tar_header = header
 		if fnparts[1] == "asset":

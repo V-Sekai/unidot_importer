@@ -13,6 +13,7 @@ const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
 class ThreadWork:
 	var asset: unitypackagefile.UnityPackageAsset
 	var extra: Object
+	var asset_main_object_type: String
 
 
 # asset: unitypackagefile.UnityPackageAsset object
@@ -33,13 +34,15 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 		tw.asset.parsed_meta = asset_database.parse_meta(sf, path)
 	var imp_type: String = tw.asset.parsed_meta.importer_type
 	tw.asset.parsed_meta.dependency_guids = {}
-	print(path + ": " + imp_type)
+	#print(path + ": " + imp_type)
 	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or imp_type == "DefaultImporter":
 		if tw.asset.asset_tar_header != null:
 			var buf: PackedByteArray = tw.asset.asset_tar_header.get_data()
 			if buf[8] == 0 and buf[9] == 0:
 				binary_parser.new(tw.asset.parsed_meta, buf, true) # writes guid references
 			else:
-				yaml_parser.parse_dependency_guids(buf.get_string_from_utf8(), tw.asset.parsed_meta)
+				var yaml_str: String = buf.get_string_from_ascii()
+				yaml_parser.parse_dependency_guids(yaml_str, tw.asset.parsed_meta)
+				tw.asset_main_object_type = yaml_parser.parse_main_object_type(yaml_str)
 	#print("" + path + ":" + str(tw.asset.parsed_meta.dependency_guids) + " : " + str(tw.asset.parsed_meta.meta_dependency_guids))
 	asset_processing_finished.emit(tw)

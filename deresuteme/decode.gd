@@ -120,6 +120,7 @@ class Stream:
 	extends StreamPeerBuffer
 	var d: PackedByteArray = self.data_array
 	var reference_prefab_guid_storage: Array
+	var dependency_guids: Dictionary
 
 	func _init(d: PackedByteArray, p: int = 0):
 		self.d = d
@@ -334,6 +335,7 @@ class Def:
 							push_error("Asset " + self.full_name + "/" + self.type_name + " invalid pptr " + str(v) + " @" + str(s.tell()))
 						else:
 							var ret_ref = [null, v.get("m_PathID", 0), referenced_guids[v.get("m_FileID", 0)], referenced_reftypes[v.get("m_FileID", 0)]]
+							s.dependency_guids[referenced_guids[v.get("m_FileID", 0)]] = v.get("m_PathID", 0)
 							if self.name == "prototype" or self.name == "prefab":
 								if ret_ref[2] != null:
 									#print(" Possible Ref " + str(self.full_name) + " to " + str(ret_ref[2]))
@@ -524,7 +526,7 @@ func decode_guids() -> bool:
 		referenced_reftypes.push_back(s.get_u32())
 		var path: String = s.read_str()
 		referenced_guids.push_back(guid)
-		meta.dependency_guids[guid] = 1
+		meta.dependency_guids[guid] = 0
 		i += 1
 	if self.file_gen >= 20:
 		s.get_32()  # Unknown ref type
@@ -598,7 +600,7 @@ func decode_data_headers() -> Array:
 func decode_data(obj_headers: Array) -> Array:
 	meta.log_debug(0, str(referenced_guids) + " then " + str(referenced_reftypes))
 	for g in referenced_guids:
-		meta.dependency_guids[g] = 1
+		meta.dependency_guids[g] = 0
 	var save: int = self.s.tell()
 	var objs: Array = [].duplicate()
 	for obj_header in obj_headers:
@@ -631,6 +633,8 @@ func decode_data(obj_headers: Array) -> Array:
 			meta.prefab_dependency_guids[source_prefab_guid] = 1
 		objs.push_back(obj)
 	self.s.seek(save)
+	for guid in s.dependency_guids:
+		meta.dependency_guids[guid] = s.dependency_guids[guid]
 	return objs
 
 

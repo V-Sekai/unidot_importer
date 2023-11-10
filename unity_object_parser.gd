@@ -76,6 +76,17 @@ func _init():
 	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
 
 
+static func parse_main_object_type(yaml: String) -> String:
+	var first_indent: int = yaml.find("\n  ")
+	if first_indent == -1:
+		return ""
+	var last_colon: int = yaml.rfind(":", first_indent)
+	if last_colon == -1:
+		return ""
+	var last_newline: int = yaml.rfind("\n", last_colon) + 1
+	return yaml.substr(last_newline, last_colon - last_newline).strip_edges()
+
+
 static func parse_dependency_guids(yaml: String, asset_meta: Object) -> Dictionary:
 	var idx: int = 0
 	var dependencies: Dictionary
@@ -84,6 +95,7 @@ static func parse_dependency_guids(yaml: String, asset_meta: Object) -> Dictiona
 		if idx == -1:
 			break
 		var comma := yaml.find(",", idx)
+		var lbrace := yaml.rfind("{", idx)
 		var brace := yaml.find("}", idx)
 		var newline := yaml.find("}", idx)
 		if brace != -1 and brace < comma:
@@ -92,7 +104,14 @@ static func parse_dependency_guids(yaml: String, asset_meta: Object) -> Dictiona
 			idx = newline
 			continue
 		var guid_str := yaml.substr(idx + 5, comma - idx - 5).strip_edges()
-		dependencies[guid_str] = 1
+		var fileid_idx := yaml.find("fileID:", lbrace)
+		var fileid_comma := yaml.find(",", fileid_idx)
+		if fileid_comma > brace:
+			fileid_comma = brace
+		var fileid: int = 0
+		if fileid_idx != -1:
+			fileid = yaml.substr(fileid_idx + 7, fileid_comma - fileid_idx - 7).strip_edges().to_int()
+		dependencies[guid_str] = fileid
 		idx = comma
 	if asset_meta:
 		asset_meta.dependency_guids = dependencies
@@ -413,16 +432,16 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 						# other Object->Prefab/GameObject/Transform references need to be added here:
 						"m_SourcePrefab", "m_ParentPrefab", "prefab", "prototype":
 							# meta.log_debug(current_obj_fileID, " Possible Ref " + str(this_key))
-							meta.prefab_dependency_guids[parsed_val[2]] = 1
+							meta.prefab_dependency_guids[parsed_val[2]] = parsed_val[1]
 					if is_meta:
-						meta.meta_dependency_guids[parsed_val[2]] = 1
-					meta.dependency_guids[parsed_val[2]] = 1
+						meta.meta_dependency_guids[parsed_val[2]] = parsed_val[1]
+					meta.dependency_guids[parsed_val[2]] = parsed_val[1]
 				current_obj_tree.back()[this_key] = parsed_val
 		elif line_plain.begins_with("- "):
 			var parsed_val = parse_value(line_plain.substr(2), "", prev_complex_key)
 			if typeof(parsed_val) == TYPE_ARRAY and len(parsed_val) >= 3 and parsed_val[0] == null and typeof(parsed_val[2]) == TYPE_STRING:
 				if is_meta:
-					meta.meta_dependency_guids[parsed_val[2]] = 1
-				meta.dependency_guids[parsed_val[2]] = 1
+					meta.meta_dependency_guids[parsed_val[2]] = parsed_val[1]
+				meta.dependency_guids[parsed_val[2]] = parsed_val[1]
 			current_obj_tree.back().push_back(parsed_val)
 	return object_to_return

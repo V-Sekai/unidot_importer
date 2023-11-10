@@ -36,21 +36,32 @@ var main_dialog: AcceptDialog = null
 var file_dialog: FileDialog = null
 var main_dialog_tree: Tree = null
 
+var base_control: Control
 var spinner_icon: AnimatedTexture = null
 var spinner_icon1: Texture = null
 var fail_icon: Texture = null
 var log_icon: Texture = null
 var error_icon: Texture = null
 var warning_icon: Texture = null
+var status_error_icon: Texture = null
+var status_warning_icon: Texture = null
+var status_success_icon: Texture = null
+var folder_icon: Texture = null
+var file_icon: Texture = null
+var class_icons: Dictionary # String -> Texture2D
 
 var checkbox_off_unicode: String = "\u2610"
 var checkbox_on_unicode: String = "\u2611"
 
 var tmpdir: String = ""
-var asset_database: Resource = null
+var asset_database: asset_database_class = null
 
 var tree_dialog_state: int = 0
 var path_to_tree_item: Dictionary
+var guid_to_dependency_guids: Dictionary
+var dependency_guids_to_guid: Dictionary
+var ignore_dependencies: Dictionary
+
 var _currently_preprocessing_assets: int = 0
 var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
@@ -103,31 +114,77 @@ func _init():
 	editor_filesystem.resources_reload.connect(self._resource_reloaded)
 
 
-func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bool) -> void:
+
+func _set_indeterminate_up_recursively(ti: TreeItem, is_checked: bool):
+	if ti == null:
+		return
+	var is_all_checked: bool = true
+	var is_all_unchecked: bool = true
+	for sib in ti.get_children():
+		if sib.is_checked(0) or sib.is_indeterminate(0):
+			is_all_unchecked = false
+		if not sib.is_checked(0) or sib.is_indeterminate(0):
+			is_all_checked = false
+	if is_all_checked:
+		if ti.is_indeterminate(0) or not ti.is_checked(0):
+			ti.set_indeterminate(0, false)
+			ti.set_checked(0, true)
+			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+	elif is_all_unchecked:
+		if ti.is_indeterminate(0) or ti.is_checked(0):
+			ti.set_indeterminate(0, false)
+			ti.set_checked(0, false)
+			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+	else:
+		if not ti.is_indeterminate(0):
+			ti.set_checked(0, false)
+			ti.set_indeterminate(0, true)
+			ti.set_checked(0, false)
+			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+
+
+func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bool, visited_set: Dictionary={}, is_recursive_file: bool=false) -> void:
+	if visited_set.is_empty():
+		visited_set = {}
+	if visited_set.has(ti):
+		return 
+	visited_set[ti] = true
 	if ti.is_selectable(0):
+		ti.set_indeterminate(0, false)
 		ti.set_checked(0, is_checked)
 	#var old_prefix: String = (checkbox_on_unicode if !is_checked else checkbox_off_unicode)
 	#var new_prefix: String  = (checkbox_on_unicode if is_checked else checkbox_off_unicode)
 	#ti.set_text(0, new_prefix + ti.get_text(0).substr(len(old_prefix)))
 	for chld in ti.get_children():
-		_check_recursively(chld, is_checked, process_dependencies)
-	if process_dependencies:
+		_check_recursively(chld, is_checked, process_dependencies, visited_set, true)
+
+	if ti.is_selectable(0):
+		ti.set_indeterminate(0, false)
+		ti.set_checked(0, is_checked)
+	if not is_recursive_file:
+		var par := ti.get_parent()
+		_set_indeterminate_up_recursively(par, is_checked)
+	if process_dependencies and ti.get_child_count() == 0:
 		var path: String = ti.get_tooltip_text(0)
 		var asset = pkg.path_to_pkgasset.get(path)
+		if not asset:
+			return
 		var dep_guids: Dictionary
-		if asset:
-			for guid in asset.parsed_meta.dependency_guids:
-				dep_guids[guid] = 1
-			for guid in asset.parsed_meta.meta_dependency_guids:
-				dep_guids[guid] = 1
+		if is_checked:
+			dep_guids = guid_to_dependency_guids.get(asset.guid, {})
+		elif not ignore_dependencies.has(asset.guid):
+			# When unchecking an asset, we must 
+			dep_guids = dependency_guids_to_guid.get(asset.guid, {})
 		for guid in dep_guids:
+			if ignore_dependencies.has(guid):
+				continue
 			var dep_asset = pkg.guid_to_pkgasset.get(guid)
 			if not dep_asset:
 				continue
 			var child = path_to_tree_item.get(dep_asset.orig_pathname)
 			if not child:
 				continue
-			_check_recursively(child, is_checked, process_dependencies)
+			_check_recursively(child, is_checked, process_dependencies, visited_set)
 
 class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var fail_highlight: Dictionary
@@ -210,7 +267,7 @@ func unmerge_log_lines(lines_to_remove: PackedStringArray, current_scroll: float
 				current_scroll = idx_out
 			idx1 += 1
 			idx_out += 1
-		if visible_log_lines[idx1] == line:
+		if idx1 < len(visible_log_lines) and visible_log_lines[idx1] == line:
 			#print("Do " + str(visible_log_lines[idx1]))
 			if idx1 == current_scroll:
 				current_scroll = idx_out
@@ -241,8 +298,8 @@ func _cell_selected() -> void:
 	ti.deselect(col)
 	if col == 0 or col == 1:
 		if ti != null:  # and col == 1:
-			var new_checked: bool = !ti.is_checked(0)
-			var process_dependencies: bool = Input.is_key_pressed(KEY_SHIFT)
+			var new_checked: bool = !ti.is_indeterminate(0) and !ti.is_checked(0)
+			var process_dependencies: bool = not Input.is_key_pressed(KEY_SHIFT)
 			_check_recursively(ti, new_checked, process_dependencies)
 	elif col >= 2:
 		ti.set_checked(col, not ti.is_checked(col))
@@ -317,6 +374,24 @@ func _cell_selected() -> void:
 		result_log_lineedit.visible = true # not visible_log_lines.is_empty()
 		result_log_lineedit.size_flags_stretch_ratio = 1.0
 
+const HUMAN_READABLE_NAMES: Dictionary = {
+	5866666021909216657: "Animator",
+	-8679921383154817045: "Transform",
+	919132149155446097: "GameObject",
+	1091099324641564166: "PrefabInstance",
+	2357318004158062694: "PrefabInstance",
+}
+
+func human_readable_fileid_heuristic(fileID: int) -> String:
+	if fileID == 0:
+		return ""
+	if fileID > 0 and (fileID / 1000) % 100 == 0 and (fileID / 100000) < 1002:
+		var classID: int = fileID / 100000
+		return object_adapter.utype_to_classname[classID]
+	if HUMAN_READABLE_NAMES.has(fileID):
+		return HUMAN_READABLE_NAMES[fileID]
+	return str(fileID)
+
 func _meta_completed(tw: Object):
 	var pkgasset = tw.asset
 	var ti = tw.extra as TreeItem
@@ -324,11 +399,72 @@ func _meta_completed(tw: Object):
 	if pkgasset.parsed_meta != null:
 		importer_type = pkgasset.parsed_meta.importer_type.replace("Importer", "")
 		if importer_type == "NativeFormat":
+			importer_type = "[" + tw.asset_main_object_type + "]"
 			if pkgasset.parsed_meta.main_object_id != 0 and pkgasset.parsed_meta.main_object_id % 100000 == 0:
 				var clsid: int = pkgasset.parsed_meta.main_object_id / 100000
 				if object_adapter.utype_to_classname.has(clsid):
 					importer_type = "[" + object_adapter.utype_to_classname[clsid] + "]"
+		var dep_guids: Dictionary = pkgasset.parsed_meta.meta_dependency_guids.duplicate()
+		if importer_type == "[LightingDataAsset]":
+			ignore_dependencies[pkgasset.guid] = true
+			_check_recursively(ti, false, false)
+		if importer_type == "[MonoScript]" or importer_type == "Mono" or importer_type == "":
+			ignore_dependencies[pkgasset.guid] = true
+			_check_recursively(ti, false, false)
+		if importer_type == "[Shader]" or importer_type == "Shader":
+			ignore_dependencies[pkgasset.guid] = true
+			_check_recursively(ti, false, false)
+		for guid in pkgasset.parsed_meta.dependency_guids:
+			dep_guids[guid] = pkgasset.parsed_meta.dependency_guids[guid]
+		var da := DirAccess.open("res://")
+		for guid in dep_guids:
+			var guid_meta = asset_database.get_meta_by_guid(guid)
+			if guid_meta != null and da.file_exists(guid_meta.path):
+				# No need to force selection
+				continue
+			if guid_meta == null and not pkg.guid_to_pkgasset.has(guid):
+				push_error("Asset " + pkgasset.parsed_meta.path + " depends on missing GUID " + guid + " fileID " + human_readable_fileid_heuristic(dep_guids[guid]))
+			if not guid_to_dependency_guids.has(pkgasset.guid):
+				guid_to_dependency_guids[pkgasset.guid] = {}
+			guid_to_dependency_guids[pkgasset.guid][guid] = dep_guids[guid]
+			if not dependency_guids_to_guid.has(guid):
+				dependency_guids_to_guid[guid] = {}
+			dependency_guids_to_guid[guid][pkgasset.guid] = dep_guids[guid]
 	ti.set_text(1, importer_type.replace("Default", "Scene"))
+	var cls: String
+	if importer_type.begins_with("["):
+		cls = importer_type.substr(1, len(importer_type) - 2)
+		var tmp_instance = object_adapter.instantiate_unity_object(pkgasset.parsed_meta, 0, 0, cls)
+		cls = tmp_instance.get_godot_type()
+	else:
+		var tmp_importer = null
+		if pkgasset.parsed_meta != null:
+			tmp_importer = pkgasset.parsed_meta.importer
+		if tmp_importer == null:
+			tmp_importer = object_adapter.instantiate_unity_object(pkgasset.parsed_meta, 0, 0, importer_type + "Importer")
+		var main_object_id: int = tmp_importer.get_main_object_id()
+		if main_object_id == 1 or main_object_id == 100100000:
+			cls = "PackedScene"
+		else:
+			var utype: int = main_object_id / 100000
+			var tmp_instance = object_adapter.instantiate_unity_object_from_utype(pkgasset.parsed_meta, 0, utype)
+			cls = tmp_instance.get_godot_type()
+	var tooltip_cls: String = cls
+	if cls.begins_with("AnimationNode"):
+		cls = "AnimatedTexture"
+	if cls == "Texture2D":
+		cls = "ImageTexture"
+	if cls == "BoneMap":
+		cls = "BoneAttachment3D"
+	if not class_icons.has(cls):
+		class_icons[cls] = base_control.get_theme_icon(cls, "EditorIcons")
+	var icon: Texture2D = class_icons[cls]
+	if icon == null:
+		icon = file_icon
+	if ti.get_icon(0) == null or ti.get_icon(0) == file_icon:
+		ti.set_icon(0, icon)
+	ti.set_icon(1, icon)
+	ti.set_tooltip_text(1, tooltip_cls)
 
 	var color = Color(0.3 + 0.4 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.3 + 0.4 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
@@ -350,6 +486,8 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 	if was_directory and p_ti.get_child_count() == 0:
 		return false
 
+	var path = p_ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
+	var asset = pkg.path_to_pkgasset.get(path)
 	# Has children or it is checked.
 	var tooltip = p_ti.get_tooltip_text(0)
 	var text = p_ti.get_text(0)
@@ -361,6 +499,10 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 		text = text.get_basename().substr(0, 30) + "..." + text.get_extension()
 	p_ti.set_text(0, text)
 	p_ti.set_tooltip_text(0, tooltip)
+	if asset:
+		p_ti.set_icon(0, spinner_icon)
+	else:
+		p_ti.set_icon(0, folder_icon)
 	#p_ti.set_expand_right(0, true)
 	p_ti.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
 	p_ti.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -398,6 +540,7 @@ func _selected_package(p_path: String) -> void:
 	ti.set_expand_right(1, false)
 	ti.set_checked(0, true)
 	ti.set_icon_max_width(0, 24)
+	ti.set_icon(0, folder_icon)
 	ti.set_text(1, "RootDirectory")
 	var tree_items = [ti]
 	for path in pkg.paths:
@@ -431,16 +574,17 @@ func _selected_package(p_path: String) -> void:
 				ti.set_tooltip_text(0, path)
 			ti.set_icon_max_width(0, 24)
 			#ti.set_custom_color(0, Color.DARK_BLUE)
+				# ti.add_button(0, spinner_icon1, -1, true)
+			ti.set_text(0, path_names[i])
 			var icon: Texture = pkgasset.icon
 			if icon != null:
 				ti.set_icon(0, icon)
-				# ti.add_button(0, spinner_icon1, -1, true)
-			ti.set_text(0, path_names[i])
 			if i == len(path_names) - 1:
 				meta_worker.push_asset(pkgasset, ti)
 				ti.set_text(1, "")
 			else:
 				ti.set_text(1, "Directory")
+				ti.set_icon(0, folder_icon)
 	main_dialog.popup_centered_ratio()
 	check_fbx2gltf()
 	if file_dialog:
@@ -522,6 +666,7 @@ func show_importer_logs() -> void:
 
 
 func _show_importer_common() -> void:
+	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
@@ -575,7 +720,7 @@ func _show_importer_common() -> void:
 	force_reimport_models_checkbox.size_flags_stretch_ratio = 0.0
 	vbox.add_child(force_reimport_models_checkbox)
 	n.add_sibling(vbox)
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(main_dialog, true)
+	base_control.add_child(main_dialog, true)
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
@@ -584,12 +729,16 @@ func _show_importer_common() -> void:
 	if file_dialog != null:
 		file_dialog.popup_centered_ratio()
 
-	var base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	log_icon = base_control.get_theme_icon("CodeEdit", "EditorIcons")
 	fail_icon = base_control.get_theme_icon("ImportFail", "EditorIcons")
 	error_icon = base_control.get_theme_icon("Error", "EditorIcons")
 	warning_icon = base_control.get_theme_icon("ErrorWarning", "EditorIcons")
 	spinner_icon1 = base_control.get_theme_icon("Progress1", "EditorIcons")
+	status_warning_icon = base_control.get_theme_icon("StatusWarning", "EditorIcons")
+	status_error_icon = base_control.get_theme_icon("StatusError", "EditorIcons")
+	status_success_icon = base_control.get_theme_icon("StatusSuccess", "EditorIcons")
+	folder_icon = base_control.get_theme_icon("Folder", "EditorIcons")
+	file_icon = base_control.get_theme_icon("File", "EditorIcons")
 	spinner_icon = AnimatedTexture.new()
 	for i in range(8):
 		# was get_icon in 3.2
@@ -637,17 +786,25 @@ func on_import_fully_completed():
 func update_task_color(tw: RefCounted):
 	var ti: TreeItem = tw.extra
 	if tw.asset.parsed_meta == null:
+		ti.set_icon(0, status_success_icon)
 		ti.set_custom_color(0, Color("#ddffbb"))
 	else:
 		var holder: asset_meta_class.LogMessageHolder = tw.asset.parsed_meta.log_message_holder
 		if not tw.is_loaded:
+			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff4422"))
 		elif holder.has_fails():
+			ti.set_icon(0, status_warning_icon)
 			ti.set_custom_color(0, Color("#ff8822"))
+			ti.set_text(0, tw.asset.parsed_meta.path.get_file())
 		elif holder.has_warnings():
+			ti.set_icon(0, status_success_icon)
 			ti.set_custom_color(0, Color("#ccff22"))
+			ti.set_text(0, tw.asset.parsed_meta.path.get_file())
 		else:
+			ti.set_icon(0, status_success_icon)
 			ti.set_custom_color(0, Color("#22ff44"))
+			ti.set_text(0, tw.asset.parsed_meta.path.get_file())
 		if holder != null:
 			var num_fails = len(holder.fails)
 			var delta_num_fails = num_fails - ("0" + ti.get_text(4)).to_int()
@@ -834,6 +991,7 @@ func start_godot_import(tw: Object):
 		if ti.get_button_count(0) > 0:
 			ti.erase_button(0, 0)
 		ti.set_custom_color(0, Color("#22bb66"))
+		ti.set_icon(0, status_success_icon)
 		return
 
 	if asset_adapter.uses_godot_importer(tw.asset):

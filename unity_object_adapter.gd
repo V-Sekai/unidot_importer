@@ -195,6 +195,9 @@ class UnityObject:
 		state.add_child(new_node, new_parent, self)
 		return new_node
 
+	func get_godot_type() -> String:
+		return "Object"
+
 	func get_extra_resources() -> Dictionary:
 		return {}
 
@@ -424,6 +427,9 @@ class UnityMesh:
 			_:
 				log_fail(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
 		return Mesh.PRIMITIVE_TRIANGLES
+
+	func get_godot_type() -> String:
+		return "Mesh"
 
 	func get_extra_resources() -> Dictionary:
 		if binds.is_empty():
@@ -726,6 +732,9 @@ class UnityMaterial:
 				ret[x] = true
 		return ret
 
+	func get_godot_type() -> String:
+		return "StandardMaterial3D"
+
 	func create_godot_resource() -> Resource:  #Material:
 		#log_debug("keys: " + str(keys))
 		var kws = get_keywords()
@@ -810,6 +819,10 @@ class UnityMaterial:
 
 class UnityShader:
 	extends UnityObject
+
+	func get_godot_type() -> String:
+		return "Shader"
+
 	pass
 
 
@@ -823,6 +836,9 @@ class UnityAvatar:
 		quaternion.z = -quaternion.z
 		var scale: Vector3 = xform["s"]
 		return Transform3D(Basis(Quaternion(quaternion)).scaled(scale), translation)
+
+	func get_godot_type() -> String:
+		return "BoneMap"
 
 	func create_godot_resource() -> Resource:
 		var fileid_to_human_bone_index: Dictionary
@@ -1029,6 +1045,9 @@ class UnityRuntimeAnimatorController:
 				log_debug("Adapting AnimationClip " + clip_name + " at node " + str(node_parent.name))
 				virtual_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
 
+	func get_godot_type() -> String:
+		return "AnimationNodeBlendTree"
+
 	func create_godot_resource() -> Resource:
 		return null
 
@@ -1063,6 +1082,9 @@ class UnityAnimatorOverrideController:
 		anim_library.set_meta("base_node", referenced_sm)
 		anim_library.set_meta("base_library", referenced_library)
 		return anim_library
+
+	func get_godot_type() -> String:
+		return "AnimationLibrary"
 
 	func create_godot_resource() -> Resource:
 		return create_animation_library_at_node(null, null)
@@ -1437,6 +1459,9 @@ class UnityAnimatorController:
 class UnityAnimatorStateMachine:
 	extends UnityAnimatorRelated
 
+	func get_godot_type() -> String:
+		return "AnimationNodeStateMachine"
+
 	func get_state_data(sm_prefix: String, state_data: Dictionary, unique_names: Dictionary, sm_pos: Vector3, pos_scale: float):
 		for state in keys["m_ChildStates"]:
 			var child: UnityAnimatorState = meta.lookup(state["m_State"])
@@ -1470,7 +1495,7 @@ class UnityAnimatorStateMachine:
 			var motion_ref: Array = child.keys["m_Motion"]
 			if out_guid_fid_to_anim_name.has(child.ref_to_anim_key(motion_ref)):
 				continue
-			var motion: UnityMotion = child.meta.lookup(motion_ref, motion_ref[1] != 7400000)
+			var motion: UnityMotion = child.meta.lookup(motion_ref, true) # motion_ref[1] != 7400000)
 			if motion != null:
 				sm_path.append(basename)
 				motion.get_all_animations(sm_path, uniq_name_dict, out_guid_fid_to_anim_name)
@@ -1546,6 +1571,9 @@ class UnityAnimatorStateMachine:
 class UnityAnimatorState:
 	extends UnityAnimatorRelated
 
+	func get_godot_type() -> String:
+		return "AnimationRootNode"
+
 	func create_animation_node(controller: RefCounted, layer_index: int, animation_guid_fileid_to_name: Dictionary, reverse_animations: bool=false) -> AnimationRootNode:
 		var speed: float = keys.get("m_Speed", 1)
 		if speed < 0:
@@ -1596,6 +1624,10 @@ class UnityAnimatorState:
 
 class UnityAnimatorTransitionBase:
 	extends UnityAnimatorRelated
+
+	func get_godot_type() -> String:
+		return "AnimationNodeStateMachineTransition"
+
 	pass  # abstract
 
 
@@ -1635,6 +1667,9 @@ class UnityMotion:
 
 class UnityBlendTree:
 	extends UnityMotion
+
+	func get_godot_type() -> String:
+		return "AnimationNodeBlendSpace2D"
 
 	func get_all_animations(sm_path: Array, uniq_name_dict: Dictionary, out_guid_fid_to_anim_name: Dictionary):
 		for child in keys["m_Childs"]:
@@ -1769,6 +1804,9 @@ class UnityBlendTree:
 
 class UnityAnimationClip:
 	extends UnityMotion
+
+	func get_godot_type() -> String:
+		return "Animation"
 
 	func get_godot_extension() -> String:
 		return ".anim.tres"
@@ -2733,6 +2771,9 @@ class UnityTexture:
 		img.create_from_data(self.width, self.height, self.mipmaps > 1, format, imgdata)
 		return img
 
+	func get_godot_type() -> String:
+		return "Texture"
+
 	func gen_image() -> Image:
 		var imgdata: PackedByteArray = self.get_image_data()
 		return gen_image_layer(imgdata, 0, 0)
@@ -2740,6 +2781,9 @@ class UnityTexture:
 
 class UnityTexture2D:
 	extends UnityTexture
+
+	func get_godot_type() -> String:
+		return "Texture2D"
 
 	func create_godot_resource() -> Resource:
 		var imgtex: ImageTexture = ImageTexture.new()
@@ -2806,6 +2850,9 @@ class UnityTextureLayered:
 class UnityTexture2DArray:
 	extends UnityTextureLayered
 
+	func get_godot_type() -> String:
+		return "Texture2DArray"
+
 	func create_godot_resource() -> Resource:
 		var imgtex: Texture2DArray = Texture2DArray.new()
 		imgtex.create_from_images(self.gen_images())
@@ -2814,6 +2861,9 @@ class UnityTexture2DArray:
 
 class UnityTexture3D:
 	extends UnityTextureLayered
+
+	func get_godot_type() -> String:
+		return "Texture3D"
 
 	func create_godot_resource() -> Resource:
 		var imgtex: ImageTexture3D = ImageTexture3D.new()
@@ -2824,6 +2874,9 @@ class UnityTexture3D:
 class UnityCubemap:
 	extends UnityTextureLayered
 
+	func get_godot_type() -> String:
+		return "Cubemap"
+
 	func create_godot_resource() -> Resource:
 		var imgtex: Cubemap = Cubemap.new()
 		imgtex.create_from_images(self.gen_images())
@@ -2833,6 +2886,9 @@ class UnityCubemap:
 class UnityCubemapArray:
 	extends UnityTextureLayered
 
+	func get_godot_type() -> String:
+		return "CubemapArray"
+
 	func create_godot_resource() -> Resource:
 		var imgtex: CubemapArray = CubemapArray.new()
 		imgtex.create_from_images(self.gen_images())
@@ -2841,6 +2897,10 @@ class UnityCubemapArray:
 
 class UnityRenderTexture:
 	extends UnityTexture
+
+	func get_godot_type() -> String:
+		return "ViewportTexture"
+
 	pass
 
 
@@ -2851,6 +2911,9 @@ class UnityCustomRenderTexture:
 
 class UnityTerrainLayer:
 	extends UnityObject
+
+	func get_godot_type() -> String:
+		return "MeshLibrary"
 
 	func get_godot_extension() -> String:
 		return ".terrainlayer.tres"
@@ -2893,6 +2956,9 @@ class UnityTerrainData:
 	var other_resources: Dictionary = {}
 	var scale: Vector3 = Vector3.ONE
 	var resolution: int = 0
+
+	func get_godot_type() -> String:
+		return "HeightMapShape3D"
 
 	func resolve_godot_resource(fileRef: Array) -> Resource:
 		if fileRef[2] == null or fileRef[2] == meta.guid:
@@ -3242,9 +3308,31 @@ shader_type spatial;
 		return null
 
 
+class UnityTextAsset:
+	extends UnityObject
+
+	func get_godot_type() -> String:
+		return "TextFile"
+
+	func get_godot_extension() -> String:
+		return "." + meta.path.get_extension()
+
+	func get_godot_resource() -> Resource:
+		var fa: FileAccess = FileAccess.open(meta.path, FileAccess.WRITE)
+		var script: Variant = keys.get("m_Script", PackedByteArray())
+		if typeof(script) == TYPE_STRING:
+			script = script.to_utf8_buffer()
+		fa.store_buffer(script)
+		fa.close()
+		return meta # Don't error even though we didn't technically create a Godot resource.
+
+
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject:
 	extends UnityObject
+
+	func get_godot_type() -> String:
+		return "Node3D"
 
 	func recurse_to_child_transform(state: RefCounted, child_transform: UnityObject, new_parent: Node3D) -> Array:  # prefab_fileID,prefab_name,go_fileID,node
 		if child_transform.type == "PrefabInstance":
@@ -3587,6 +3675,9 @@ class UnityGameObject:
 # Is this canon? We'll never know because the documentation denies even the existence of a "PrefabInstance" class
 class UnityPrefabInstance:
 	extends UnityGameObject
+
+	func get_godot_type() -> String:
+		return "PackedScene"
 
 	func is_stripped_or_prefab_instance() -> bool:
 		return true
@@ -4117,6 +4208,9 @@ class UnityPrefabLegacyUnused:
 class UnityComponent:
 	extends UnityObject
 
+	func get_godot_type() -> String:
+		return "Node"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: Node = Node.new()
 		new_node.name = type
@@ -4160,6 +4254,9 @@ class UnityBehaviour:
 
 class UnityTransform:
 	extends UnityComponent
+
+	func get_godot_type() -> String:
+		return "Node3D"
 
 	var skeleton_bone_index: int = -1
 
@@ -4269,11 +4366,18 @@ class UnityTransform:
 
 class UnityRectTransform:
 	extends UnityTransform
+
+	func get_godot_type() -> String:
+		return "Control"
+
 	pass
 
 
 class UnityCollider:
 	extends UnityBehaviour
+
+	func get_godot_type() -> String:
+		return "StaticBody3D"
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
@@ -4498,6 +4602,9 @@ class UnityTerrainCollider:
 class UnityRigidbody:
 	extends UnityComponent
 
+	func get_godot_type() -> String:
+		return "RigidBody3D"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
@@ -4554,6 +4661,9 @@ class UnityRenderer:
 
 class UnityMeshRenderer:
 	extends UnityRenderer
+
+	func get_godot_type() -> String:
+		return "MeshInstance3D"
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return create_godot_node_orig(state, new_parent, type)
@@ -4902,6 +5012,9 @@ class UnityCloth:
 class UnityLight:
 	extends UnityBehaviour
 
+	func get_godot_type() -> String:
+		return "Light3D"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var light: Light3D
 		# TODO: Change Light to use set()
@@ -5010,6 +5123,9 @@ class UnityLight:
 class UnityAudioSource:
 	extends UnityBehaviour
 
+	func get_godot_type() -> String:
+		return "AudioStreamPlayer3D"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var audio: Node = null
 		var panlevel_curve: Dictionary = keys.get("panLevelCustomCurve", {})
@@ -5076,6 +5192,9 @@ class UnityAudioSource:
 class UnityCamera:
 	extends UnityBehaviour
 
+	func get_godot_type() -> String:
+		return "Camera3D"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var par: Node = new_parent
 		var texref: Array = keys.get("m_TargetTexture", [null, 0, null, null])
@@ -5136,6 +5255,9 @@ class UnityCamera:
 class UnityLightProbeGroup:
 	extends UnityComponent
 
+	func get_godot_type() -> String:
+		return "LightmapProbe"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var i = 0
 		for pos in keys.get("m_SourcePositions", []):
@@ -5150,6 +5272,9 @@ class UnityLightProbeGroup:
 
 class UnityReflectionProbe:
 	extends UnityBehaviour
+
+	func get_godot_type() -> String:
+		return "ReflectionProbe"
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var probe: ReflectionProbe = ReflectionProbe.new()
@@ -5194,6 +5319,9 @@ class UnityReflectionProbe:
 class UnityTerrain:
 	extends UnityBehaviour
 
+	func get_godot_type() -> String:
+		return "MultiMeshInstance3D"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		#var terrain: MeshInstance3D = MeshInstance3D.new()
 		#terrain.name = "Terrain"
@@ -5223,6 +5351,9 @@ class UnityMonoBehaviour:
 		get:
 			return keys.get("m_Script", [null, 0, null, null])
 
+	func get_godot_type() -> String:
+		return "GDScript"
+
 	# No need yet to override create_godot_node...
 	func create_godot_resource() -> Resource:
 		if monoscript[1] == 11500000:
@@ -5244,6 +5375,9 @@ class UnityMonoBehaviour:
 
 class UnityAnimation:
 	extends UnityBehaviour
+
+	func get_godot_type() -> String:
+		return "AnimationPlayer"
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var animplayer: AnimationPlayer = AnimationPlayer.new()
@@ -5286,6 +5420,9 @@ class UnityAnimation:
 
 class UnityAnimator:
 	extends UnityBehaviour
+
+	func get_godot_type() -> String:
+		return "AnimationTree"
 
 	func get_avatar_meta() -> Object:
 		return meta.lookup_meta(keys.get("m_Avatar", [null, 0, "", null]))
@@ -5656,6 +5793,9 @@ class UnityDefaultImporter:
 class DiscardUnityComponent:
 	extends UnityComponent
 
+	func get_godot_type() -> String:
+		return "MissingNode"
+
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		return null
 
@@ -5874,7 +6014,7 @@ var _type_dictionary: Dictionary = {
 	# "RayTracingShaderImporter": UnityRayTracingShaderImporter,
 	"RectTransform": UnityRectTransform,
 	# "ReferencesArtifactGenerator": UnityReferencesArtifactGenerator,
-	# DISABLED FOR NOW: "ReflectionProbe": UnityReflectionProbe,
+	"ReflectionProbe": UnityReflectionProbe,
 	# "RelativeJoint2D": UnityRelativeJoint2D,
 	"Renderer": UnityRenderer,
 	# "RendererFake": UnityRendererFake,
@@ -5927,7 +6067,7 @@ var _type_dictionary: Dictionary = {
 	"TerrainCollider": UnityTerrainCollider,
 	"TerrainData": UnityTerrainData,
 	"TerrainLayer": UnityTerrainLayer,
-	# "TextAsset": UnityTextAsset,
+	"TextAsset": UnityTextAsset,
 	# "TextMesh": UnityTextMesh,
 	"TextScriptImporter": UnityTextScriptImporter,
 	"Texture": UnityTexture,

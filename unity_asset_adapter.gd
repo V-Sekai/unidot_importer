@@ -1378,6 +1378,17 @@ class FbxHandler:
 		return return_output_path
 
 
+class TextHandler:
+	extends AssetHandler
+
+	func get_asset_type(pkgasset: Object):
+		return ASSET_TYPE_TEXTURE
+
+	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
+		super.write_godot_asset(pkgasset, temp_path)
+		return false # Tells package dialog that this resource cannot be loaded so it shouldn't show an error
+
+
 class DisabledHandler:
 	extends AssetHandler
 
@@ -1456,7 +1467,17 @@ var file_handlers: Dictionary = {
 	"controller": YamlHandler.new(),  # Animator Controller
 	"anim": YamlHandler.new(),  # Animation... # TODO: This should be by type (.asset), not extension
 	# ALSO: animations can be contained inside other assets, such as controllers. we need to recognize this and extract them.
-	"default": DefaultHandler.new()
+	"default": DefaultHandler.new(),
+	"txt": TextHandler.new(),
+	"html": TextHandler.new(),
+	"htm": TextHandler.new(),
+	"pdf": TextHandler.new(),
+	"xml": TextHandler.new(),
+	"bytes": TextHandler.new(),
+	"json": TextHandler.new(),
+	"csv": TextHandler.new(),
+	"yaml": TextHandler.new(),
+	"fnt": TextHandler.new(),
 }
 
 
