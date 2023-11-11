@@ -2102,7 +2102,7 @@ class UnityAnimationClip:
 		var identical: int = 0
 		for track_idx in range(clip.get_track_count()):
 			var typ: int = clip.track_get_type(track_idx)
-			var resolved_key: String = str(clip.track_get_path(track_idx))
+			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
 			var resolved_subpath: String = NodePath(resolved_key).get_concatenated_subnames()
 			match typ:
 				Animation.TYPE_BLEND_SHAPE:
@@ -2205,7 +2205,9 @@ class UnityAnimationClip:
 			for sfx in human_trait.IKSuffixNames:
 				special_humanoid_transforms[pfx + sfx] = human_trait.IKSuffixNames[sfx]
 		for pfx in human_trait.BoneName:
-			special_humanoid_transforms[pfx + "TDOF"] = ""
+			special_humanoid_transforms[pfx + "TDOF.x"] = ""
+			special_humanoid_transforms[pfx + "TDOF.y"] = ""
+			special_humanoid_transforms[pfx + "TDOF.z"] = ""
 
 		# m_AnimationClipSettings[m_StartTime,m_StopTime,m_LoopTime,
 		# m_KeepOriginPositionY/XZ/Orientation,m_HeightFromFeet,m_CycleOffset],
@@ -2256,8 +2258,11 @@ class UnityAnimationClip:
 				has_humanoid = true
 			elif classID == 137 and attr.begins_with("blendShape."):
 				var bstrack = anim.add_track(Animation.TYPE_BLEND_SHAPE)
-				nodepath = NodePath(str(nodepath) + ":" + attr.substr(11))
-				resolved_to_default["B" + str(nodepath)] = [path, attr, classID]
+				var str_nodepath: String = str(nodepath)
+				if str_nodepath.ends_with("/SkinnedMeshRenderer"):
+					str_nodepath = "%GeneralSkeleton/" + str_nodepath.split("/")[-2]
+				nodepath = NodePath(str_nodepath + ":" + attr.substr(11))
+				resolved_to_default["B" + str_nodepath] = [path, attr, classID]
 				anim.track_set_path(bstrack, nodepath)
 				anim.track_set_interpolation_type(bstrack, Animation.INTERPOLATION_LINEAR)
 				var key_iter: KeyframeIterator = KeyframeIterator.new(track_curve)
@@ -2595,7 +2600,12 @@ class UnityAnimationClip:
 
 		if max_ts <= 0.0:
 			max_ts = 1.0 # Animations are 1 second long by default, but can be shorter based on keyframe
+		var settings: Dictionary = keys.get("m_AnimationClipSettings", {})
+		if settings.get("m_StopTime", 0.0) > 0.0:
+			max_ts = settings.get("m_StopTime", 0.0)
 		anim.length = max_ts
+		if settings.get("m_LoopTime", 0) != 0:
+			anim.loop_mode = Animation.LOOP_LINEAR
 		anim.set_meta("resolved_to_default_paths", resolved_to_default)
 		if anim.resource_path == StringName():
 			var res_path = StringName()

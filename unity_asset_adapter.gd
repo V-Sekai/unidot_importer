@@ -294,6 +294,9 @@ class YamlHandler:
 
 	func parse_yaml_or_binary(pkgasset: Object, temp_path: String) -> void:
 		var outfile: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE_READ)
+		if outfile == null:
+			pkgasset.log_fail("Failed to open temporary path " + temp_path)
+			return
 		var buf: PackedByteArray = pkgasset.asset_tar_header.get_data()
 		outfile.store_buffer(buf)
 		outfile.flush()
