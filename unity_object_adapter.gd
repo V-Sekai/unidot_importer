@@ -730,6 +730,9 @@ class UnityMaterial:
 		if typeof(kwd) == TYPE_STRING:
 			for x in kwd.split(" "):
 				ret[x] = true
+		var validkws: Array = keys.get("m_ValidKeywords", [])
+		for x in validkws:
+			ret[str(x)] = true
 		return ret
 
 	func get_godot_type() -> String:
@@ -4003,6 +4006,8 @@ class UnityPrefabInstance:
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityGameObject = gameobject_asset
 			var source_obj_ref = par.prefab_source_object
+			var source_transform_id: int = gntfac.get(source_obj_ref[1], pgntfac.get(source_obj_ref[1], {})).get(4, 0)
+			var transform_delta: Transform3D = target_prefab_meta.transform_fileid_to_rotation_delta.get(source_transform_id, target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(source_transform_id, Transform3D()))
 			log_debug("Checking stripped GameObject " + str(par.uniq_key) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
@@ -4048,6 +4053,8 @@ class UnityPrefabInstance:
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
 				component.configure_node(tmp)
+				if tmp is Node3D:
+					tmp.transform = transform_delta * tmp.transform
 				var ckey = component.get_component_key()
 				if not comp_map.has(ckey):
 					comp_map[ckey] = component.fileID
@@ -4328,7 +4335,7 @@ class UnityTransform:
 			rot_quat = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
 			outdict["quaternion"] = rot_quat
 
-		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot
+		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot * rotation_delta_post.basis.inverse()
 		if not rotation_delta.is_equal_approx(Transform3D.IDENTITY):
 			log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)

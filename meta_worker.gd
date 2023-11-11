@@ -35,7 +35,7 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 	var imp_type: String = tw.asset.parsed_meta.importer_type
 	tw.asset.parsed_meta.dependency_guids = {}
 	#print(path + ": " + imp_type)
-	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or imp_type == "DefaultImporter":
+	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or (imp_type == "DefaultImporter" and path.to_lower().ends_with(".unity")):
 		if tw.asset.asset_tar_header != null:
 			var buf: PackedByteArray = tw.asset.asset_tar_header.get_data()
 			if buf[8] == 0 and buf[9] == 0:
