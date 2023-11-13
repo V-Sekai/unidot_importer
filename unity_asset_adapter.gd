@@ -331,7 +331,10 @@ class YamlHandler:
 		var godot_resource: Resource = null
 
 		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
-			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
+			if pkgasset.parsed_asset.assets.has(pkgasset.parsed_meta.main_object_id):
+				main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
+			else:
+				pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " missing main object id " + str(pkgasset.parsed_meta.main_object_id) + "!")
 		else:
 			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 		var new_pathname: String = pkgasset.pathname
@@ -373,10 +376,10 @@ class YamlHandler:
 		var main_asset: RefCounted = null
 		var godot_resource: Resource = null
 
-		if pkgasset.parsed_meta.main_object_id != -1 and pkgasset.parsed_meta.main_object_id != 0:
+		if pkgasset.parsed_meta.main_object_id != 0 and pkgasset.parsed_asset.assets.has(pkgasset.parsed_meta.main_object_id):
 			main_asset = pkgasset.parsed_asset.assets[pkgasset.parsed_meta.main_object_id]
 		else:
-			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
+			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id " + str(pkgasset.parsed_meta.main_object_id) + "!")
 
 		var extra_resources: Dictionary = {}
 		if main_asset != null:
@@ -1108,6 +1111,8 @@ class FbxHandler:
 		d.rename(tmp_bin_output_path, bin_output_path)
 		d.rename(tmp_gltf_output_path, gltf_output_path)
 		var f: FileAccess = FileAccess.open(gltf_output_path, FileAccess.READ)
+		if f == null:
+			pkgasset.log_fail("Failed to open gltf output " + gltf_output_path)
 		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
 		f = null
 		var jsonres = JSON.new()

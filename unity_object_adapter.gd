@@ -4588,6 +4588,8 @@ class UnityMeshCollider:
 				log_warn("Oh no i am stripped MeshCollider get_mesh")
 			var mf: RefCounted = gameObject.get_meshFilter()
 			if mf != null:
+				if mf.is_stripped:
+					log_warn("Oh no i am stripped MeshFilter get_mesh")
 				return mf.mesh
 		return ret
 
@@ -4627,12 +4629,9 @@ class UnityRigidbody:
 
 	func create_physics_body(state: RefCounted, new_parent: Node3D, name: String) -> Node:
 		var new_node: Node3D
-		if keys.get("m_IsKinematic") != 0:
-			var kinematic: CharacterBody3D = CharacterBody3D.new()
-			new_node = kinematic
-		else:
-			var rigid: RigidBody3D = RigidBody3D.new()
-			new_node = rigid
+		var rigid: RigidBody3D = RigidBody3D.new()
+		rigid.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+		new_node = rigid
 
 		new_node.name = name  # Not type: This replaces the usual transform node.
 		state.add_child(new_node, new_parent, self)
@@ -4642,6 +4641,7 @@ class UnityRigidbody:
 	# NOTE: We do not allow changing m_IsKinematic because that's a Godot type change!
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
+		outdict["freeze"] = uprops.get("m_IsKinematic", 0) != 0
 		return outdict
 
 	func create_physical_bone(state: RefCounted, godot_skeleton: Skeleton3D, name: String):

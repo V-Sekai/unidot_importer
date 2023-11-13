@@ -361,7 +361,9 @@ class ParseState:
 		# node.get_parent() == null or 
 		if len(p_path) == 2 and str(p_path[1]) == "root":
 			key = preserve_hierarchy_orig_root_node_name
-		for child in skinned_parent_to_node.get(key, {}):
+		var skinned_children = skinned_parent_to_node.get(key, [])
+		skinned_parent_to_node.erase(key)
+		for child in skinned_children:
 			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
 			var orig_child_name: String = get_orig_name("nodes", child.name)
 			var new_id: int = 0

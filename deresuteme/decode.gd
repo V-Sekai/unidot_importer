@@ -408,7 +408,7 @@ var objs: Array = [].duplicate()
 var meta: RefCounted = null
 
 
-func _init(meta: RefCounted, file_contents: PackedByteArray, only_references: bool):
+func _init(meta: RefCounted, file_contents: PackedByteArray, only_references: bool=false):
 	self.meta = meta
 	self.s = Stream.new(file_contents)
 	#t = self.s.read_str() # UnityRaw? or no?
