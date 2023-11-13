@@ -22,7 +22,7 @@ const ASSET_TYPE_UNKNOWN = 8
 const SHOULD_CONVERT_TO_GLB: bool = false
 const USE_BUILTIN_FBX: bool = false # true
 
-const SILHOUETTE_FIX_THRESHOLD: float = 28.0
+const SILHOUETTE_FIX_THRESHOLD: float = 3.0 # 28.0
 
 var STUB_PNG_FILE: PackedByteArray = Marshalls.base64_to_raw("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQot" + "tAAAAABJRU5ErkJggg==")
 
