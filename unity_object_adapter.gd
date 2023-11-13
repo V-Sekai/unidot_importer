@@ -762,6 +762,28 @@ class UnityMaterial:
 			ret.albedo_texture = get_texture(texProperties, "_Albedo")
 		if ret.albedo_texture == null:
 			ret.albedo_texture = get_texture(texProperties, "_Diffuse")
+		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
+		for name in texProperties:
+			if name.ends_with("Map"):
+				continue
+			if ret.albedo_texture != null:
+				break
+			var env = texProperties.get(name, {})
+			var texref: Array = env.get("m_Texture", [])
+			if not texref.is_empty():
+				ret.albedo_texture = meta.get_godot_resource(texref)
+				log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+		for name in texProperties:
+			if name == "_BumpMap" or name == "_OcclusionMap" or name == "_MetallicGlossMap" or name == "_ParallaxMap":
+				continue
+			if ret.albedo_texture != null:
+				break
+			var env = texProperties.get(name, {})
+			var texref: Array = env.get("m_Texture", [])
+			if not texref.is_empty():
+				ret.albedo_texture = meta.get_godot_resource(texref)
+				log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+
 		ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
 		ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
 		# TODO: ORM not yet implemented.
