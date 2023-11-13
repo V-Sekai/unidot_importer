@@ -3531,7 +3531,12 @@ class UnityGameObject:
 				var tmp = component.create_godot_node(state, ret)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
-				component.configure_node(tmp)
+				if tmp != null:
+					component.configure_node(tmp)
+					while tmp.get_parent() != null and tmp.get_parent() != ret:
+						tmp = tmp.get_parent()
+					if tmp is Node3D:
+						tmp.transform = transform_delta * tmp.transform
 				var component_key = component.get_component_key()
 				if not name_map.has(component_key):
 					name_map[component_key] = component.fileID
@@ -3599,20 +3604,11 @@ class UnityGameObject:
 					state = state.state_with_avatar_meta(sub_avatar_meta)
 					if state.owner == null or ret == state.owner:
 						sub_avatar_meta = null
-		var is_staticbody: bool = false
-		if has_collider and (state.body == null or state.body.get_class().begins_with("StaticBody")):
-			ret = StaticBody3D.new()
-			log_debug("Created a StaticBody3D " + self.name)
-			is_staticbody = true
-			transform.configure_node(ret)
-		elif ret == null:
+		if ret == null:
 			ret = Node3D.new()
 			transform.configure_node(ret)
 		ret.name = name
 		state.add_child(ret, new_parent, transform)
-		if is_staticbody:
-			log_debug("Replacing state with body " + str(name))
-			state = state.state_with_body(ret)
 		for ext in extra_fileID:
 			state.add_fileID(ret, ext)
 		var skip_first: bool = true
@@ -3631,7 +3627,12 @@ class UnityGameObject:
 				var tmp = component.create_godot_node(state, ret)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
-				component.configure_node(tmp)
+				if tmp != null:
+					component.configure_node(tmp)
+					while tmp.get_parent() != null and tmp.get_parent() != ret:
+						tmp = tmp.get_parent()
+					if tmp is Node3D:
+						tmp.transform = transform_delta * tmp.transform
 				var component_key = component.get_component_key()
 				if not name_map.has(component_key):
 					name_map[component_key] = component.fileID
@@ -4117,7 +4118,23 @@ class UnityPrefabInstance:
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				if component.type == "MeshFilter":
-					gameobject_asset.meshFilter = component
+					if not component.is_stripped:
+						log_debug("Prefab found a non-stripped MeshFilter " + str(component.fileID))
+						gameobject_asset.meshFilter = component
+			if gameobject_asset.meshFilter == null:
+				for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
+					if component.type == "MeshCollider":
+						log_debug("Found a MeshCollider " + str(component.fileID) + " without a MeshFilter")
+						var source_fileID_mr: int = pgntfac.get(source_obj_ref[1], gntfac.get(source_obj_ref[1], {})).get(33, 0)
+						if source_fileID_mr != 0:
+							log_debug("Found a MeshFilter source id " + str(source_fileID_mr))
+							var source_fileID_path: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_fileID_mr, NodePath())
+							if source_fileID_path != NodePath():
+								log_debug("Found a MeshFilter source path " + str(source_fileID_path))
+								var source_node: Node = instanced_scene.get_node(source_fileID_path)
+								if source_node is MeshInstance3D:
+									log_debug("Found a MeshInstance " + str(source_node) + " mesh " + str(source_node.mesh))
+									component.source_mesh_instance = source_node
 			var comp_map = {}
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				if attachment == null:
@@ -4125,9 +4142,12 @@ class UnityPrefabInstance:
 				var tmp = component.create_godot_node(state, attachment)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
-				component.configure_node(tmp)
-				if tmp is Node3D:
-					tmp.transform = transform_delta * tmp.transform
+				if tmp != null:
+					component.configure_node(tmp)
+					while tmp.get_parent() != null and tmp.get_parent() != attachment:
+						tmp = tmp.get_parent()
+					if tmp is Node3D:
+						tmp.transform = transform_delta * tmp.transform
 				var ckey = component.get_component_key()
 				if not comp_map.has(ckey):
 					comp_map[ckey] = component.fileID
@@ -4487,65 +4507,64 @@ class UnityCollider:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
 		log_debug("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
-		if state.body == null:
-			state.body = StaticBody3D.new()
-			state.body.name = "StaticBody3D"
-			new_parent.add_child(state.body, true)
-			state.body.owner = state.owner
-		new_node.name = self.type
-		state.add_child(new_node, state.body, self)
-		var path_to_body = new_parent.get_path_to(state.body)
-		var cur_node: Node3D = new_parent
-		var xform = Transform3D()
-		for i in range(path_to_body.get_name_count()):
-			if path_to_body.get_name(i) == ".":
-				continue
-			elif path_to_body.get_name(i) == "..":
-				xform = cur_node.transform * xform
-				cur_node = cur_node.get_parent()
-				if cur_node == null:
-					break
-			else:
-				cur_node = cur_node.get_node(str(path_to_body.get_name(i)))
-				if cur_node == null:
-					break
-				log_debug("Found node " + str(cur_node) + " class " + str(cur_node.get_class()))
-				log_debug("Found node " + str(cur_node) + " transform " + str(cur_node.transform))
-				xform = cur_node.transform.affine_inverse() * xform
-		#while cur_node != state.body and cur_node != null:
-		#	xform = cur_node.transform * xform
-		#	cur_node = cur_node.get_parent()
-		#if cur_node == null:
-		#	xform = Transform3D(self.basis, self.center)
 		new_node.shape = self.shape
-		if not xform.is_equal_approx(Transform3D()):
-			var xform_storage: Node3D = Node3D.new()
-			xform_storage.name = "__xform_storage"
-			new_node.add_child(xform_storage, true)
-			xform_storage.owner = state.owner
-			xform_storage.transform = xform
+		if state.body == null:
+			var new_body := StaticBody3D.new()
+			new_body.name = self.type
+			new_parent.add_child(new_body, true)
+			new_body.owner = state.owner
+			new_node.name = "CollisionShape3D"
+			state.add_child(new_node, new_body, self)
+		else:
+			new_node.name = self.type
+			state.add_child(new_node, state.body, self)
+			var path_to_body = new_parent.get_path_to(state.body)
+			var cur_node: Node3D = new_parent
+			var xform = Transform3D()
+			for i in range(path_to_body.get_name_count()):
+				if path_to_body.get_name(i) == ".":
+					continue
+				elif path_to_body.get_name(i) == "..":
+					xform = cur_node.transform * xform
+					cur_node = cur_node.get_parent()
+					if cur_node == null:
+						break
+				else:
+					cur_node = cur_node.get_node(str(path_to_body.get_name(i)))
+					if cur_node == null:
+						break
+					log_debug("Found node " + str(cur_node) + " class " + str(cur_node.get_class()))
+					log_debug("Found node " + str(cur_node) + " transform " + str(cur_node.transform))
+					xform = cur_node.transform.affine_inverse() * xform
+			#while cur_node != state.body and cur_node != null:
+			#	xform = cur_node.transform * xform
+			#	cur_node = cur_node.get_parent()
+			#if cur_node == null:
+			#	xform = Transform3D(self.basis, self.center)
+			if not xform.is_equal_approx(Transform3D()):
+				new_node.set_meta("__xform_storage", xform)
 		return new_node
 
 	# TODO: Colliders are complicated because of the transform hierarchy issue above.
 	func convert_properties_collider(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
-		var complex_xform: Node3D = null
-		if node != null and node.has_node("__xform_storage"):
-			complex_xform = node.get_node("__xform_storage")
+		var complex_xform: Transform3D = Transform3D.IDENTITY
+		if node != null and node.has_meta("__xform_storage"):
+			complex_xform = node.get_meta("__xform_storage")
 		var center: Vector3 = Vector3()
 		var basis: Basis = Basis.IDENTITY
 
 		var center_prop: Variant = get_vector(uprops, "m_Center")
 		if typeof(center_prop) == TYPE_VECTOR3:
 			center = Vector3(-1.0, 1.0, 1.0) * center_prop
-			if complex_xform != null:
-				outdict["transform"] = complex_xform.transform * Transform3D(basis, center)
+			if not complex_xform.is_equal_approx(Transform3D.IDENTITY):
+				outdict["transform"] = complex_xform * Transform3D(basis, center)
 			else:
 				outdict["position"] = center
 		if uprops.has("m_Direction"):
 			basis = get_basis_from_direction(uprops.get("m_Direction"))
-			if complex_xform != null:
-				outdict["transform"] = complex_xform.transform * Transform3D(basis, center)
+			if not complex_xform.is_equal_approx(Transform3D.IDENTITY):
+				outdict["transform"] = complex_xform * Transform3D(basis, center)
 			else:
 				outdict["rotation_degrees"] = basis.get_euler() * 180 / PI
 		return outdict
@@ -4630,16 +4649,23 @@ class UnityCapsuleCollider:
 class UnityMeshCollider:
 	extends UnityCollider
 
+	var source_mesh_instance: MeshInstance3D # Used only for component added to instanced prefab.
+
 	# Not making these animatable?
 	var convex: bool:
 		get:
 			return keys.get("m_Convex", 0) != 0
 
 	func get_shape() -> Shape3D:
-		if convex:
-			return meta.get_godot_resource(get_mesh(keys)).create_convex_shape()
+		var source_mesh: Mesh
+		if source_mesh_instance != null:
+			source_mesh = source_mesh_instance.mesh
 		else:
-			return meta.get_godot_resource(get_mesh(keys)).create_trimesh_shape()
+			source_mesh = meta.get_godot_resource(get_mesh(keys))
+		if convex:
+			return source_mesh.create_convex_shape()
+		else:
+			return source_mesh.create_trimesh_shape()
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_collider(node, uprops)
