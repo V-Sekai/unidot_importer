@@ -2125,6 +2125,16 @@ class UnityAnimationClip:
 		var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_track_names: Array = []
 		var identical: int = 0
+		var scale_tracks: Dictionary
+		var rot_tracks: Dictionary
+		for track_idx in range(clip.get_track_count()):
+			var typ: int = clip.track_get_type(track_idx)
+			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
+			match typ:
+				Animation.TYPE_ROTATION_3D:
+					rot_tracks["T" + resolved_key] = track_idx
+				Animation.TYPE_SCALE_3D:
+					scale_tracks["T" + resolved_key] = track_idx
 		for track_idx in range(clip.get_track_count()):
 			var typ: int = clip.track_get_type(track_idx)
 			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
@@ -2166,10 +2176,49 @@ class UnityAnimationClip:
 						new_path = NodePath(str(new_path) + ":" + str(resolved_subpath))
 					log_debug("Adapt TYPE_VALUE track " + str(path) + " to " + str(new_path))
 					new_resolved_key = "V" + str(new_path)
-				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
+				Animation.TYPE_ROTATION_3D:
 					classID = 4
 					new_path = resolve_gameobject_component_path(animator, path, classID)
+					log_debug("Adapt TYPE_ROTATION_3D track " + str(path) + " to " + str(new_path))
 					new_resolved_key = "T" + str(new_path)
+				Animation.TYPE_SCALE_3D:
+					classID = 4
+					new_path = resolve_gameobject_component_path(animator, path, classID)
+					log_debug("Adapt TYPE_SCALE_3D track " + str(path) + " to " + str(new_path))
+					new_resolved_key = "T" + str(new_path)
+				Animation.TYPE_POSITION_3D:
+					classID = 4
+					new_path = resolve_gameobject_component_path(animator, path, classID)
+					log_debug("Adapt TYPE_POSITION_3D track " + str(path) + " to " + str(new_path))
+					new_resolved_key = "T" + str(new_path)
+					var resolved_node: Node3D = node_parent.get_node_or_null(new_path)
+					log_debug(str(node_parent.name) + ": " + str(resolved_node))
+					if resolved_node != null:
+						var animator_go: UnityGameObject = animator.gameObject
+						var path_split: PackedStringArray = path.split("/")
+						var current_fileID: int = 0 if animator_go == null else animator_go.fileID
+						var current_obj: Dictionary = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
+						for path_component in path_split:
+							if current_obj.has(path_component):
+								current_fileID = current_obj[path_component]
+								current_obj = animator.meta.prefab_gameobject_name_to_fileid_and_children.get(current_fileID, {})
+						current_fileID = current_obj.get(classID, current_fileID)
+						log_debug("Found fileID " + str(current_fileID))
+						var virtual_transform_obj: UnityObject = adapter.instantiate_unity_object_from_utype(animator.meta, current_fileID, classID)
+						var godot_rotation: Quaternion = resolved_node.quaternion
+						var godot_scale: Vector3 = resolved_node.get_scale()
+						var rot_track: int = rot_tracks.get(resolved_key, -1)
+						var scale_track: int = scale_tracks.get(resolved_key, -1)
+						for key in range(clip.track_get_key_count(track_idx)):
+							var ts: float = clip.track_get_key_time(track_idx, key)
+							if rot_track != -1:
+								godot_rotation = clip.rotation_track_interpolate(rot_track, ts)
+							if scale_track != -1:
+								godot_scale = clip.scale_track_interpolate(scale_track, ts)
+							var pos: Vector3 = clip.position_track_interpolate(track_idx, ts)
+							var converted_pos: Vector3 = virtual_transform_obj._convert_properties_pos_scale({"m_LocalPosition": pos}, pos, godot_rotation, godot_scale)["position"]
+							log_debug("Adapt key " + str(key) + " ts " + str(ts) + " rot=" + str(godot_rotation.get_euler()) + " scale=" + str(godot_scale) + " pos " + str(pos) + " -> " + str(converted_pos))
+							clip.track_set_key_value(track_idx, key, converted_pos)
 			if new_path == NodePath():
 				log_warn(str(self.uniq_key) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
 				new_track_names.append([clip.track_get_path(track_idx), resolved_key, orig_info])
@@ -3469,6 +3518,7 @@ class UnityGameObject:
 
 		var skip_first: bool = true
 
+		var transform_delta: Transform3D = meta.transform_fileid_to_rotation_delta.get(transform.fileID, meta.prefab_transform_fileid_to_rotation_delta.get(transform.fileID, Transform3D()))
 		var animator_node_to_object: Dictionary
 		for component_ref in components:
 			if skip_first:
@@ -3570,6 +3620,7 @@ class UnityGameObject:
 		if sub_avatar_meta != null:
 			state = state.state_with_owner(ret)
 
+		var transform_delta: Transform3D = meta.transform_fileid_to_rotation_delta.get(transform.fileID, meta.prefab_transform_fileid_to_rotation_delta.get(transform.fileID, Transform3D()))
 		var animator_node_to_object: Dictionary
 		for component_ref in components:
 			if skip_first:
@@ -4306,9 +4357,9 @@ class UnityTransform:
 		# FIXME: Do we need convert_properties_component?
 		# var outdict = convert_properties_component(node, uprops)
 		var n3d: Node3D = node as Node3D
-		return _convert_properties_pos_scale(uprops, n3d.position, n3d.scale)
+		return _convert_properties_pos_scale(uprops, n3d.position, n3d.quaternion, n3d.scale)
 
-	func _convert_properties_pos_scale(uprops: Dictionary, orig_pos_godot: Vector3, orig_scale_godot: Vector3) -> Dictionary:
+	func _convert_properties_pos_scale(uprops: Dictionary, orig_pos_godot: Vector3, orig_rot_godot: Quaternion, orig_scale_godot: Vector3) -> Dictionary:
 		var outdict: Dictionary
 		var rotation_delta: Transform3D
 		#var pos_rotation_delta: Transform3D
@@ -4317,29 +4368,20 @@ class UnityTransform:
 		if meta.transform_fileid_to_rotation_delta.has(fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(fileID):
 			rotation_delta_post = meta.transform_fileid_to_rotation_delta.get(fileID, meta.prefab_transform_fileid_to_rotation_delta.get(fileID, Transform3D.IDENTITY))
 			rotation_delta_post = rotation_delta_post.affine_inverse()
-			log_debug("convert_properties: This fileID is a humanoid bone rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
+			log_debug("convert_properties: This fileID is a humanoid bone position offset=" + str(rotation_delta_post.origin) + " rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
 			has_post = true
 		if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
 			var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
 			if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
 				rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
-				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta.basis.get_scale()))
+				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child position offset=" + str(rotation_delta.origin) + " rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta.basis.get_scale()))
 		else:
 			log_debug("convert_properties: Node has no parent.")
 
-		var orig_pos: Vector3 = (rotation_delta.basis.inverse() * orig_pos_godot) * Vector3(-1, 1, 1)
-		log_debug("Original position: " + str(orig_pos_godot) + " -> " + str(orig_pos))
-		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition", orig_pos)
-		if typeof(pos_tmp) == TYPE_VECTOR3:
-			var pos_vec: Vector3 = pos_tmp as Vector3
-			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)))
-			pos_vec = rotation_delta.basis * (pos_vec * Vector3(-1, 1, 1)) # * rotation_delta_post.basis #.get_rotation_quaternion()
-			outdict["position"] = pos_vec
-			log_debug("Position would be " + str(outdict["position"]))
-
+		var rot_quat: Quaternion = Quaternion.IDENTITY
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
 		if typeof(rot_vec) == TYPE_QUATERNION:
-			var rot_quat: Quaternion = rot_vec as Quaternion
+			rot_quat = rot_vec as Quaternion
 			# Assuming t-pose, in a humanoid a lot of these expressions will cancel out nicely to godot's bone rest (T-pose)
 			# This is
 			# Previously:
@@ -4351,18 +4393,28 @@ class UnityTransform:
 			# this_unity_global_rest = parent_unity_global_rest * ... * this_unity_rest
 			# par_global_rest.affine_inverse() * parent_unity_global_rest * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * this_unity_rest.affine_inverse() * parent_unity_global_rest.affine_inverse() * par_global_rest * this_bone_rest
 			# par_global_rest.affine_inverse() * parent_unity_global_rest * parent_unity_global_rest.affine_inverse() * par_global_rest * this_bone_rest
-			# par_global_rest.affine_inverse() * par_global_rest * this_bone_rest
+			# par_global_rest.atffine_inverse() * par_global_rest * this_bone_rest
 			# this_bone_rest
 			# WANT: this_bone_rest
-			rot_quat = rotation_delta.basis.get_rotation_quaternion() * (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion() * rotation_delta_post.basis.get_rotation_quaternion()
+			# Same as (Basis.FLIP_X.inverse() * Basis(rot_vec) * Basis.FLIP_X).get_rotation_quaternion()
+			rot_quat.y = -rot_quat.y
+			rot_quat.z = -rot_quat.z
+			rot_quat = rotation_delta.basis.get_rotation_quaternion() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion()
 			outdict["quaternion"] = rot_quat
+		else:
+			rot_quat = orig_rot_godot
+		rot_quat = rotation_delta.basis.get_rotation_quaternion().inverse() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion().inverse()
+		rot_quat.y = -rot_quat.y
+		rot_quat.z = -rot_quat.z
 
-		var orig_scale: Vector3 = rotation_delta.basis.inverse() * orig_scale_godot * rotation_delta_post.basis.inverse()
-		if not rotation_delta.is_equal_approx(Transform3D.IDENTITY):
-			log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
+		var orig_scale: Vector3 = (rotation_delta.basis.inverse() * Basis.from_scale(orig_scale_godot) * rotation_delta_post.basis.inverse()).get_scale()
+		log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
+		var input_scale_vec: Vector3
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)
 		if typeof(scale) == TYPE_VECTOR3:
+			input_scale_vec = scale as Vector3
 			var scale_vec: Vector3 = scale as Vector3
+			log_debug("Scale originally is " + str(scale_vec))
 			# FIXME: Godot handles scale 0 much worse than Unity. Try to avoid it.
 			if scale_vec.x > -1e-7 && scale_vec.x < 1e-7:
 				scale_vec.x = 1e-7
@@ -4372,11 +4424,25 @@ class UnityTransform:
 				scale_vec.z = 1e-7
 			scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
 			outdict["scale"] = scale_vec
+			log_debug("Scale would be " + str(outdict["scale"]))
+		else:
+			input_scale_vec = orig_scale
+
+		var orig_pos: Vector3 = (rotation_delta.basis.inverse() * orig_pos_godot) * Vector3(-1, 1, 1)
+		log_debug("Original position: " + str(orig_pos_godot) + " -> " + str(orig_pos))
+		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition", orig_pos)
+		if typeof(pos_tmp) == TYPE_VECTOR3:
+			var pos_vec: Vector3 = pos_tmp as Vector3
+			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)))
+			pos_vec = rotation_delta * (pos_vec * Vector3(-1, 1, 1) + rot_quat * (input_scale_vec * rotation_delta_post.origin)) # * rotation_delta_post.basis #.get_rotation_quaternion()
+			outdict["position"] = pos_vec
+			log_debug("Position would be " + str(outdict["position"]))
+
 		return outdict
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var bone_idx: int = skel.find_bone(bone_name)
-		return _convert_properties_pos_scale(uprops, skel.get_bone_pose_position(bone_idx), skel.get_bone_pose_scale(bone_idx))
+		return _convert_properties_pos_scale(uprops, skel.get_bone_pose_position(bone_idx), skel.get_bone_pose_rotation(bone_idx), skel.get_bone_pose_scale(bone_idx))
 
 	var rootOrder: int:
 		get:
