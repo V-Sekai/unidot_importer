@@ -5,6 +5,7 @@
 extends RefCounted
 
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const human_trait_class: GDScript = preload("./humanoid/human_trait.gd")
 var object_adapter_class_inst = object_adapter_class.new()
 
 # NOTE: All new member variables must be copied/added to `func duplicate()`
@@ -57,6 +58,8 @@ class AvatarState:
 	var human_bone_to_rotation_delta: Dictionary # human name -> global rotation correction
 	var excess_rotation_delta: Transform3D
 	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
+	var hips_fileid: int
+	var reserved_bone_names: Dictionary
 
 
 
@@ -449,8 +452,17 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 		return self
 	var state = duplicate()
 	var avatar_state := AvatarState.new()
+	for bone in human_trait_class.GodotHumanNames:
+		avatar_state.reserved_bone_names[bone] = true
+	avatar_state.reserved_bone_names["Root"] = true
 	#avatar_state.current_avatar_object = new_avatar
 	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_crc32_dict.duplicate()
+	var has_root: bool = false
+	for crc in avatar_state.humanoid_bone_map_dict:
+		if avatar_state.humanoid_bone_map_dict[crc] == "Root":
+			has_root = true
+	if not has_root:
+		avatar_state.humanoid_bone_map_dict["Root"] = "Root"
 	if avatar_meta.humanoid_bone_map_crc32_dict.is_empty():
 		for orig_bone_name in avatar_meta.humanoid_bone_map_dict:
 			avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.humanoid_bone_map_dict[orig_bone_name]
@@ -488,20 +500,30 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 func apply_excess_rotation_delta(node: Node3D, fileID: int):
 	for avatar_state in active_avatars:
 		if not avatar_state.excess_rotation_delta.is_equal_approx(Transform3D.IDENTITY):
-			node.transform = node.transform * avatar_state.excess_rotation_delta.affine_inverse()
 			if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
 				var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
 				var rotation_delta: Transform3D
 				if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
 					rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
 				rotation_delta *= avatar_state.excess_rotation_delta
-				meta.transform_fileid_to_rotation_delta[parent_fileid] = rotation_delta
 			meta.log_debug(0, "Applying excess rotation delta to node " + str(node.name) + ": " + str(avatar_state.excess_rotation_delta))
-			avatar_state.excess_rotation_delta = Transform3D.IDENTITY
 
 var last_humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
-func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int) -> String:
+func _find_next_avatar_bone_recursive(skel: Skeleton3D, bone_idx: int) -> String:
+	for avatar in active_avatars:
+		var crc32_name := avatar.crc32.crc32(skel.get_bone_name(bone_idx))
+		if avatar.humanoid_bone_map_dict.has(crc32_name):
+			return avatar.humanoid_bone_map_dict[crc32_name]
+	for child_idx in skel.get_bone_children(bone_idx):
+		var ret: String = _find_next_avatar_bone_recursive(skel, child_idx)
+		if ret != "":
+			meta.log_debug(0, "Found a bone " + ret)
+			return ret
+	return ""
+
+func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int, skel: Skeleton3D, bone_idx: int) -> String:
+	apply_excess_rotation_delta(skel, fileid)
 	var name_to_return: String = ""
 	for avatar in active_avatars:
 		var crc32_name := avatar.crc32.crc32(orig_bone_name)
@@ -510,15 +532,51 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 				name_to_return = avatar.humanoid_bone_map_dict[crc32_name]
 				godot_bone_name = name_to_return
 				if godot_bone_name == "Hips":
+					avatar.hips_fileid = fileid
 					last_humanoid_skeleton_hip_position = avatar.humanoid_skeleton_hip_position
 			avatar.humanoid_bone_map_dict.erase(crc32_name)
+		var par_fileid: int = fileid
+		while par_fileid != 0 and par_fileid != avatar.hips_fileid:
+			par_fileid = meta.transform_fileid_to_parent_fileid.has(par_fileid)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
+		elif par_fileid == 0: # Not a decendent of the Hips bone
+			if avatar.human_bone_to_rotation_delta.has("Hips"):
+				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Hips"]
 		elif meta.transform_fileid_to_parent_fileid.has(fileid):
 			var parent_fileid: int = meta.transform_fileid_to_parent_fileid[fileid]
 			if meta.transform_fileid_to_rotation_delta.has(parent_fileid):
 				meta.transform_fileid_to_rotation_delta[fileid] = meta.transform_fileid_to_rotation_delta[parent_fileid]
+	if name_to_return == "":
+		var next_bone: String = _find_next_avatar_bone_recursive(skel, bone_idx)
+		meta.log_debug(0, "Found next bone " + next_bone)
+		if next_bone == "Hips":
+			for avatar in active_avatars:
+				if avatar.humanoid_bone_map_dict.has("Root"):
+					name_to_return = "Root"
+					avatar.humanoid_bone_map_dict.erase("Root")
 	return name_to_return
+
+func consume_root(fileid: int) -> bool:
+	var ret: bool = false
+	for avatar in active_avatars:
+		if avatar.humanoid_bone_map_dict.has("Root"):
+			meta.log_debug(fileid, "Consumed Root at " + str(fileid))
+			avatar.humanoid_bone_map_dict.erase("Root")
+			ret = true
+			if avatar.human_bone_to_rotation_delta.has("Root"):
+				meta.log_debug(fileid, "Root at " + str(fileid) + " has rotation delta " + str(avatar.human_bone_to_rotation_delta["Root"]))
+				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Hips"]
+			elif meta.transform_fileid_to_parent_fileid.has(fileid):
+				var parent_fileid: int = meta.transform_fileid_to_parent_fileid[fileid]
+				if meta.transform_fileid_to_rotation_delta.has(parent_fileid):
+					meta.transform_fileid_to_rotation_delta[fileid] = meta.transform_fileid_to_rotation_delta[parent_fileid]
+	return ret
+
+func is_bone_name_reserved(bone_name: String) -> bool:
+	for avatar_state in active_avatars:
+		return avatar_state.reserved_bone_names.has(bone_name)
+	return false
 
 func state_with_meta(new_meta: Resource) -> RefCounted:
 	var state = duplicate()
@@ -582,6 +640,18 @@ func initialize_skelleys(assets: Array) -> Array:
 				skelleys[this_id] = this_skelley
 				num_skels += 1
 
+			var find_animator_obj: RefCounted = bone0_obj
+			while find_animator_obj != null and find_animator_obj.gameObject != null:
+				var animator: RefCounted = find_animator_obj.gameObject.GetComponent("Animator")
+				if animator != null:
+					var avatar_meta = animator.get_avatar_meta()
+					if avatar_meta != null:
+						for child_ref in find_animator_obj.children_refs:
+							var child_obj = asset.meta.lookup(child_ref)
+							if child_obj != null and child_obj.gameObject != null and child_obj.gameObject.GetComponent("SkinnedMeshRenderer") != null:
+								continue
+							bones.append(child_ref)
+				find_animator_obj = find_animator_obj.parent
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnityTransform
 				var added_bones = this_skelley.add_bone(bone_obj)

@@ -3463,8 +3463,8 @@ class UnityGameObject:
 					godot_skeleton.unique_name_in_owner = true
 				log_warn("Humanoid Animator component on skeleton bone " + str(skeleton_bone_name) + " does not fully support unique_name_in_owner")
 				# TODO: Implement scene saving for partial skeleton humanoid avatar
-		state.apply_excess_rotation_delta(godot_skeleton, transform.fileID)
-		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID)
+		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID, godot_skeleton, skeleton_bone_index)
+		#var configure_root_bone: bool = false
 		if not avatar_bone_name.is_empty():
 			var conflicting_bone := godot_skeleton.find_bone(avatar_bone_name)
 			var dedupe := 1
@@ -3474,6 +3474,25 @@ class UnityGameObject:
 				godot_skeleton.set_bone_name(conflicting_bone, avatar_bone_name + " " + str(dedupe))
 			godot_skeleton.set_bone_name(skeleton_bone_index, avatar_bone_name)
 			skeleton_bone_name = avatar_bone_name
+			if avatar_bone_name == "Hips":
+				if state.consume_root(transform.fileID):
+					dedupe = 1
+					conflicting_bone = godot_skeleton.find_bone("Root")
+					if conflicting_bone != -1:
+						while godot_skeleton.find_bone("Root " + str(dedupe)) != -1:
+							dedupe += 1
+						godot_skeleton.set_bone_name(conflicting_bone, "Root " + str(dedupe))
+					var root_idx = godot_skeleton.get_bone_count()
+					godot_skeleton.add_bone("Root") # identity transform 0,0,0 is ok
+					#configure_root_bone = true
+					godot_skeleton.set_bone_parent(root_idx, godot_skeleton.get_bone_parent(skeleton_bone_index)) # parent *should be* -1
+					godot_skeleton.set_bone_parent(skeleton_bone_index, root_idx)
+		elif state.is_bone_name_reserved(skeleton_bone_name):
+			var dedupe := 1
+			while godot_skeleton.find_bone(skeleton_bone_name + " " + str(dedupe)) != -1:
+				dedupe += 1
+			godot_skeleton.set_bone_name(skeleton_bone_index, skeleton_bone_name + " " + str(dedupe))
+			skeleton_bone_name = skeleton_bone_name + " " + str(dedupe)
 		var rigidbody = GetComponent("Rigidbody")
 		var name_map = {}
 		name_map[1] = self.fileID
@@ -3959,6 +3978,8 @@ class UnityPrefabInstance:
 						animtree = AnimationTree.new()
 						animtree.name = "AnimationTree"
 						animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
+						#if uprops.get("m_ApplyRootMotion", 0) == 1:
+						animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
 						existing_node.get_parent().add_child(animtree, true)
 						animtree.owner = state.owner
 						animtree.anim_player = animtree.get_path_to(existing_node)
@@ -5587,6 +5608,8 @@ class UnityAnimator:
 		var animtree: AnimationTree = AnimationTree.new()
 		animtree.name = "AnimationTree"
 		animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
+		if not state.active_avatars.is_empty():
+			animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = ANIMATION_TREE_ACTIVE
