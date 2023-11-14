@@ -2469,12 +2469,20 @@ class UnityAnimationClip:
 					affected_by_key_iter.reset()
 
 			if not keyframe_timestamps.is_empty():
+				# Root position track
+				var gd_track_root_pos: int = anim.add_track(Animation.TYPE_POSITION_3D)
+				anim.track_set_path(gd_track_root_pos, "%GeneralSkeleton:Root")
+				anim.track_set_interpolation_type(gd_track_root_pos, Animation.INTERPOLATION_LINEAR)
 				# Hips position track
 				var gd_track_pos: int = anim.add_track(Animation.TYPE_POSITION_3D)
 				anim.track_set_path(gd_track_pos, "%GeneralSkeleton:Hips")
 				anim.track_set_interpolation_type(gd_track_pos, Animation.INTERPOLATION_LINEAR)
 				var key_iter_pos := key_iters[human_trait.BoneCount] # LockstepKeyframeiterator.new(keyframe_iters)
 
+				# Root rotation track
+				var gd_track_root_rot: int = anim.add_track(Animation.TYPE_ROTATION_3D)
+				anim.track_set_path(gd_track_root_rot, "%GeneralSkeleton:Root")
+				anim.track_set_interpolation_type(gd_track_root_rot, Animation.INTERPOLATION_LINEAR)
 				# Hips rotation track
 				var gd_track_rot: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 				anim.track_set_path(gd_track_rot, "%GeneralSkeleton:Hips")
@@ -2534,7 +2542,10 @@ class UnityAnimationClip:
 						push_error("delta_q is not normalized!")
 						return
 					if keyframe_affects_rootQ.has(ts):
-						anim.rotation_track_insert_key(gd_track_rot, ts, delta_q) # Hips rest rotation is identity
+						var euler_y: float = root_q.get_euler(EULER_ORDER_YZX).y
+						var y_rotation: Quaternion = Quaternion.from_euler(Vector3(0, euler_y, 0))
+						anim.rotation_track_insert_key(gd_track_root_rot, ts, y_rotation) # Root rest rotation is identity
+						anim.rotation_track_insert_key(gd_track_rot, ts, y_rotation.inverse() * delta_q) # Hips rest rotation is identity
 
 					var pre_dbg_pos: String = key_iter_pos.debug()
 					var val_position_variant: Variant = key_iter_pos.next(ts - last_ts)
@@ -2543,7 +2554,9 @@ class UnityAnimationClip:
 						push_warning("RootT State was: " + pre_dbg_pos)
 						push_error("RootT timestamp " + str(key_iter_pos.timestamp) + " is not ts " + str(ts) + " from " + str(last_ts) + " dbg " + key_iter_pos.debug())
 					var hips_pos: Vector3 = humanoid_transform_util.get_hips_position(body_positions, body_rotations, delta_q, root_t)
-					anim.position_track_insert_key(gd_track_pos, ts, hips_pos)
+					var root_xz_pos: Vector3 = Vector3(root_t.x, 0, root_t.z)
+					anim.position_track_insert_key(gd_track_root_pos, ts, root_xz_pos)
+					anim.position_track_insert_key(gd_track_pos, ts, hips_pos - root_xz_pos)
 					last_ts = ts
 		for track in keys["m_PositionCurves"]:
 			var path: String = track.get("path", "")

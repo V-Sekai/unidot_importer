@@ -500,7 +500,8 @@ class ParseState:
 	func process_animation_player(node: AnimationPlayer):
 		var i = 0
 		var anim_lib = node.get_animation_library(node.get_animation_library_list()[0])
-		for godot_anim_name in anim_lib.get_animation_list():
+		var anim_list = anim_lib.get_animation_list()
+		for godot_anim_name in anim_list:
 			var anim: Animation = anim_lib.get_animation(godot_anim_name)
 			var anim_name: String = get_orig_name("animations", godot_anim_name)
 			if saved_animations_by_name.has(anim_name):
@@ -521,7 +522,11 @@ class ParseState:
 					anim = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 				else:
 					if anim != null:
-						var respath: String = get_resource_path(godot_anim_name, ".tres")
+						var respath: String
+						if source_file_path.get_basename() == godot_anim_name or len(anim_list) <= 1:
+							respath = get_resource_path("animation", ".tres")
+						else:
+							respath = get_resource_path(godot_anim_name, ".tres")
 						if FileAccess.file_exists(respath):
 							anim.take_over_path(respath)
 						ResourceSaver.save(anim, respath)
