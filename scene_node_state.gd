@@ -537,7 +537,7 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 			avatar.humanoid_bone_map_dict.erase(crc32_name)
 		var par_fileid: int = fileid
 		while par_fileid != 0 and par_fileid != avatar.hips_fileid:
-			par_fileid = meta.transform_fileid_to_parent_fileid.has(par_fileid)
+			par_fileid = meta.transform_fileid_to_parent_fileid.get(par_fileid, 0)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
 		elif par_fileid == 0: # Not a decendent of the Hips bone
