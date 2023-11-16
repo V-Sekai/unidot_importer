@@ -1915,6 +1915,7 @@ class UnityAnimationClip:
 		var key_idx: int = 0
 		var is_eof: bool = false
 		var is_constant: bool = false
+		var is_mirrored: bool = false
 
 		const CONSTANT_KEYFRAME_TIMESTAMP = 0.001
 
@@ -1923,6 +1924,7 @@ class UnityAnimationClip:
 		func _init(p_curve: Dictionary):
 			curve = p_curve
 			keyframes = curve["m_Curve"]
+			is_mirrored = curve.get("unidot-mirror", false)
 			init_key = keyframes[0]
 			final_key = keyframes[-1]
 			prev_key = init_key
@@ -1966,7 +1968,10 @@ class UnityAnimationClip:
 
 		func fixup_strings(val: Variant) -> Variant:
 			if typeof(val) == TYPE_STRING:
-				return val.to_float()
+				val = val.to_float()
+			if is_mirrored:
+				# Every value comes through here, so it's a good place to make sure we negate everything
+				val = -val
 			return val
 
 		func next(timestep: float = -1.0) -> Variant:
@@ -2216,7 +2221,11 @@ class UnityAnimationClip:
 							if scale_track != -1:
 								godot_scale = clip.scale_track_interpolate(scale_track, ts)
 							var pos: Vector3 = clip.position_track_interpolate(track_idx, ts)
-							var converted_pos: Vector3 = virtual_transform_obj._convert_properties_pos_scale({"m_LocalPosition": pos}, pos, godot_rotation, godot_scale)["position"]
+							var upos: Vector3 = Vector3(-pos.x, pos.y, pos.z)
+							var uquat: Quaternion = godot_rotation
+							uquat.y = -uquat.y
+							uquat.z = -uquat.z
+							var converted_pos: Vector3 = virtual_transform_obj._convert_properties_pos_scale({"m_LocalPosition": upos}, upos, uquat, godot_scale)["position"]
 							log_debug("Adapt key " + str(key) + " ts " + str(ts) + " rot=" + str(godot_rotation.get_euler()) + " scale=" + str(godot_scale) + " pos " + str(pos) + " -> " + str(converted_pos))
 							clip.track_set_key_value(track_idx, key, converted_pos)
 			if new_path == NodePath():
@@ -2283,6 +2292,17 @@ class UnityAnimationClip:
 			special_humanoid_transforms[pfx + "TDOF.y"] = ""
 			special_humanoid_transforms[pfx + "TDOF.z"] = ""
 
+		var settings: Dictionary = keys.get("m_AnimationClipSettings", {})
+		var is_mirror: bool = settings.get("m_Mirror", 0) == 1
+		var bake_orientation_into_pose: bool = settings.get("m_LoopBlendOrientation", 0) == 1
+		var bake_position_y_into_pose: bool = settings.get("m_LoopBlendPositionY", 0) == 1
+		var bake_position_xz_into_pose: bool = settings.get("m_LoopBlendPositionXZ", 0) == 1
+		var keep_original_orientation: bool = settings.get("m_KeepOriginalOrientation", 0) == 1
+		var keep_original_position_y: bool = settings.get("m_KeepOriginalPositionY", 0) == 1
+		var keep_original_position_xz: bool = settings.get("m_KeepOriginalPositionXZ", 0) == 1
+		var orientation_offset: float = settings.get("m_OrientationOffsetY", 0.0) * PI / 180.0
+		var root_y_level: float = settings.get("m_Level", 0.0)
+
 		# m_AnimationClipSettings[m_StartTime,m_StopTime,m_LoopTime,
 		# m_KeepOriginPositionY/XZ/Orientation,m_HeightFromFeet,m_CycleOffset],
 		# m_Bounds[m_Center,m_Extent],
@@ -2310,6 +2330,7 @@ class UnityAnimationClip:
 			if typeof(track_curve) == TYPE_ARRAY:
 				log_warn("Float curve is array")
 				track_curve = {"m_Curve": track_curve}
+			track_curve = track_curve.duplicate()
 			if len(track_curve.get("m_Curve", [])) == 0:
 				log_warn("Empty float curve detected " + path + ":" + attr)
 				continue
@@ -2317,6 +2338,14 @@ class UnityAnimationClip:
 				max_ts = maxf(max_ts, keyframe["time"])
 			var nodepath = NodePath(str(resolve_gameobject_component_path(animator, path, classID)))
 			if classID == 95 and special_humanoid_transforms.has(attr):
+				var flip_sign: bool = false
+				if is_mirror:
+					if attr.find("Left-Right") != -1:
+						track_curve["unidot-mirror"] = true
+					elif attr.find("Left") != -1:
+						attr = attr.replace("Left", "Right")
+					elif attr.find("Right") != -1:
+						attr = attr.replace("Right", "Left")
 				# Humanoid Root / IK target parameters
 				if attr.begins_with("RootT."):
 					# hips position (scaled by human scale?)
@@ -2473,6 +2502,16 @@ class UnityAnimationClip:
 				var gd_track_root_pos: int = anim.add_track(Animation.TYPE_POSITION_3D)
 				anim.track_set_path(gd_track_root_pos, "%GeneralSkeleton:Root")
 				anim.track_set_interpolation_type(gd_track_root_pos, Animation.INTERPOLATION_LINEAR)
+				var base_root_pos_offset := Vector3.ZERO
+				if bake_position_xz_into_pose and bake_position_y_into_pose:
+					if not bake_position_y_into_pose:
+						if keep_original_position_y:
+							base_root_pos_offset.y = root_y_level # Hips offset is always precisely 1
+						else:
+							# Ignoring m_HeightFromFeet boolean. it's a small effect and not sure how it's calculated.
+							base_root_pos_offset.y = 1.0 + root_y_level
+
+					anim.position_track_insert_key(gd_track_root_pos, 0.0, Vector3())
 				# Hips position track
 				var gd_track_pos: int = anim.add_track(Animation.TYPE_POSITION_3D)
 				anim.track_set_path(gd_track_pos, "%GeneralSkeleton:Hips")
@@ -2483,6 +2522,12 @@ class UnityAnimationClip:
 				var gd_track_root_rot: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 				anim.track_set_path(gd_track_root_rot, "%GeneralSkeleton:Root")
 				anim.track_set_interpolation_type(gd_track_root_rot, Animation.INTERPOLATION_LINEAR)
+				var base_y_rotation := Quaternion.IDENTITY
+				if bake_position_xz_into_pose and bake_position_y_into_pose:
+					var euler_y: float = - orientation_offset
+					base_y_rotation = Quaternion.from_euler(Vector3(0, euler_y, 0))
+					anim.rotation_track_insert_key(gd_track_root_rot, 0.0, base_y_rotation) # Root rest rotation is identity
+
 				# Hips rotation track
 				var gd_track_rot: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 				anim.track_set_path(gd_track_rot, "%GeneralSkeleton:Hips")
@@ -2531,6 +2576,9 @@ class UnityAnimationClip:
 					var pre_dbg_rot: String = key_iter_rot.debug()
 					var val_rotation_variant: Variant = key_iter_rot.next(ts - last_ts)
 					var root_q: Quaternion = val_rotation_variant as Quaternion
+					if is_mirror:
+						root_q.y = -root_q.y
+						root_q.z = -root_q.z
 					if not root_q.is_normalized():
 						push_error("root q is not normalized!")
 						return
@@ -2542,21 +2590,37 @@ class UnityAnimationClip:
 						push_error("delta_q is not normalized!")
 						return
 					if keyframe_affects_rootQ.has(ts):
-						var euler_y: float = root_q.get_euler(EULER_ORDER_YZX).y
-						var y_rotation: Quaternion = Quaternion.from_euler(Vector3(0, euler_y, 0))
-						anim.rotation_track_insert_key(gd_track_root_rot, ts, y_rotation) # Root rest rotation is identity
+						var y_rotation: Quaternion = base_y_rotation
+						if not bake_orientation_into_pose:
+							var euler_y: float = root_q.get_euler(EULER_ORDER_YZX).y - orientation_offset
+							y_rotation = Quaternion.from_euler(Vector3(0, euler_y, 0))
+							anim.rotation_track_insert_key(gd_track_root_rot, ts, y_rotation) # Root rest rotation is identity
 						anim.rotation_track_insert_key(gd_track_rot, ts, y_rotation.inverse() * delta_q) # Hips rest rotation is identity
 
 					var pre_dbg_pos: String = key_iter_pos.debug()
 					var val_position_variant: Variant = key_iter_pos.next(ts - last_ts)
 					var root_t: Vector3 = val_position_variant as Vector3
+					if is_mirror:
+						root_t.x = -root_t.x
 					if (key_iter_pos.timestamp != ts) and not key_iter_pos.is_eof:
 						push_warning("RootT State was: " + pre_dbg_pos)
 						push_error("RootT timestamp " + str(key_iter_pos.timestamp) + " is not ts " + str(ts) + " from " + str(last_ts) + " dbg " + key_iter_pos.debug())
 					var hips_pos: Vector3 = humanoid_transform_util.get_hips_position(body_positions, body_rotations, delta_q, root_t)
-					var root_xz_pos: Vector3 = Vector3(root_t.x, 0, root_t.z)
-					anim.position_track_insert_key(gd_track_root_pos, ts, root_xz_pos)
-					anim.position_track_insert_key(gd_track_pos, ts, hips_pos - root_xz_pos)
+					var root_pos_offset := base_root_pos_offset
+					if not bake_position_xz_into_pose:
+						if keep_original_position_xz:
+							root_pos_offset = Vector3(hips_pos.x, 0, hips_pos.z)
+						else:
+							root_pos_offset = Vector3(root_t.x, 0, root_t.z)
+					if not bake_position_y_into_pose:
+						if keep_original_position_y:
+							root_pos_offset.y = hips_pos.y - 1.0 + root_y_level # Hips offset is always precisely 1
+						else:
+							# Ignoring m_HeightFromFeet boolean. it's a small effect and not sure how it's calculated.
+							root_pos_offset.y = root_t.y + root_y_level
+					if not bake_position_xz_into_pose or not bake_position_y_into_pose:
+						anim.position_track_insert_key(gd_track_root_pos, ts, root_pos_offset)
+					anim.position_track_insert_key(gd_track_pos, ts, hips_pos - root_pos_offset)
 					last_ts = ts
 		for track in keys["m_PositionCurves"]:
 			var path: String = track.get("path", "")
@@ -2579,6 +2643,8 @@ class UnityAnimationClip:
 			while not key_iter.is_eof:
 				var value: Vector3 = key_iter.next()
 				var ts: float = key_iter.timestamp
+				if path.ends_with("Spine"):
+					log_debug("Spine " + str(ts) + " value " + str(value) + " -> " + str(Vector3(-1, 1, 1) * value))
 				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
 
 		for track in keys["m_EulerCurves"]:
@@ -2687,7 +2753,6 @@ class UnityAnimationClip:
 
 		if max_ts <= 0.0:
 			max_ts = 1.0 # Animations are 1 second long by default, but can be shorter based on keyframe
-		var settings: Dictionary = keys.get("m_AnimationClipSettings", {})
 		if settings.get("m_StopTime", 0.0) > 0.0:
 			max_ts = settings.get("m_StopTime", 0.0)
 		anim.length = max_ts
@@ -3991,8 +4056,8 @@ class UnityPrefabInstance:
 						animtree = AnimationTree.new()
 						animtree.name = "AnimationTree"
 						animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
-						#if uprops.get("m_ApplyRootMotion", 0) == 1:
-						animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
+						if uprops.get("m_ApplyRootMotion", 0) == 0:
+							animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
 						existing_node.get_parent().add_child(animtree, true)
 						animtree.owner = state.owner
 						animtree.anim_player = animtree.get_path_to(existing_node)
@@ -5617,12 +5682,16 @@ class UnityAnimator:
 		animplayer.name = "AnimationPlayer"
 		state.add_child(animplayer, new_parent, self)
 		animplayer.root_node = NodePath("..")
+		if keys.get("m_ApplyRootMotion", 0) == 0:
+			if not state.active_avatars.is_empty():
+				animplayer.root_motion_track = NodePath("%GeneralSkeleton:Root")
 
 		var animtree: AnimationTree = AnimationTree.new()
 		animtree.name = "AnimationTree"
 		animtree.set("deterministic", false) # New feature in 4.2, acts like Untiy write defaults off
-		if not state.active_avatars.is_empty():
-			animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
+		if keys.get("m_ApplyRootMotion", 0) == 0:
+			if not state.active_avatars.is_empty():
+				animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
 		animtree.active = ANIMATION_TREE_ACTIVE
@@ -5648,6 +5717,11 @@ class UnityAnimator:
 		if uprops.has("m_Controller"):
 			if node is AnimationTree:
 				assign_controller(node.get_node(node.anim_player), node, uprops["m_Controller"])
+		if uprops.has("m_ApplyRootMotion"):
+			if uprops.get("m_ApplyRootMotion", 0) == 0:
+				outdict["root_motion_track"] = NodePath("%GeneralSkeleton:Root")
+			else:
+				outdict["root_motion_track"] = NodePath()
 		return outdict
 
 
