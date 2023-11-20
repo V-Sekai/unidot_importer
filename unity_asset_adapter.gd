@@ -555,7 +555,7 @@ class BaseModelHandler:
 			take["settings/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/save_to_file/enabled"] = false  # TODO
-			take[prefix + "/save_to_file/keep_custom_tracks"] = true  # TODO
+			take[prefix + "/save_to_file/keep_custom_tracks"] = false # Buggy through 4.2
 			take[prefix + "/save_to_file/path"] = ""  # TODO
 			take["slices/amount"] = idx  # 1-indexed
 			# animation/import
@@ -614,13 +614,13 @@ class BaseModelHandler:
 						unused_anims.erase(anim_properties[key])
 			for slice_key in active_slices:
 				anim_properties[slice_key + "/save_to_file/enabled"] = true
-				anim_properties[slice_key + "/save_to_file/keep_custom_tracks"] = true
+				anim_properties[slice_key + "/save_to_file/keep_custom_tracks"] = false # Buggy through 4.2
 				anim_properties[slice_key + "/save_to_file/path"] = active_slices[slice_key]
 		for take_name in unused_anims:
 			if not (subresources["animations"].has(take_name)):
 				subresources["animations"][take_name] = {}
 			subresources["animations"][take_name]["save_to_file/enabled"] = true
-			subresources["animations"][take_name]["save_to_file/keep_custom_tracks"] = true
+			subresources["animations"][take_name]["save_to_file/keep_custom_tracks"] = true # Non-slices are not buggy
 			subresources["animations"][take_name]["save_to_file/path"] = unused_anims[take_name]
 		if not subresources.has("meshes"):
 			subresources["meshes"] = {}
@@ -1182,17 +1182,20 @@ class FbxHandler:
 		var human_skin_nodes: Array = []
 		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3
 		var bone_map_dict: Dictionary
+		var copy_avatar: bool = false
 		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
 			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
 				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
 				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
 				if src_ava_meta == null:
-					pkgasset.log_fail("Unable to lookup meta dependency", "lastHumanDescriptionAvatarSource", src_ava)
+					pkgasset.log_fail("Unable to lookup meta copy avatar dependency", "lastHumanDescriptionAvatarSource", src_ava)
 				else:
 					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
 					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
+					pkgasset.log_debug("Copying from avatar " + str(src_ava_meta.path) + " " + str(src_ava_meta.guid) + " orig transforms " + str(len(src_ava_meta.internal_data.get("humanoid_original_transforms", {}))))
+					copy_avatar = true
 
-			elif len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
+			if not copy_avatar and len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
 				var skel: Skeleton3D = Skeleton3D.new()
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")
@@ -1214,7 +1217,7 @@ class FbxHandler:
 				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
 				skel.free()
 
-			if importer.keys.get("avatarSetup", 1) == 1 and importer.keys.get("copyAvatar", 0) != 1:
+			if not copy_avatar:
 				pkgasset.log_debug("AAAA set to humanoid and has nodes")
 				bone_map_dict = importer.generate_bone_map_dict_from_human()
 				pkgasset.log_debug(str(bone_map_dict))
@@ -1333,9 +1336,9 @@ class FbxHandler:
 		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
 			for node in json["nodes"]:
 				var node_name: String = node.get("name", "")
-				if not bone_map_dict.has(node_name):
+				if not humanoid_original_transforms.has(node_name):
 					humanoid_original_transforms[node_name] = gltf_to_transform3d(node)
-			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
+			if copy_avatar:
 				for node in json["nodes"]:
 					var node_name: String = node.get("name", "")
 					if bone_map_dict.has(node_name):
