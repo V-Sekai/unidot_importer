@@ -1127,7 +1127,7 @@ class FbxHandler:
 		# "Root Scene" is hardcoded in post_import_unity_model.gd so we use it here.
 		default_scene["name"] = "Root Scene"
 		# default_scene["name"] = pkgasset.pathname.get_file().get_basename()
-		if len(default_scene["nodes"]) == 1:  # Disabled for now.
+		if len(default_scene["nodes"]) == 1:  # Remove redundant "RootNode" node from FBX2glTF.
 			var root_node_idx: int = default_scene["nodes"][0]
 			var root_node: Dictionary = json["nodes"][root_node_idx]
 			if root_node.get("name", "") == "RootNode" and not root_node.get("children", []).is_empty():
@@ -1178,7 +1178,8 @@ class FbxHandler:
 			pkgasset.parsed_meta.internal_data["material_to_texture_name"] = material_to_texture_name
 
 		var importer = pkgasset.parsed_meta.importer
-		var humanoid_original_transforms: Dictionary = {}
+		var humanoid_original_transforms: Dictionary = {} # name -> Transform3D
+		var original_rotations: Dictionary = {} # name -> Quaternion
 		var human_skin_nodes: Array = []
 		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3
 		var bone_map_dict: Dictionary
@@ -1192,6 +1193,7 @@ class FbxHandler:
 				else:
 					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
 					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
+					original_rotations = src_ava_meta.internal_data.get("original_rotations", {}).duplicate()
 					pkgasset.log_debug("Copying from avatar " + str(src_ava_meta.path) + " " + str(src_ava_meta.guid) + " orig transforms " + str(len(src_ava_meta.internal_data.get("humanoid_original_transforms", {}))))
 					copy_avatar = true
 
@@ -1217,12 +1219,6 @@ class FbxHandler:
 				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
 				skel.free()
 
-			if not copy_avatar:
-				pkgasset.log_debug("AAAA set to humanoid and has nodes")
-				bone_map_dict = importer.generate_bone_map_dict_from_human()
-				pkgasset.log_debug(str(bone_map_dict))
-				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
-
 			var node_idx = 0
 			var hips_node_idx = -1
 			for node in json["nodes"]:
@@ -1236,6 +1232,10 @@ class FbxHandler:
 						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
 					human_skin_nodes.push_back(node_idx)
 				node_idx += 1
+			var root_bone_name: String = ""
+			for key in bone_map_dict:
+				if bone_map_dict[key] == "Root":
+					root_bone_name = bone_map_dict[key]
 			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
 			for i in range(3):
 				if hips_node_idx == -1:
@@ -1252,7 +1252,10 @@ class FbxHandler:
 						if child == hips_node_idx:
 							pkgasset.log_debug("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
 							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
+							if root_bone_name != "":
+								bone_map_dict.erase(root_bone_name)
 							bone_map_dict[node["name"]] = "Root"
+							root_bone_name = node["name"]
 							if "Root" not in humanoid_original_transforms:
 								humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
 							new_root_idx = node_idx
@@ -1264,7 +1267,31 @@ class FbxHandler:
 				if scene_nodes.find(new_root_idx) != -1:
 					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
 				hips_node_idx = new_root_idx
-			pkgasset.parsed_meta
+
+			if copy_avatar:
+				for node in json["nodes"]:
+					var node_name: String = node.get("name", "")
+					if original_rotations.has(node_name):
+						var quat: Quaternion = original_rotations[node_name]
+						bone_map_editor_plugin.gltf_matrix_to_trs(node)
+						node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+			else:
+				pkgasset.log_debug("AAAA set to humanoid and has nodes")
+				bone_map_dict = importer.generate_bone_map_dict_from_human()
+				pkgasset.log_debug(str(bone_map_dict))
+				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
+				for node in json["nodes"]:
+					bone_map_editor_plugin.gltf_matrix_to_trs(node)
+					var rot: Array = node.get("rotation", [0, 0, 0, 1])
+					original_rotations[node["name"]] = Quaternion(rot[0], rot[1], rot[2], rot[3])
+
+			for node in json["nodes"]:
+				var node_name = node.get("name", "")
+				if bone_map_dict.has(node_name):
+					var godot_human_name: String = bone_map_dict[node_name]
+					if godot_human_name not in humanoid_original_transforms:
+						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
+
 		if not human_skin_nodes.is_empty():
 			if not json.has("skins"):
 				json["skins"] = []
@@ -1336,19 +1363,13 @@ class FbxHandler:
 		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
 			for node in json["nodes"]:
 				var node_name: String = node.get("name", "")
+				if bone_map_dict.has(node_name):
+					node_name = bone_map_dict[node_name]
 				if not humanoid_original_transforms.has(node_name):
 					humanoid_original_transforms[node_name] = gltf_to_transform3d(node)
-			if copy_avatar:
-				for node in json["nodes"]:
-					var node_name: String = node.get("name", "")
-					if bone_map_dict.has(node_name):
-						node_name = bone_map_dict[node_name]
-					if humanoid_original_transforms.has(node_name):
-						gltf_transform3d_into_json(node, humanoid_original_transforms[node_name])
-					else:
-						pkgasset.log_warn("Unable to locate source avatar humanoid transform " + str(node_name))
 		# humanoid_original_transforms uses post-sanitized node names.
 		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
+		pkgasset.parsed_meta.internal_data["original_rotations"] = original_rotations
 
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
 		var full_output: PackedByteArray = out_json_data
