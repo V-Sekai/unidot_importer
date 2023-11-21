@@ -789,7 +789,16 @@ static func silhouette_fix_gltf(json: Dictionary, bone_map: BoneMap, p_threshold
 			prof_tail = prof_tail / len(bone_children)
 			src_tail = src_tail / len(bone_children)
 
-		if profile.get_tail_direction(prof_idx) == SkeletonProfile.TAIL_DIRECTION_SPECIFIC_CHILD:
+		elif prof_skeleton.get_bone_name(prof_idx) == "Hips":
+			var tmp_head: Vector3 = prof_skeleton.get_bone_global_rest(prof_idx).origin;
+			var tmp_src_head: Vector3 = src_skeleton.get_bone_global_rest(src_idx).origin;
+			var prof_tail_idx: int = prof_skeleton.find_bone(profile.get_bone_tail(prof_idx));
+			if prof_tail_idx < 0:
+				continue
+			prof_tail = prof_skeleton.get_bone_global_rest(prof_tail_idx).origin
+			src_tail = tmp_src_head + (prof_tail - tmp_head)
+
+		elif profile.get_tail_direction(prof_idx) == SkeletonProfile.TAIL_DIRECTION_SPECIFIC_CHILD:
 			var prof_tail_idx: int = prof_skeleton.find_bone(profile.get_bone_tail(prof_idx));
 			if prof_tail_idx < 0:
 				continue
