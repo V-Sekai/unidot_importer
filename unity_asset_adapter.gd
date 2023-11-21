@@ -521,6 +521,8 @@ class BaseModelHandler:
 		# Due to passing bake30 to FBX2glTF, it may ignore the original framerate...
 		# Unity seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
+		# Humanoid animations in particular are sensititve to immutable tracks being shared across rigs.
+		cfile.set_value_compare("params", "animation/remove_immutable_tracks", false)
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
@@ -1045,6 +1047,101 @@ class FbxHandler:
 		var scale = xform.basis.get_scale()
 		json_node["scale"] = [scale.x, scale.y, scale.z]
 
+	func add_empty_animation(json: Dictionary, name: String):
+		var has_reset: bool = false
+		if not json.has("animations"):
+			json["animations"] = []
+		for anim in json["animations"]:
+			if anim.get("name", "") == name:
+				has_reset = true
+		if not has_reset:
+			json["animations"].append({"channels": [], "name": name, "samplers": []})
+
+	func add_accessor(json: Dictionary, glb_bin: PackedByteArray, acc_type: String, count: int, bin_data: PackedByteArray) -> int:
+		if not json.has("accessors"):
+			json["accessors"] = []
+		if not json.has("bufferViews"):
+			json["bufferViews"] = []
+		if not json.has("buffers"):
+			json["buffers"] = [{"byteLength": len(glb_bin)}]
+		json["buffers"][0]["byteLength"] += len(bin_data)
+		var acc: Dictionary = {
+			"bufferView": len(json["bufferViews"]),
+			"byteOffset": 0,
+			"componentType": 5126,
+			"count": count,
+			"type": acc_type,
+		}
+		if acc_type == "SCALAR":
+			acc["min"] = [0]
+			acc["max"] = [0]
+		var ret: int = len(json["accessors"])
+		json["accessors"].append(acc)
+		json["bufferViews"].append({"buffer": 0, "byteLength": len(bin_data), "byteOffset": len(glb_bin)})
+		glb_bin.append_array(bin_data)
+		return ret
+
+	func add_missing_humanoid_tracks_to_animations(pkgasset: Object, json: Dictionary, glb_bin: PackedByteArray, humanoid_bone_dict: Dictionary):
+		const TRANSLATION_PFX: String = "Translation$"
+		var node_names_to_index: Dictionary
+		var json_nodes = json.get("nodes", [])
+		for node_idx in range(len(json_nodes)):
+			node_names_to_index[json_nodes[node_idx].get("name", "")] = node_idx
+		var single_element_input_accessor_idx: int = -1
+		for anim in json.get("animations", []):
+			var human_tracks_used: Dictionary
+			for gltf_bone_name in humanoid_bone_dict:
+				if humanoid_bone_dict[gltf_bone_name] == "Hips" or humanoid_bone_dict[gltf_bone_name] == "Root":
+					human_tracks_used[TRANSLATION_PFX + gltf_bone_name] = false
+				human_tracks_used[gltf_bone_name] = false
+			for channel in anim["channels"]:
+				if not channel["target"].has("node"):
+					continue
+				if channel["target"]["path"] == "rotation":
+					var node_name: String = json.nodes[channel["target"]["node"]].get("name", "")
+					if human_tracks_used.has(node_name):
+						human_tracks_used[node_name] = true
+				if channel["target"]["path"] == "translation":
+					var node_name: String = json.nodes[channel["target"]["node"]].get("name", "")
+					if human_tracks_used.has(TRANSLATION_PFX + node_name):
+						human_tracks_used[node_name] = true
+			for node_name in human_tracks_used:
+				if human_tracks_used[node_name] == true:
+					continue
+				var is_translation: bool = node_name.begins_with(TRANSLATION_PFX)
+				if is_translation:
+					node_name = node_name.substr(len(TRANSLATION_PFX))
+				var node_idx: int = node_names_to_index[node_name]
+				pkgasset.log_debug("anim " + str(anim.get("name", "")) + " : Adding missing track " + str(node_name) + " node_idx " + str(node_idx) + " @" + str(len(glb_bin)))
+				var json_node: Dictionary = json["nodes"][node_idx]
+				var pba: PackedByteArray
+				var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+				if single_element_input_accessor_idx == -1:
+					spb.big_endian = false
+					spb.data_array = pba
+					spb.put_float(0.0)
+					single_element_input_accessor_idx = add_accessor(json, glb_bin, "SCALAR", 1, spb.data_array)
+				pba = PackedByteArray()
+				spb = StreamPeerBuffer.new()
+				spb.big_endian = false
+				spb.data_array = pba
+				bone_map_editor_plugin.gltf_matrix_to_trs(json_node)
+				var value_accessor: int = -1
+				if is_translation:
+					var json_pos: Array = json_node.get("translation", [0.0, 0.0, 0.0])
+					for flt in range(3):
+						spb.put_float(json_pos[flt])
+					value_accessor = add_accessor(json, glb_bin, "VEC3", 1, spb.data_array)
+				else:
+					var json_quat: Array = json_node.get("rotation", [0.0, 0.0, 0.0, 1.0])
+					for flt in range(4):
+						spb.put_float(json_quat[flt])
+					value_accessor = add_accessor(json, glb_bin, "VEC4", 1, spb.data_array)
+				var sampler: int = len(anim["samplers"])
+				pkgasset.log_debug("animation on node " + str(node_name) + ": " + str(sampler))
+				anim["samplers"].append({"input": single_element_input_accessor_idx, "output": value_accessor})
+				anim["channels"].append({"sampler": sampler, "target": {"node": node_idx, "path": "translation" if is_translation else "rotation"}})
+
 	func gltf_remove_node(json: Dictionary, node_idx: int):
 		json["nodes"].remove_at(node_idx)  # remove_at index
 		for node in json["nodes"]:
@@ -1145,6 +1242,7 @@ class FbxHandler:
 						gltf_remove_node(json, root_node_idx)
 		f = FileAccess.open(bin_output_path, FileAccess.READ)
 		bindata = f.get_buffer(f.get_length())
+		var bindata_orig_length: int = len(bindata)
 		f = null
 		if SHOULD_CONVERT_TO_GLB:
 			json["buffers"][0].erase("uri")
@@ -1219,6 +1317,7 @@ class FbxHandler:
 				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
 				skel.free()
 
+			# Discover missing Root bone if any, and correct for name conflicts.
 			var node_idx = 0
 			var hips_node_idx = -1
 			for node in json["nodes"]:
@@ -1268,6 +1367,12 @@ class FbxHandler:
 					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
 				hips_node_idx = new_root_idx
 
+			# Based on a conversation with other devs, RESET is expected to be the initial pose, before silhouette fix
+			add_empty_animation(json, "RESET")
+			# This will both fill out RESET and add missing tracks into all animations.
+			add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
+
+			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
 			if copy_avatar:
 				for node in json["nodes"]:
 					var node_name: String = node.get("name", "")
@@ -1285,6 +1390,11 @@ class FbxHandler:
 					var rot: Array = node.get("rotation", [0, 0, 0, 1])
 					original_rotations[node["name"]] = Quaternion(rot[0], rot[1], rot[2], rot[3])
 
+			# Adding missing tracks just to the T-Pose animation after silhouette fix generates a T-Pose
+			add_empty_animation(json, "_T-Pose_")
+			add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
+
+			# Finally, record the original post-silhouette transforms for transform_fileid_to_rotation_delta
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
 				if bone_map_dict.has(node_name):
@@ -1390,6 +1500,12 @@ class FbxHandler:
 			spb.put_32(0x4E4942)
 			spb.put_data(bindata)
 			spb.put_32(0)
+		elif len(bindata) != bindata_orig_length:
+			f = FileAccess.open(bin_output_path, FileAccess.READ_WRITE)
+			f.seek_end(0)
+			f.store_buffer(bindata.slice(bindata_orig_length))
+			f.flush()
+			f = null
 
 		pkgasset.data_md5 = calc_md5(full_output)
 		if not SHOULD_CONVERT_TO_GLB:

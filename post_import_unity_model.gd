@@ -501,7 +501,14 @@ class ParseState:
 		var i = 0
 		var anim_lib = node.get_animation_library(node.get_animation_library_list()[0])
 		var anim_list = anim_lib.get_animation_list()
+		var anim_count: int = 0
 		for godot_anim_name in anim_list:
+			if godot_anim_name == "RESET" or godot_anim_name == "_T-Pose_":
+				continue
+			anim_count += 1
+		for godot_anim_name in anim_list:
+			if godot_anim_name == "RESET" or godot_anim_name == "_T-Pose_":
+				continue
 			var anim: Animation = anim_lib.get_animation(godot_anim_name)
 			var anim_name: String = get_orig_name("animations", godot_anim_name)
 			if saved_animations_by_name.has(anim_name):
@@ -523,7 +530,7 @@ class ParseState:
 				else:
 					if anim != null:
 						var respath: String
-						if source_file_path.get_basename() == godot_anim_name or len(anim_list) <= 1:
+						if source_file_path.get_basename() == godot_anim_name or anim_count <= 1:
 							respath = get_resource_path("animation", ".tres")
 						else:
 							respath = get_resource_path(godot_anim_name, ".tres")
