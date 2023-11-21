@@ -127,6 +127,9 @@ class AssetHandler:
 	func get_asset_type(pkgasset: Object) -> int:
 		return ASSET_TYPE_UNKNOWN
 
+	func uses_godot_importer(pkgasset: Object) -> bool:
+		return true
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return ""
 
@@ -357,6 +360,9 @@ class YamlHandler:
 			# TerrainData depends on prefab assets.
 			return ASSET_TYPE_PREFAB
 		return ASSET_TYPE_YAML
+
+	func uses_godot_importer(pkgasset: Object) -> bool:
+		return false
 
 	func get_file_extension_without_early_parse(pkgasset: Object) -> String:
 		if get_asset_type(pkgasset) == ASSET_TYPE_ANIM:
@@ -1547,6 +1553,9 @@ class TextHandler:
 	func get_asset_type(pkgasset: Object):
 		return ASSET_TYPE_TEXTURE
 
+	func uses_godot_importer(pkgasset: Object) -> bool:
+		return false
+
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		super.write_godot_asset(pkgasset, temp_path)
 		return false # Tells package dialog that this resource cannot be loaded so it shouldn't show an error
@@ -1560,6 +1569,9 @@ class DisabledHandler:
 
 	func write_and_preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
 		return "asset_not_supported"
+
+	func uses_godot_importer(pkgasset: Object) -> bool:
+		return false
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		return false
@@ -1663,8 +1675,9 @@ func get_asset_type(pkgasset: Object) -> int:
 
 
 func uses_godot_importer(pkgasset: Object) -> bool:
-	var asset_type = get_asset_type(pkgasset)
-	return asset_type == ASSET_TYPE_TEXTURE or asset_type == ASSET_TYPE_MODEL
+	var path = pkgasset.orig_pathname
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	return asset_handler.uses_godot_importer(pkgasset)
 
 
 func preprocess_asset(asset_database: Object, pkgasset: Object, tmpdir: String, thread_subdir: String) -> String:
