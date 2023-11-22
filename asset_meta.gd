@@ -373,12 +373,12 @@ func calculate_prefab_nodepaths_recursive():
 
 
 func xor_or_stripped(fileID: int, prefab_fileID: int) -> int:
-	#if fileID == -12901736176340512 or prefab_fileID == 1386572426:
-	#	var s: String
-	#	for ke in prefab_source_id_pair_to_stripped_id:
-	#		s += ",(" + str((ke.x << 32) | ke.y) + "," + str((ke.z << 32) | ke.w) + "): " + str(prefab_source_id_pair_to_stripped_id[ke])
-	#	log_debug(prefab_fileID, s)
-	return prefab_source_id_pair_to_stripped_id.get(Vector4i(prefab_fileID >> 32, prefab_fileID & 0xffffffff, fileID >> 32, fileID & 0xffffffff), prefab_fileID ^ fileID)
+	return prefab_source_id_pair_to_stripped_id.get(Vector4i(
+			~(~prefab_fileID >> 32) if prefab_fileID < 0 else prefab_fileID >> 32,
+			prefab_fileID & 0xffffffff,
+			~(~fileID >> 32) if fileID < 0 else fileID >> 32,
+			fileID & 0xffffffff),
+		prefab_fileID ^ fileID)
 
 
 # This overrides a built-in resource, storing the resource inside the database itself.
@@ -676,7 +676,11 @@ func parse_binary_asset(bytearray: PackedByteArray) -> ParsedAsset:
 			type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 		type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 		if output_obj.is_stripped:
-			prefab_source_id_pair_to_stripped_id[Vector4i(output_obj.prefab_instance[1] >> 32, output_obj.prefab_instance[1] & 0xffffffff, output_obj.prefab_source_object[1] >> 32, output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
+			prefab_source_id_pair_to_stripped_id[Vector4i(
+				~(~output_obj.prefab_instance[1] >> 32) if output_obj.prefab_instance[1] < 0 else output_obj.prefab_instance[1] >> 32,
+				output_obj.prefab_instance[1] & 0xffffffff,
+				~(~output_obj.prefab_source_object[1] >> 32) if output_obj.prefab_source_object[1] < 0 else output_obj.prefab_source_object[1] >> 32,
+				output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
 		if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 			fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 		if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
@@ -724,7 +728,11 @@ func parse_asset(file: Object) -> ParsedAsset:
 				type_to_fileids[output_obj.type] = PackedInt64Array().duplicate()
 			type_to_fileids[output_obj.type].push_back(output_obj.fileID)
 			if output_obj.is_stripped:
-				prefab_source_id_pair_to_stripped_id[Vector4i(output_obj.prefab_instance[1] >> 32, output_obj.prefab_instance[1] & 0xffffffff, output_obj.prefab_source_object[1] >> 32, output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
+				prefab_source_id_pair_to_stripped_id[Vector4i(
+					~(~output_obj.prefab_instance[1] >> 32) if output_obj.prefab_instance[1] < 0 else output_obj.prefab_instance[1] >> 32,
+					output_obj.prefab_instance[1] & 0xffffffff,
+					~(~output_obj.prefab_source_object[1] >> 32) if output_obj.prefab_source_object[1] < 0 else output_obj.prefab_source_object[1] >> 32,
+					output_obj.prefab_source_object[1] & 0xffffffff)] = output_obj.fileID
 			if not output_obj.is_stripped and output_obj.keys.get("m_GameObject", [null, 0, null, null])[1] != 0:
 				fileid_to_gameobject_fileid[output_obj.fileID] = output_obj.keys.get("m_GameObject")[1]
 			if not output_obj.is_stripped and output_obj.keys.get("m_Father", [null, 0, null, null])[1] != 0:
