@@ -3956,6 +3956,7 @@ class UnityPrefabInstance:
 			fres.store_string(to_write)
 			#log_debug(to_write)
 			fres.flush()
+			fres.close()
 			fres = null
 			var temp_packed_scene: PackedScene = ResourceLoader.load(stub_filename, "", ResourceLoader.CACHE_MODE_IGNORE)
 			instanced_scene = temp_packed_scene.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
