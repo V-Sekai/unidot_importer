@@ -1328,6 +1328,11 @@ class FbxHandler:
 				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
 				skel.free()
 
+			if not copy_avatar:
+				pkgasset.log_debug("AAAA set to humanoid and has nodes")
+				bone_map_dict = importer.generate_bone_map_dict_from_human()
+				pkgasset.log_debug(str(bone_map_dict))
+
 			# Discover missing Root bone if any, and correct for name conflicts.
 			var node_idx = 0
 			var hips_node_idx = -1
@@ -1378,6 +1383,8 @@ class FbxHandler:
 					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
 				hips_node_idx = new_root_idx
 
+			pkgasset.log_debug("human_skin_nodes is now " +str(human_skin_nodes))
+
 			# Based on a conversation with other devs, RESET is expected to be the initial pose, before silhouette fix
 			add_empty_animation(json, "RESET")
 			# This will both fill out RESET and add missing tracks into all animations.
@@ -1396,9 +1403,6 @@ class FbxHandler:
 					if bone_map_dict.get(node_name, "") == "Root":
 						node["translation"] = [orig_root_position.x, orig_root_position.y, orig_root_position.z]
 			else:
-				pkgasset.log_debug("AAAA set to humanoid and has nodes")
-				bone_map_dict = importer.generate_bone_map_dict_from_human()
-				pkgasset.log_debug(str(bone_map_dict))
 				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
 				for node in json["nodes"]:
 					var node_name: String = node.get("name", "")
