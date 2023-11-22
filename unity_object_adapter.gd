@@ -353,11 +353,11 @@ class UnityObject:
 			return xreturn
 		return null
 
-	static func get_quat(uprops: Dictionary, key: String) -> Variant:
+	static func get_quat(uprops: Dictionary, key: String, dfl := Quaternion.IDENTITY) -> Variant:
 		if uprops.has(key):
 			return uprops.get(key)
-		if uprops.has(key + ".x") and uprops.has(key + ".y") and uprops.has(key + ".z") and uprops.has(key + ".w"):
-			return Quaternion(uprops.get(key + ".x", 0.0), uprops.get(key + ".y", 0.0), uprops.get(key + ".z", 0.0), uprops.get(key + ".w", 1.0))
+		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z") or uprops.has(key + ".w"):
+			return Quaternion(uprops.get(key + ".x", dfl.x), uprops.get(key + ".y", dfl.y), uprops.get(key + ".z", dfl.z), uprops.get(key + ".w", dfl.w)).normalized()
 		return null
 
 	# Prefab source properties: Component and GameObject sub-types only:
@@ -4043,8 +4043,8 @@ class UnityPrefabInstance:
 			log_debug("XXXc")
 			var virtual_fileID = meta.xor_or_stripped(fileID, self.fileID)
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, virtual_fileID, target_utype)
-			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath))
 			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
+			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath) + ": " + str(uprops))
 			if uprops.has("m_Name"):
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
@@ -4127,12 +4127,14 @@ class UnityPrefabInstance:
 							else:
 								orig_meta[last_key][this_key] = exist_prop
 					existing_node.set_meta("unidot_keys", orig_meta)
-				if not nodepath_to_first_virtual_object.has(target_nodepath):
+				if not nodepath_to_first_virtual_object.has(target_nodepath) or nodepath_to_first_virtual_object[target_nodepath] is UnityTransform or nodepath_to_first_virtual_object[target_nodepath] is UnityGameObject:
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
-					nodepath_to_keys[target_nodepath] = virtual_unity_object.convert_properties(existing_node, uprops)
+				var converted: Dictionary = virtual_unity_object.convert_properties(existing_node, uprops)
+				log_debug("Converted props " + str(converted) + " from " + str(nodepath_to_keys.get(target_nodepath)) + " at " + str(virtual_unity_object.uniq_key))
+				if not nodepath_to_keys.has(target_nodepath):
+					nodepath_to_keys[target_nodepath] = converted
 				else:
 					var dict: Dictionary = nodepath_to_keys.get(target_nodepath)
-					var converted: Dictionary = virtual_unity_object.convert_properties(existing_node, uprops)
 					for key in converted:
 						dict[key] = converted.get(key)
 					nodepath_to_keys[target_nodepath] = dict
@@ -4255,6 +4257,7 @@ class UnityPrefabInstance:
 			state.body = orig_state_body
 			state.add_component_map_to_prefabbed_gameobject(gameobject_asset.fileID, comp_map)
 
+		var smrs: Array[UnitySkinnedMeshRenderer]
 		# And now for the analogous code to process stripped Transforms.
 		for transform_asset in ps.transforms_by_parented_prefab.get(self.fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
@@ -4294,7 +4297,6 @@ class UnityPrefabInstance:
 			log_debug("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
-			var smrs: Array[UnitySkinnedMeshRenderer]
 			for new_skelley in list_of_skelleys:
 				if new_skelley.godot_skeleton != null:
 					if not state.active_avatars.is_empty():
@@ -4321,17 +4323,20 @@ class UnityPrefabInstance:
 					if gameobject_asset != null:
 						state.add_prefab_to_parent_transform(transform_asset.fileID, prefab_data[0])
 			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
-			for smr in smrs:
-				var smrnode: Node = smr.create_skinned_mesh(state)
-				if smrnode != null:
-					smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
-			for animtree in animator_node_to_object:
-				var obj: RefCounted = animator_node_to_object[animtree]
-				# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
-				# If not found, we can't recreate the animationLibrary
-				obj.setup_post_children(animtree)
-
 			state.body = orig_state_body
+
+		for skelley in state.prefab_state.skelleys_by_parented_prefab.get(self.uniq_key, []):
+			for smr in skelley.skinned_mesh_renderers:
+				smrs.append(smr)
+		for smr in smrs:
+			var smrnode: Node = smr.create_skinned_mesh(state)
+			if smrnode != null:
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
+		for animtree in animator_node_to_object:
+			var obj: RefCounted = animator_node_to_object[animtree]
+			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
+			# If not found, we can't recreate the animationLibrary
+			obj.setup_post_children(animtree)
 
 		# TODO: detect skeletons which overlap with existing prefab, and add bones to them.
 		# TODO: implement modifications:
@@ -4499,7 +4504,10 @@ class UnityTransform:
 			log_debug("convert_properties: Node has no parent.")
 
 		var rot_quat: Quaternion = Quaternion.IDENTITY
-		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation")
+		var orig_rot_quat: Quaternion = rotation_delta.basis.get_rotation_quaternion().inverse() * orig_rot_godot * rotation_delta_post.basis.get_rotation_quaternion().inverse()
+		orig_rot_quat.y = -orig_rot_quat.y
+		orig_rot_quat.z = -orig_rot_quat.z
+		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation", orig_rot_quat) # left-handed
 		if typeof(rot_vec) == TYPE_QUATERNION:
 			rot_quat = rot_vec as Quaternion
 			# Assuming t-pose, in a humanoid a lot of these expressions will cancel out nicely to godot's bone rest (T-pose)
@@ -4521,6 +4529,7 @@ class UnityTransform:
 			rot_quat.z = -rot_quat.z
 			rot_quat = rotation_delta.basis.get_rotation_quaternion() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion()
 			outdict["quaternion"] = rot_quat
+			log_debug("Rotation would be " + str(outdict["quaternion"]) + " (" + str(rot_quat.get_euler() * 180.0 / PI) + " deg)")
 		else:
 			rot_quat = orig_rot_godot
 		rot_quat = rotation_delta.basis.get_rotation_quaternion().inverse() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion().inverse()
@@ -4553,7 +4562,7 @@ class UnityTransform:
 		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition", orig_pos)
 		if typeof(pos_tmp) == TYPE_VECTOR3:
 			var pos_vec: Vector3 = pos_tmp as Vector3
-			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)))
+			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)) + " adding " + str(rot_quat * (input_scale_vec * rotation_delta_post.origin)))
 			pos_vec = rotation_delta * (pos_vec * Vector3(-1, 1, 1) + rot_quat * (input_scale_vec * rotation_delta_post.origin)) # * rotation_delta_post.basis #.get_rotation_quaternion()
 			outdict["position"] = pos_vec
 			log_debug("Position would be " + str(outdict["position"]))
@@ -5063,7 +5072,7 @@ class UnitySkinnedMeshRenderer:
 		return skin
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
+		var outdict = super.convert_properties(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
