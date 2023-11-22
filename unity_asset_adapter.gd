@@ -216,6 +216,9 @@ class ImageHandler:
 			cfile.set_value("remap", "importer", "keep")
 			if cfile.has_section_key("remap", "type"):
 				cfile.erase_section_key("remap", "type")
+			if pkgasset.pathname.validate_filename().is_empty():
+				pkgasset.log_fail("pathname became empty: " + str(pkgasset.pathname))
+				return false
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
@@ -252,6 +255,9 @@ class ImageHandler:
 		cfile.set_value_compare("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
 		cfile.set_value_compare("params", "process/size_limit", max_texture_size)
 		cfile.set_value_compare("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
+		if pkgasset.pathname.validate_filename().is_empty():
+			pkgasset.log_fail("pathname became empty for image: " + str(pkgasset.pathname))
+			return false
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
 
@@ -280,6 +286,9 @@ class AudioHandler:
 			cfile.set_value("remap", "importer", "keep")
 			if cfile.has_section_key("remap", "type"):
 				cfile.erase_section_key("remap", "type")
+			if pkgasset.pathname.validate_filename().is_empty():
+				pkgasset.log_fail("pathname became empty audio: " + str(pkgasset.pathname))
+				return false
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
@@ -290,6 +299,9 @@ class AudioHandler:
 		# (WAV): edit/loop_mode=0, edit/loop_begin=0, edit/loop_end=-1
 		# (WAV): compress/mode=0
 		# (WAV): force/8_bit, force/mono, force/max_rate, force/max_rate_hz
+		if pkgasset.pathname.validate_filename().is_empty():
+			pkgasset.log_fail("pathname became empty for audio: " + str(pkgasset.pathname))
+			return false
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
 
@@ -524,6 +536,9 @@ class BaseModelHandler:
 			if cfile.has_section_key("remap", "type"):
 				cfile.erase_section_key("remap", "type")
 			cfile.set_value("params", "import_script/path", "")
+			if pkgasset.pathname.validate_filename().is_empty():
+				pkgasset.log_fail("pathname became empty in model: " + str(pkgasset.pathname))
+				return false
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
@@ -600,6 +615,9 @@ class BaseModelHandler:
 		#cfile.set_value_compare("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
 		#cfile.set_value_compare("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
 		#cfile.set_value_compare("params", "animation/optimizer/max_angular_error", optim_setting.get("max_angular_error"))
+		if pkgasset.pathname.validate_filename().is_empty():
+			pkgasset.log_fail("pathname became empty for model: " + str(pkgasset.pathname))
+			return false
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
 
@@ -608,6 +626,9 @@ class BaseModelHandler:
 		if res != null:
 			pass
 		var cfile := ConfigFile.new()
+		if pkgasset.pathname.validate_filename().is_empty():
+			pkgasset.log_fail("pathname became empty in finished_import: " + str(pkgasset.pathname))
+			return
 		var import_file_path: String = "res://" + pkgasset.pathname + ".import"
 		if cfile.load(import_file_path) != OK:
 			pkgasset.log_fail("Unable to load " + str(import_file_path) + " to remove post-import script")
