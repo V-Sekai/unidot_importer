@@ -1890,7 +1890,9 @@ class UnityAnimationClip:
 					return NodePath(unipath)
 				return NodePath(unipath + "/" + adapter.to_classname(unicomp))
 			return NodePath(unipath)
-		if str(nodepath).begins_with(str(animator_nodepath) + "/"):
+		if nodepath == animator_nodepath:
+			nodepath = "."
+		elif str(nodepath).begins_with(str(animator_nodepath) + "/"):
 			nodepath = NodePath(str(nodepath).substr(len(str(animator_nodepath)) + 1))
 		else:
 			log_warn("NodePath " + str(nodepath) + " not within the animator path " + str(animator_nodepath), "", [null,current_fileID,"",0])
@@ -3298,15 +3300,19 @@ class UnityTerrainData:
 		really_temp_arrays[Mesh.ARRAY_TEX_UV] = uvs
 		really_temp_arrays[Mesh.ARRAY_INDEX] = indices_tris
 		temp_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, really_temp_arrays)
-		var surface = SurfaceTool.new()
-		surface.create_from(temp_mesh, 0)  # Missing API here to create directly from arrays!!!! :'-(
-		# generate_normals does not support triangle strip.
-		surface.generate_normals()
-		surface.generate_tangents()
-		# Missing API: No way to clear indices or convert to triangle strip?
-		temp_mesh = surface.commit()
-		collision_mesh = temp_mesh.create_trimesh_shape()
-		var mesh_arrays: Array = temp_mesh.surface_get_arrays(0)
+		var mesh_arrays: Array
+		if len(vertices) < 10000000:
+			var surface = SurfaceTool.new()
+			surface.create_from(temp_mesh, 0)  # Missing API here to create directly from arrays!!!! :'-(
+			# generate_normals does not support triangle strip.
+			surface.generate_normals()
+			surface.generate_tangents()
+			# Missing API: No way to clear indices or convert to triangle strip?
+			temp_mesh = surface.commit()
+			collision_mesh = temp_mesh.create_trimesh_shape()
+			mesh_arrays = temp_mesh.surface_get_arrays(0)
+		else:
+			mesh_arrays = really_temp_arrays
 		# Missing API: No way to make SurfaceTool from arrays???
 		# I guess we just do it ourselves
 		var indices_optimized: PackedInt32Array = PackedInt32Array().duplicate()
