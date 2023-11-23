@@ -1385,8 +1385,6 @@ class FbxHandler:
 					var godot_human_name: String = bone_map_dict[node_name]
 					if godot_human_name == "Hips":
 						hips_node_idx = node_idx
-					if godot_human_name not in humanoid_original_transforms:
-						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
 					human_skin_nodes.push_back(node_idx)
 				node_idx += 1
 			var root_bone_name: String = ""
@@ -1413,8 +1411,6 @@ class FbxHandler:
 								bone_map_dict.erase(root_bone_name)
 							bone_map_dict[node["name"]] = "Root"
 							root_bone_name = node["name"]
-							if "Root" not in humanoid_original_transforms:
-								humanoid_original_transforms["Root"] = gltf_to_transform3d(node)
 							new_root_idx = node_idx
 							human_skin_nodes.push_back(new_root_idx)
 							break
