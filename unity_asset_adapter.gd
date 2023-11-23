@@ -1244,6 +1244,11 @@ class FbxHandler:
 		var cmdline_args := ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", "bake30", "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path]
 		pkgasset.log_debug(addon_path + " " + " ".join(cmdline_args))
 		var ret = OS.execute(addon_path, cmdline_args, stdout)
+		for i in range(5):
+			# Hack, but I don't know what to do about this for now. The .close() is async or something.
+			if ret == 1 and "".join(stdout).strip_edges().is_empty():
+				pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
+				ret = OS.execute(addon_path, cmdline_args, stdout)
 		pkgasset.log_debug("FBX2glTF returned " + str(ret) + " -----")
 		pkgasset.log_debug(str(stdout))
 		pkgasset.log_debug("-----------------------------")
