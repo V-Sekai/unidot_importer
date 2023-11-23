@@ -3986,6 +3986,21 @@ class UnityPrefabInstance:
 		# Here is how we keep track of it:
 		##	ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
 		# state = state.state_with_owner(instanced_scene)
+		var anim_player: AnimationPlayer = instanced_scene.get_node_or_null("AnimationPlayer") as AnimationPlayer
+		if anim_player != null:
+			var root_node: Node = anim_player.get_node(anim_player.root_node)
+			var reset_anim: Animation = anim_player.get_animation(&"RESET")
+			if reset_anim != null:
+				# Copied from AnimationMixer::reset()
+				var aux_player := AnimationPlayer.new()
+				root_node.add_child(aux_player)
+				aux_player.reset_on_save = false
+				var al := AnimationLibrary.new()
+				al.add_animation(&"RESET", reset_anim)
+				aux_player.add_animation_library(&"", al)
+				aux_player.assigned_animation = &"RESET"
+				aux_player.seek(0.0, true)
+				aux_player.queue_free()
 
 		var pgntfac = target_prefab_meta.prefab_gameobject_name_to_fileid_and_children
 		var gntfac = target_prefab_meta.gameobject_name_to_fileid_and_children
