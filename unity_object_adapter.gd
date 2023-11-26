@@ -3527,7 +3527,7 @@ shader_type spatial;
 	func create_godot_resource() -> Resource:
 		var packed_scene = PackedScene.new()
 		var rootnode = Node3D.new()
-		rootnode.top_level = true  # ideally only ignore rotation, scale.
+		# rootnode.top_level = true  # ideally only ignore rotation, scale.
 		rootnode.name = self.keys.get("m_Name", meta.resource_name)
 		var meshinst: MeshInstance3D = MeshInstance3D.new()
 		meshinst.name = "TerrainMesh"
@@ -4936,8 +4936,6 @@ class UnityTerrainCollider:
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var coll: Node3D = super.create_godot_node(state, new_parent)
-		coll.top_level = true
-		coll.position = new_parent.global_transform.origin
 		return coll
 
 	func get_shape() -> Shape3D:
@@ -5689,8 +5687,8 @@ class UnityTerrain:
 		#instanced_scene.scene_file_path = packed_scene.resource_path
 		state.add_child(instanced_terrain, new_parent, self)
 		state.owner.set_editable_instance(instanced_terrain, true)
-		instanced_terrain.top_level = true
-		instanced_terrain.position = new_parent.global_transform.origin
+		#instanced_terrain.top_level = true
+		#instanced_terrain.position = new_parent.global_transform.origin
 		instanced_terrain.name = "Terrain"
 		return instanced_terrain
 
