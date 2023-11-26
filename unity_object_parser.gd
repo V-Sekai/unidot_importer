@@ -71,9 +71,9 @@ var line_number: int = 0
 func _init():
 	current_obj = null
 	arr_obj_key_regex = RegEx.new()
-	arr_obj_key_regex.compile("^-?\\s?([^\"\'{}:]*):\\s*")
+	arr_obj_key_regex.compile("^-?\\s?([^\"\'{}:]*[^\"\'{}:\\s])\\s*:\\s*")
 	search_obj_key_regex = RegEx.new()
-	search_obj_key_regex.compile("\\s*([^\"\'{}:]*):\\s*")
+	search_obj_key_regex.compile("\\s*([^\"\'{}:]*[^\"\'{}:\\s])\\s*:\\s*")
 
 
 static func parse_main_object_type(yaml: String) -> String:

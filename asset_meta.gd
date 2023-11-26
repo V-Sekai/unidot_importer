@@ -151,7 +151,7 @@ func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 	if not field.is_empty():
 		fieldstr = "." + field + ": "
 	var fileidstr: String = ""
-	if remote_ref[1] != 0:
+	if len(remote_ref) >= 2 and remote_ref[1] != 0:
 		var ref_guid_str = str(remote_ref[2])
 		if log_database_holder.database.guid_to_path.has(ref_guid_str):
 			ref_guid_str = log_database_holder.database.guid_to_path[ref_guid_str].get_file()
@@ -164,7 +164,7 @@ func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 	log_message_holder.all_logs.append(log_str)
 	log_message_holder.warnings_fails.append(log_str)
 	var xref: Array = remote_ref
-	if xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
+	if len(xref) > 3 and xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]
 	log_database_holder.database.log_warn([null, fileid, self.guid, 0], msg, field, xref)
 
@@ -190,7 +190,7 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 	log_message_holder.warnings_fails.append(log_str)
 	log_message_holder.fails.append(log_str)
 	var xref: Array = remote_ref
-	if len(xref) > 2 and xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
+	if len(xref) > 3 and xref[1] != 0 and (typeof(xref[2]) == TYPE_NIL or xref[2].is_empty()):
 		xref = [null, xref[1], self.guid, xref[3]]
 	log_database_holder.database.log_fail([null, fileid, self.guid, 0], msg, field, xref)
 

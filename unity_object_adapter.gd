@@ -695,9 +695,12 @@ class UnityMaterial:
 					ret[key] = dic.get(key)
 		return ret
 
-	func get_texture(texProperties: Dictionary, name: String) -> Texture:
+	func get_texture_ref(texProperties: Dictionary, name: String) -> Array:
 		var env = texProperties.get(name, {})
-		var texref: Array = env.get("m_Texture", [])
+		return env.get("m_Texture", [null, 0, "", 0])
+
+	func get_texture(texProperties: Dictionary, name: String) -> Texture:
+		var texref: Array = get_texture_ref(texProperties, name)
 		if not texref.is_empty():
 			return meta.get_godot_resource(texref)
 		return null
@@ -733,6 +736,11 @@ class UnityMaterial:
 		var validkws: Array = keys.get("m_ValidKeywords", [])
 		for x in validkws:
 			ret[str(x)] = true
+		var invalidkws: Array = keys.get("m_InvalidKeywords", [])
+		for x in invalidkws:
+			# Keywords from before the material was switched to another shader.
+			# Since we don't parse shaders, this will sometimes give the equivalent Standard shader keywords.
+			ret[str(x)] = true
 		return ret
 
 	func get_godot_type() -> String:
@@ -753,60 +761,55 @@ class UnityMaterial:
 		# But it seems to workaround a problem with some materials for now.
 		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-		ret.albedo_texture = get_texture(texProperties, "_MainTex2")  ### ONLY USED IN ONE SHADER. This case should be removed.
-		if ret.albedo_texture == null:
-			ret.albedo_texture = get_texture(texProperties, "_MainTex")
-		if ret.albedo_texture == null:
-			ret.albedo_texture = get_texture(texProperties, "_Tex")
-		if ret.albedo_texture == null:
-			ret.albedo_texture = get_texture(texProperties, "_Albedo")
-		if ret.albedo_texture == null:
-			ret.albedo_texture = get_texture(texProperties, "_Diffuse")
-		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
+		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse"]
 		for name in texProperties:
-			if name.ends_with("Map"):
+			if name == "_MainTex" or name == "_Tex" or name == "_Albedo" or name == "_Diffuse":
 				continue
-			if ret.albedo_texture != null:
-				break
-			var env = texProperties.get(name, {})
-			var texref: Array = env.get("m_Texture", [])
-			if not texref.is_empty():
-				ret.albedo_texture = meta.get_godot_resource(texref)
-				log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+			if not name.ends_with("Map"):
+				albedo_textures_to_try.append(name)
 		for name in texProperties:
 			if name == "_BumpMap" or name == "_OcclusionMap" or name == "_MetallicGlossMap" or name == "_ParallaxMap":
 				continue
-			if ret.albedo_texture != null:
-				break
-			var env = texProperties.get(name, {})
-			var texref: Array = env.get("m_Texture", [])
-			if not texref.is_empty():
-				ret.albedo_texture = meta.get_godot_resource(texref)
-				log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+			if name.ends_with("Map"):
+				albedo_textures_to_try.append(name)
+		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
+		if ret.albedo_texture == null:
+			for name in texProperties:
+				if name.ends_with("Map"):
+					continue
+				var env = texProperties.get(name, {})
+				var texref: Array = env.get("m_Texture", [null, 0, "", 0])
+				if not texref.is_empty():
+					ret.albedo_texture = meta.get_godot_resource(texref)
+					log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+					if ret.albedo_texture != null:
+						ret.uv1_scale = get_texture_scale(texProperties, name)
+						ret.uv1_offset = get_texture_offset(texProperties, name)
+						break
 
-		ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
-		ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
 		# TODO: ORM not yet implemented.
-		if kws.get("_NORMALMAP", false):
-			ret.normal_enabled = true
+		if true: # kws.get("_NORMALMAP", false):
 			ret.normal_texture = get_texture(texProperties, "_BumpMap")
 			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
-		if kws.get("_EMISSION", false):
-			ret.emission_enabled = true
+			if ret.normal_texture != null:
+				ret.normal_enabled = true
+		if true: # kws.get("_EMISSION", false):
 			var emis_vec: Plane = get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
 			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
 			ret.emission = Color.BLACK
-			if emis_mag > 0:
+			if emis_mag > 0.01:
+				ret.emission_enabled = true
 				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag)
 				ret.emission_energy = emis_mag
-			ret.emission_texture = get_texture(texProperties, "_EmissionMap")
-			if ret.emission_texture != null:
-				ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
-		if kws.get("_PARALLAXMAP", false):
-			ret.heightmap_enabled = true
+				ret.emission_texture = get_texture(texProperties, "_EmissionMap")
+				if ret.emission_texture != null:
+					ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+		if true: # kws.get("_PARALLAXMAP", false):
 			ret.heightmap_texture = get_texture(texProperties, "_ParallaxMap")
-			ret.heightmap_scale = get_float(floatProperties, "_Parallax", 1.0)
-		if kws.get("__SPECULARHIGHLIGHTS_OFF", false):
+			if ret.heightmap_texture != null:
+				ret.heightmap_enabled = true
+				ret.heightmap_scale = get_float(floatProperties, "_Parallax", 1.0)
+		if kws.get("_SPECULARHIGHLIGHTS_OFF", false):
 			ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		if kws.get("_GLOSSYREFLECTIONS_OFF", false):
 			pass
@@ -816,18 +819,41 @@ class UnityMaterial:
 			ret.ao_texture = occlusion
 			ret.ao_light_affect = get_float(floatProperties, "_OcclusionStrength", 1.0)  # why godot defaults to 0???
 			ret.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
-		if kws.get("_METALLICGLOSSMAP"):
-			ret.metallic_texture = get_texture(texProperties, "_MetallicGlossMap")
+		var metallic_texture: Texture = null
+		var use_glossmap := false
+		if true: # kws.get("_METALLICGLOSSMAP"):
+			var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
+			if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
+				metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
+			if not metallic_gloss_texture_ref.is_empty():
+				metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
+				if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
+					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, true)
+					log_debug("Found metallic roughness texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
+					use_glossmap = true
+				if metallic_texture == null:
+					if use_glossmap:
+						log_warn("Unable to load metallic roughness texture. Trying metallic gloss.", "_MetallicGlossMap", metallic_gloss_texture_ref)
+					metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
+					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref)
+					log_debug("Found metallic gloss texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
+					use_glossmap = false
+			ret.metallic_texture = metallic_texture
 			ret.metallic = get_float(floatProperties, "_Metallic", 0.0)
 			ret.metallic_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-			if typeof(ret.get("roughness_invert_channel")) == TYPE_BOOL:
-				ret.roughness_texture = ret.metallic_texture
+			if use_glossmap:
+				ret.roughness_texture = metallic_texture
 				ret.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_ALPHA
-				ret.set("roughness_invert_channel", true)  # Experimental patch
+				ret.roughness = 1.0 # We scaled down the roughness in code.
 		# TODO: Glossiness: invert color channels??
-		ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
+		if metallic_texture == null:
+			# UnityStandardInput.cginc ignores _Glossiness if _METALLICGLOSSMAP.
+			ret.roughness = 1.0 - get_float(floatProperties, "_Glossiness", 0.0)
 		if kws.get("_ALPHATEST_ON"):
 			ret.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			var cutoff: float = get_float(floatProperties, "_Cutoff", 0.0)
+			if cutoff > 0.0:
+				ret.alpha_scissor_threshold = cutoff
 		elif kws.get("_ALPHABLEND_ON") or kws.get("_ALPHAPREMULTIPLY_ON"):
 			# FIXME: No premultiply
 			ret.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -837,6 +863,73 @@ class UnityMaterial:
 		#	ret.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
 		assign_object_meta(ret)
 		return ret
+
+	func bake_roughness_texture_if_needed(scan_only: bool=false, guid_to_pkgasset: Dictionary={}) -> String:
+		var kws = get_keywords()
+		var floatProperties = get_float_properties()
+		var texProperties = get_tex_properties()
+		# Note that this must be pre-baked into the texture to bring it towards 1.
+		# _GlossMapScale ????
+		var glossiness_value: float = get_float(floatProperties, "_GlossMapScale", 1.0)
+		if is_equal_approx(glossiness_value, 0.0):
+			log_debug("Material has 0 _GlossMapScale")
+			return "" # We can ignore the texture
+		var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
+		if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
+			metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
+		# Not any more: Material has _METALLICGLOSSMAP enabled.
+		log_debug("gloss map ref is " + str(metallic_gloss_texture_ref))
+		#var metallic_gloss_texture = get_texture(texProperties, "_MetallicGlossMap")
+		var target_meta: Object
+		if not metallic_gloss_texture_ref.is_empty() and guid_to_pkgasset.has(metallic_gloss_texture_ref[2]):
+			target_meta = guid_to_pkgasset[metallic_gloss_texture_ref[2]].parsed_meta
+		else:
+			target_meta = meta.lookup_meta(metallic_gloss_texture_ref)
+		if target_meta == null:
+			log_warn("Failed to lookup gloss texture ref", "_MetallicGlossMap", metallic_gloss_texture_ref)
+			return ""
+		var pathname: String = target_meta.path
+		# The texture file already exists on disk in the unidot folder.
+		var roughness_filename = pathname.get_basename() + ".roughness.png"
+		if scan_only:
+			if not FileAccess.file_exists(roughness_filename):
+				var cfile = ConfigFile.new()
+				cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
+				# Make an empty "keep" importer file so it will not be imported.
+				cfile.set_value("remap", "importer", "keep")
+				cfile.save("res://" + roughness_filename + ".import")
+				log_debug("Generated dummy roughness " + str(roughness_filename))
+				# Make an empty file so it will be found by a scan!
+				var f: FileAccess = FileAccess.open(roughness_filename, FileAccess.WRITE_READ)
+				f.close()
+				f = null
+			else:
+				log_debug("Already existing roughness " + str(roughness_filename))
+			print(roughness_filename)
+			return roughness_filename
+		if FileAccess.file_exists(pathname):
+			var image := Image.load_from_file(pathname)
+			log_debug("Texture " + str(pathname) + " exists. Loaded " + str(image))
+			if image != null and image.get_width() > 0 and image.get_height() > 0:
+				var cfile := ConfigFile.new()
+				if cfile.load("res://" + pathname + ".import") != OK:
+					log_fail("bake_roughness_texture unable to read .import file for " + str(pathname))
+					return ""
+				cfile.set_value("params", "roughness/mode", 5)
+				var col: Color
+				for x in range(image.get_width()):
+					for y in range(image.get_width()):
+						col = image.get_pixel(x, y)
+						col.a = 1.0 - glossiness_value * col.a
+						image.set_pixel(x, y, col)
+				image.save_png(roughness_filename)
+				cfile.save("res://" + roughness_filename + ".import")
+				target_meta.insert_resource_path(-target_meta.main_object_id, "res://" + roughness_filename)
+				log_debug("Generated " + str(roughness_filename) + " " + str(image.get_size()))
+				return roughness_filename
+		# TODO: Glossiness: invert color channels??
+		log_warn("Failed to generate roughness texture at " + str(pathname) + " from " + str(target_meta.guid), "_MetallicGlossMap", metallic_gloss_texture_ref)
+		return ""
 
 	func get_godot_extension() -> String:
 		return ".mat.tres"
@@ -4460,7 +4553,7 @@ class UnityComponent:
 			log_fail("Attempted to access the gameObject of a stripped " + type + " " + uniq_key, "gameObject")
 			# FIXME: Stripped objects do not know their name.
 			return null  # ????
-		return meta.lookup(keys.get("m_GameObject", []))
+		return meta.lookup(keys.get("m_GameObject", [null, 0, "", 0]))
 
 	func get_name() -> String:
 		if is_stripped:

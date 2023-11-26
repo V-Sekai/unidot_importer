@@ -68,6 +68,7 @@ var retry_tex: bool = false
 var _keep_open_on_import: bool = false
 var force_reimport_models_checkbox: CheckBox = null
 var import_finished: bool = false
+var written_additional_textures: bool = false
 
 var asset_work_waiting_write: Array = [].duplicate()
 var asset_work_waiting_scan: Array = [].duplicate()
@@ -623,6 +624,7 @@ func do_reimport_previous_files() -> void:
 	result_log_lineedit.syntax_highlighter = ErrorSyntaxHighlighter.new(self)
 
 	import_finished = false
+	written_additional_textures = false
 	tree_dialog_state = STATE_DIALOG_SHOWING
 	_reselect_pruned_items(main_dialog_tree.get_root())
 	_asset_tree_window_confirmed()
@@ -725,6 +727,7 @@ func _show_importer_common() -> void:
 	tree_dialog_state = STATE_DIALOG_SHOWING
 
 	_keep_open_on_import = false
+	written_additional_textures = false
 	import_finished = false
 	if file_dialog != null:
 		file_dialog.popup_centered_ratio()
@@ -861,6 +864,8 @@ func do_import_step():
 				asset_work_waiting_write.append(tw)
 			asset_work_waiting_write.reverse()
 			asset_textures = [].duplicate()
+			if tree_dialog_state == STATE_TEXTURES and not asset_materials_and_other.is_empty():
+				break
 		elif tree_dialog_state == STATE_TEXTURES:
 			tree_dialog_state = STATE_IMPORTING_MATERIALS_AND_ASSETS
 			for tw in asset_materials_and_other:
@@ -915,6 +920,7 @@ func do_import_step():
 			asset_database.log_fail([null, 0, "", 0], "Invalid state: " + str(tree_dialog_state))
 			break
 
+	var files_to_reimport: PackedStringArray = PackedStringArray().duplicate()
 	var start_ts = Time.get_ticks_msec()
 	while not asset_work_waiting_write.is_empty():
 		var tw: Object = asset_work_waiting_write.pop_back()
@@ -926,7 +932,6 @@ func do_import_step():
 
 	var asset_work = asset_work_waiting_scan
 	asset_database.log_debug([null, 0, "", 0], "Queueing work: state=" + str(tree_dialog_state))
-	var files_to_reimport: PackedStringArray = PackedStringArray().duplicate()
 	#for tw in asset_work:
 	#	editor_filesystem.update_file(tw.asset.pathname)
 	for tw in asset_work:
@@ -937,6 +942,20 @@ func do_import_step():
 		var ti: TreeItem = tw.extra
 		if ti.get_button_count(0) <= 0:
 			ti.add_button(0, spinner_icon, -1, true, "Loading...")
+
+	# After all textures have been written, but before materials are done, 
+	if asset_work_waiting_write.is_empty() and tree_dialog_state == STATE_TEXTURES and not written_additional_textures:
+		written_additional_textures = true
+		for tw in asset_materials_and_other:
+			for filename in asset_adapter.write_additional_import_dependencies(tw.asset):
+				tw.asset.parsed_meta.log_debug(0, "Additional import dependency discovered: " + str(filename))
+				if filename.is_empty():
+					continue
+				if not filename.begins_with("res://"):
+					filename = "res://" + filename
+				files_to_reimport.append(filename)
+		asset_database.log_debug([null, 0, "", 0], "Done checking for additional import dependencies.")
+
 	asset_work_waiting_scan = [].duplicate()
 	#retry_tex = false
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
@@ -966,6 +985,8 @@ func _done_preprocessing_assets():
 	asset_database.log_debug([null, 0, "", 0], "Joined.")
 	asset_database.save()
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
+	for tw in asset_materials_and_other:
+		asset_adapter.write_additional_import_dependencies_scan_only(tw.asset, pkg.guid_to_pkgasset)
 
 
 func start_godot_import(tw: Object):
@@ -1230,6 +1251,7 @@ func _asset_tree_window_confirmed():
 	meta_worker.stop_all_threads_and_wait()
 	asset_database.log_debug([null, 0, "", 0], "Joined meta.")
 	tree_dialog_state = STATE_PREPROCESSING
+	written_additional_textures = false
 	import_worker.asset_database = asset_database
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))

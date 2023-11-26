@@ -211,7 +211,15 @@ class ImageHandler:
 		if cfile.load("res://" + pkgasset.pathname + ".import") != OK:
 			pkgasset.log_debug("Failed to load .import config file for " + pkgasset.pathname)
 			cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
-			cfile.set_value("remap", "type", "CompressedTexture2D")
+			match importer.keys.get("textureShape", 0):
+				2:
+					cfile.set_value("remap", "type", "CompressedCubemap")
+				4:
+					cfile.set_value("remap", "type", "CompressedTexture2DArray")
+				8:
+					cfile.set_value("remap", "type", "CompressedTexture3D")
+				_: # 1 = standard 2D texture
+					cfile.set_value("remap", "type", "CompressedTexture2D")
 		if force_keep:
 			cfile.set_value("remap", "importer", "keep")
 			if cfile.has_section_key("remap", "type"):
@@ -222,8 +230,64 @@ class ImageHandler:
 			cfile.save("res://" + pkgasset.pathname + ".import")
 			return true
 
-		cfile.set_value_compare("remap", "type", "CompressedTexture2D")
-		cfile.set_value_compare("remap", "importer", "texture")
+		match importer.keys.get("textureShape", 0):
+			2:
+				var image_file := Image.load_from_file(pkgasset.pathname)
+				if image_file != null:
+					pkgasset.parsed_meta.log_debug("Detecting Cubemap from image size " + str(image_file.get_size()))
+				cfile.set_value_compare("remap", "type", "CompressedCubemap")
+				cfile.set_value_compare("remap", "importer", "cubemap_texture")
+				var wid: int = image_file.get_width()
+				var hei: int = image_file.get_width()
+				# Godot "slices/arrangement", PROPERTY_HINT_ENUM, "1x6,2x3,3x2,6x1"
+				var gen_cube: int = importer.keys.get("generateCubemap", 0)
+				if hei == wid or (gen_cube != 1 or gen_cube == 3 or gen_cube == 4):
+					pkgasset.log_fail("Spherical cubemap layout is not supported. Godot expects a 2x3 or 1x6 grid")
+				elif gen_cube == 2:
+					pkgasset.log_fail("Cylindrical cubemap layout is not supported. Godot expects a 2x3 or 1x6 grid")
+				elif float(wid) / hei > 5.5:
+					# Very wide, 1 tall
+					cfile.set_value_compare("params", "slices/arrangement", 3)
+				elif float(hei) / wid > 5.5:
+					# Very tall, 1 wide
+					cfile.set_value_compare("params", "slices/arrangement", 0)
+				elif float(hei) / wid > 1.3 and float(hei) / wid < 1.4:
+					pkgasset.log_fail("Cross cubemap layout is not supported. Godot expects 2x3 grid")
+					# More tall than wide
+					cfile.set_value_compare("params", "slices/arrangement", 1)
+				elif float(wid) / hei > 1.3 and float(wid) / hei < 1.4:
+					pkgasset.log_fail("Cross cubemap layout is not supported. Godot expects 3x2 grid")
+					# More wide than tall
+					cfile.set_value_compare("params", "slices/arrangement", 2)
+				elif float(hei) / wid > 1.4 and float(hei) / wid < 1.6:
+					# More tall than wide: godot compatible 2x3
+					cfile.set_value_compare("params", "slices/arrangement", 1)
+				elif float(wid) / hei > 1.4 and float(wid) / hei < 1.6:
+					# More wide than tall: godot compatible 3x2
+					cfile.set_value_compare("params", "slices/arrangement", 2)
+				elif float(wid) / hei > 1.9 and float(wid) / hei < 2.1:
+					pkgasset.log_fail("Cylinder cubemap layout is not supported. Godot expects a 2x3 or 1x6 grid")
+					# More wide than tall: godot compatible 3x2
+					cfile.set_value_compare("params", "slices/arrangement", 2)
+				else:
+					pkgasset.log_fail("Unknown cubemap layout! Godot expects a 2x3 or 1x6 grid")
+			4:
+				cfile.set_value_compare("remap", "type", "CompressedTexture2DArray")
+				cfile.set_value_compare("remap", "importer", "2d_array_texture")
+				if importer.keys.get("flipbookColumns", 0) > 0:
+					cfile.set_value_compare("params", "slices/horizontal", importer.keys.get("flipbookColumns", 0))
+				if importer.keys.get("flipbookRows", 0) > 0:
+					cfile.set_value_compare("params", "slices/vertical", importer.keys.get("flipbookRows", 0))
+			8:
+				cfile.set_value_compare("remap", "type", "CompressedTexture3D")
+				cfile.set_value_compare("remap", "importer", "3d_texture")
+				if importer.keys.get("flipbookColumns", 0) > 0:
+					cfile.set_value_compare("params", "slices/horizontal", importer.keys.get("flipbookColumns", 0))
+				if importer.keys.get("flipbookRows", 0) > 0:
+					cfile.set_value_compare("params", "slices/vertical", importer.keys.get("flipbookRows", 0))
+			_: # 1 = standard 2D texture
+				cfile.set_value_compare("remap", "type", "CompressedTexture2D")
+				cfile.set_value_compare("remap", "importer", "texture")
 		var chosen_platform = {}
 		for platform in importer.keys.get("platformSettings", []):
 			if platform.get("buildTarget", "") == "DefaultTexturePlatform":
@@ -246,13 +310,17 @@ class ImageHandler:
 			# Detect/Enabled/Disabled
 			# Detect may crash Godot later on.
 			is_normal = 2
+		if importer.keys.get("textureType", 0) == 1:
+			is_normal = 1
 		cfile.set_value_compare("params", "compress/normal_map", is_normal)
 		cfile.set_value_compare("params", "detect_3d/compress_to", 0)  # 0 = Disable (avoid crash)
 		# Roughness mode: Detect/Disable/Red/Green/etc.
 		# 1 = avoids crash later on.
 		# TODO: We may want an import setting to invert a channel for roughness use.
 		cfile.set_value_compare("params", "roughness/mode", 1)
-		cfile.set_value_compare("params", "process/premult_alpha", importer.keys.get("alphaIsTransparency", 0) != 0)
+		# FIXME: No way yet to use premultiplied alpha in Godot 3D shaders
+		# importer.keys.get("alphaIsTransparency", 0) != 0)
+		cfile.set_value_compare("params", "process/premult_alpha", 0)
 		cfile.set_value_compare("params", "process/size_limit", max_texture_size)
 		cfile.set_value_compare("params", "mipmaps/generate", importer.keys.get("mipmaps", {}).get("enableMipMap", 0) != 0)
 		if pkgasset.pathname.validate_filename().is_empty():
@@ -1749,6 +1817,43 @@ func preprocess_asset(asset_database: Object, pkgasset: Object, tmpdir: String, 
 					f = null
 		return ret_output_path
 	return ""
+
+
+func write_additional_import_dependencies_scan_only(pkgasset: Object, guid_to_pkgasset: Dictionary):
+	var path = pkgasset.orig_pathname
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	if pkgasset.parsed_asset == null:
+		pkgasset.parsed_meta.log_debug(0, "Asset was not parsed " + str(path))
+		return
+	for key in pkgasset.parsed_asset.assets:
+		var obj = pkgasset.parsed_asset.assets[key]
+		if obj.type == "Material":
+			var ret: String = obj.bake_roughness_texture_if_needed(true, guid_to_pkgasset)
+			if not ret.is_empty():
+				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " baked a roughness texture " + str(ret))
+			else:
+				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " did not have a roughness texture")
+
+
+func write_additional_import_dependencies(pkgasset: Object, force_keep: bool=false) -> Array[String]:
+	var path = pkgasset.orig_pathname
+	pkgasset.parsed_meta.log_debug(0, "Write additional " + str(path))
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	var dependencies: Array[String]
+	if pkgasset.parsed_asset == null:
+		pkgasset.parsed_meta.log_debug(0, "Asset was not parsed " + str(path))
+		return dependencies
+	for key in pkgasset.parsed_asset.assets:
+		var obj = pkgasset.parsed_asset.assets[key]
+		if obj.type == "Material":
+			var ret: String = obj.bake_roughness_texture_if_needed(false)
+			if not ret.is_empty():
+				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " baked a roughness texture " + str(ret))
+				dependencies.append(ret)
+			else:
+				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " did not have a roughness texture")
+	pkgasset.parsed_meta.log_debug(0, "Returning extra dependencies " + str(dependencies))
+	return dependencies
 
 
 # pkgasset: unitypackagefile.UnityPackageAsset type
