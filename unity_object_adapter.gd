@@ -667,7 +667,7 @@ class UnityMaterial:
 	func get_float_properties() -> Dictionary:
 		var flts = keys.get("m_SavedProperties", {}).get("m_Floats", [])
 		var ret = {}.duplicate()
-		log_debug("material floats: " + str(flts))
+		# log_debug("material floats: " + str(flts))
 		for dic in flts:
 			if len(dic) == 2 and dic.has("first") and dic.has("second"):
 				ret[dic["first"]["name"]] = dic["second"]
@@ -784,8 +784,8 @@ class UnityMaterial:
 				var texref: Array = env.get("m_Texture", [null, 0, "", 0])
 				if not texref.is_empty():
 					ret.albedo_texture = meta.get_godot_resource(texref)
-					log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
 					if ret.albedo_texture != null:
+						log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
 						ret.uv1_scale = get_texture_scale(texProperties, name)
 						ret.uv1_offset = get_texture_offset(texProperties, name)
 						break
@@ -881,6 +881,9 @@ class UnityMaterial:
 		if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
 			metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
 		# Not any more: Material has _METALLICGLOSSMAP enabled.
+		if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
+			# null gloss: no roughness to bake
+			return ""
 		log_debug("gloss map ref is " + str(metallic_gloss_texture_ref))
 		#var metallic_gloss_texture = get_texture(texProperties, "_MetallicGlossMap")
 		var target_meta: Object
@@ -2417,7 +2420,7 @@ class UnityAnimationClip:
 							uquat.y = -uquat.y
 							uquat.z = -uquat.z
 							var converted_pos: Vector3 = virtual_transform_obj._convert_properties_pos_scale({"m_LocalPosition": upos}, upos, uquat, godot_scale)["position"]
-							log_debug("Adapt key " + str(key) + " ts " + str(ts) + " rot=" + str(godot_rotation.get_euler()) + " scale=" + str(godot_scale) + " pos " + str(pos) + " -> " + str(converted_pos))
+							# log_debug("Adapt key " + str(key) + " ts " + str(ts) + " rot=" + str(godot_rotation.get_euler()) + " scale=" + str(godot_scale) + " pos " + str(pos) + " -> " + str(converted_pos))
 							clip.track_set_key_value(track_idx, key, converted_pos)
 			if new_path == NodePath():
 				log_warn(str(self.uniq_key) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
