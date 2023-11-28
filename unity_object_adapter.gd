@@ -2293,16 +2293,6 @@ class UnityAnimationClip:
 			var typ: int = clip.track_get_type(track_idx)
 			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
 			var resolved_subpath: String = NodePath(resolved_key).get_concatenated_subnames()
-			'''
-			@export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
-			@export var fileid_to_skeleton_bone: Dictionary = {}  # int -> string: scene_node_state.add_fileID_to_skeleton_bone
-			@export var fileid_to_utype: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
-			@export var fileid_to_gameobject_fileid: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
-			@export var type_to_fileids: Dictionary = {}  # string -> Array[int]: parse_binary_asset/parse_asset
-			@export var godot_resources: Dictionary = {}  # int -> Resource: insert_resource/override_resource
-			@export var main_object_id: int = 0  # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
-			@export var gameobject_name_to_fileid_and_children: Dictionary = {}  # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
-			'''
 			var source_fileid: int = 0
 			match typ:
 				Animation.TYPE_BLEND_SHAPE:
@@ -2311,6 +2301,10 @@ class UnityAnimationClip:
 						source_fileid = mesh_nodepath_to_fileid[mesh_key]
 				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
 					var transform_key: NodePath = clip.track_get_path(track_idx)
+					if str(transform_key).begins_with("%GeneralSkeleton:"):
+						new_track_names.append([clip.track_get_path(track_idx), "", []])
+						identical += 1
+						continue
 					if transform_nodepath_to_fileid.has(transform_key):
 						source_fileid = transform_nodepath_to_fileid[transform_key]
 
@@ -2346,11 +2340,13 @@ class UnityAnimationClip:
 					_:
 						log_warn(str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
 						new_track_names.append([clip.track_get_path(track_idx), "", []])
+						identical += 1
 						continue  # unsupported track type.
 				if not resolved_to_default_paths.has(resolved_key):
 					if not resolved_key.begins_with("T%GeneralSkeleton"): # This is normal
 						log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
 					new_track_names.append([clip.track_get_path(track_idx), "", []])
+					identical += 1
 					continue
 				orig_info = resolved_to_default_paths[resolved_key]
 			var path: String = orig_info[0]
@@ -2422,6 +2418,7 @@ class UnityAnimationClip:
 							clip.track_set_key_value(track_idx, key, converted_pos)
 			if new_path == NodePath():
 				log_warn(str(self.uniq_key) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
+				identical += 1
 				new_track_names.append([clip.track_get_path(track_idx), resolved_key, orig_info])
 				continue
 			new_track_names.append([new_path, new_resolved_key, orig_info])
@@ -2438,8 +2435,9 @@ class UnityAnimationClip:
 		if meta.importer_type != "NativeFormatImporter" and meta.importer_type != "DefaultImporter":
 			if meta.godot_resources.has(-fileID):
 				return meta.get_godot_resource([null, -fileID, null, 0])
+			var adapted_resource_path: String = clip.resource_path.get_basename().get_basename() + ".adaptedanim.tres"
 			clip = clip.duplicate()
-			clip.resource_path = clip.resource_path.get_basename().get_basename() + ".adapted.anim"
+			clip.resource_path = adapted_resource_path
 			meta.insert_resource_path(-fileID, clip.resource_path)
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_resolved_to_default: Dictionary = {}.duplicate()
