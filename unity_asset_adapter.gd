@@ -233,15 +233,19 @@ class ImageHandler:
 		match importer.keys.get("textureShape", 0):
 			2:
 				var image_file := Image.load_from_file(pkgasset.pathname)
+				var wid: int = 0
+				var hei: int = 0
 				if image_file != null:
-					pkgasset.parsed_meta.log_debug("Detecting Cubemap from image size " + str(image_file.get_size()))
+					pkgasset.log_debug("Detecting Cubemap from image size " + str(image_file.get_size()))
+					wid = image_file.get_width()
+					hei = image_file.get_height()
 				cfile.set_value_compare("remap", "type", "CompressedCubemap")
 				cfile.set_value_compare("remap", "importer", "cubemap_texture")
-				var wid: int = image_file.get_width()
-				var hei: int = image_file.get_width()
 				# Godot "slices/arrangement", PROPERTY_HINT_ENUM, "1x6,2x3,3x2,6x1"
 				var gen_cube: int = importer.keys.get("generateCubemap", 0)
-				if hei == wid or (gen_cube != 1 or gen_cube == 3 or gen_cube == 4):
+				if image_file == null:
+					pkgasset.log_fail("Was unable to load the image file " + str(pkgasset.pathname) + " to determine cubemap format")
+				elif hei == wid or (gen_cube != 1 or gen_cube == 3 or gen_cube == 4):
 					pkgasset.log_fail("Spherical cubemap layout is not supported. Godot expects a 2x3 or 1x6 grid")
 				elif gen_cube == 2:
 					pkgasset.log_fail("Cylindrical cubemap layout is not supported. Godot expects a 2x3 or 1x6 grid")
