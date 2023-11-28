@@ -796,13 +796,13 @@ class UnityMaterial:
 			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
 			if ret.normal_texture != null:
 				ret.normal_enabled = true
-		if true: # kws.get("_EMISSION", false):
+		if kws.get("_EMISSION", false):
 			var emis_vec: Plane = get_vector_from_color(colorProperties, "_EmissionColor", Color.BLACK)
 			var emis_mag = max(emis_vec.x, max(emis_vec.y, emis_vec.z))
 			ret.emission = Color.BLACK
 			if emis_mag > 0.01:
 				ret.emission_enabled = true
-				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag)
+				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag).linear_to_srgb()
 				ret.emission_energy = emis_mag
 				ret.emission_texture = get_texture(texProperties, "_EmissionMap")
 				if ret.emission_texture != null:
