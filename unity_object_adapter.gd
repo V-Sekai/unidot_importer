@@ -346,10 +346,10 @@ class UnityObject:
 	func get_vector(uprops: Dictionary, key: String, dfl := Vector3.ZERO) -> Variant:
 		if uprops.has(key):
 			return uprops.get(key)
-		log_debug("key is " + str(key) + "; " + str(uprops))
+		# log_debug("key is " + str(key) + "; " + str(uprops))
 		if uprops.has(key + ".x") or uprops.has(key + ".y") or uprops.has(key + ".z"):
 			var xreturn: Vector3 = Vector3(uprops.get(key + ".x", dfl.x), uprops.get(key + ".y", dfl.y), uprops.get(key + ".z", dfl.z))
-			log_debug("xreturn is " + str(xreturn))
+			# log_debug("xreturn is " + str(xreturn))
 			return xreturn
 		return null
 
@@ -4221,7 +4221,7 @@ class UnityPrefabInstance:
 		var nodepath_to_first_virtual_object = {}.duplicate()
 		var nodepath_to_keys = {}.duplicate()
 		for mod in modifications:
-			log_debug("Preparing to apply mod: Mod is " + str(mod))
+			# log_debug("Preparing to apply mod: Mod is " + str(mod))
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
 			var obj_value: Array = mod.get("objectReference", [null, 0, "", null])
@@ -4387,12 +4387,6 @@ class UnityPrefabInstance:
 		var gameobject_fileid_to_attachment: Dictionary = {}.duplicate()
 		var gameobject_fileid_to_body: Dictionary = {}.duplicate()
 		var orig_state_body: CollisionObject3D = state.body
-		log_debug("---- now applying stripped objects for " + str(self.fileID) + "-----")
-		log_debug(str(ps.transforms_by_parented_prefab.keys()))
-		log_debug(str(ps.gameobjects_by_parented_prefab.keys()))
-		log_debug(str(ps.transforms_by_parented_prefab.get(self.fileID, {})))
-		log_debug("^trans. next gameobj")
-		log_debug(str(ps.gameobjects_by_parented_prefab.get(self.fileID, {})))
 		for gameobject_asset in ps.gameobjects_by_parented_prefab.get(self.fileID, {}).values():
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnityGameObject = gameobject_asset
@@ -4509,9 +4503,10 @@ class UnityPrefabInstance:
 					attachment.bone_name = target_skel_bone
 					log_debug("Made a new attachment! " + str(target_skel_bone))
 					state.add_child(attachment, godot_skeleton, transform_asset)
-			log_debug("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
 
 			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
+			if not list_of_skelleys.is_empty():
+				log_debug("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
 			for new_skelley in list_of_skelleys:
 				if new_skelley.godot_skeleton != null:
 					if not state.active_avatars.is_empty():

@@ -194,8 +194,8 @@ class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var inited: bool = false
 	var pid: Object
 
-	const ERROR_COLOR_TAG := "FAIL: "
-	const WARNING_COLOR_TAG := "warn: "
+	const ERROR_COLOR_TAG := asset_meta_class.ERROR_COLOR_TAG
+	const WARNING_COLOR_TAG := asset_meta_class.WARNING_COLOR_TAG
 
 	func _init(package_import_dialog_val: Object):
 		pid = package_import_dialog_val
@@ -308,8 +308,6 @@ func _cell_selected() -> void:
 		var child_list: Array[TreeItem]
 		_get_children_recursive(child_list, ti)
 		if ti.is_checked(col):
-			var fail_keys = {}
-			var warning_keys = {}
 			var filtered_msgs: PackedStringArray
 			var data_to_unmerge: PackedStringArray
 			for child_ti in child_list:
@@ -329,30 +327,11 @@ func _cell_selected() -> void:
 				var start_idx = len(filtered_msgs)
 				if tw != null:
 					if col == 2:
-						for line in tw.parsed_meta.log_message_holder.fails:
-							fail_keys[line] = true
-						for line in tw.parsed_meta.log_message_holder.warnings_fails:
-							if not fail_keys.has(line):
-								warning_keys[line] = true
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.all_logs)
 					elif col == 3:
-						for line in tw.parsed_meta.log_message_holder.warnings_fails:
-							warning_keys[line] = true
-						for line in tw.parsed_meta.log_message_holder.fails:
-							fail_keys[line] = true
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.warnings_fails)
 					elif col == 4:
-						for line in tw.parsed_meta.log_message_holder.fails:
-							fail_keys[line] = true
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.fails)
-				for i in range(start_idx, len(filtered_msgs)):
-					var tmpidx: int = filtered_msgs[i].find(" ") + 1
-					if fail_keys.has(filtered_msgs[i]):
-						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + ErrorSyntaxHighlighter.ERROR_COLOR_TAG + filtered_msgs[i].substr(tmpidx)
-					elif warning_keys.has(filtered_msgs[i]):
-						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + ErrorSyntaxHighlighter.WARNING_COLOR_TAG + filtered_msgs[i].substr(tmpidx)
-					else:
-						filtered_msgs[i] = filtered_msgs[i].substr(0, tmpidx) + child_ti.get_text(0) + ": " + filtered_msgs[i].substr(tmpidx)
 			if len(child_list) > 1:
 				filtered_msgs.sort()
 			ti.set_metadata(col, filtered_msgs)

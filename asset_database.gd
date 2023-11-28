@@ -133,6 +133,10 @@ func create_dummy_meta(asset_path: String) -> Resource:  # asset_meta
 	meta.set_log_database(self)
 	meta.init_with_file(null, asset_path)
 	meta.path = asset_path
+	meta.orig_path = asset_path
+	meta.orig_path_short = asset_path
+	if len(asset_path.get_basename()) > 25:
+		meta.orig_path_short = asset_path.get_basename().substr(0, 30) + "..." + asset_path.get_extension()
 	var hc: HashingContext = HashingContext.new()
 	hc.start(HashingContext.HASH_MD5)
 	hc.update("GodotDummyMetaGuid".to_ascii_buffer())

@@ -41,6 +41,8 @@ var database_holder
 var log_database_holder
 var log_message_holder = LogMessageHolder.new()
 @export var path: String = ""
+@export var orig_path: String = ""
+var orig_path_short: String
 @export var guid: String = ""
 @export var importer_keys: Dictionary = {}
 @export var importer_type: String = ""
@@ -132,6 +134,9 @@ func clear_logs():
 	log_message_holder = LogMessageHolder.new()
 
 
+const ERROR_COLOR_TAG := "FAIL: "
+const WARNING_COLOR_TAG := "warn: "
+
 # Log messages related to this asset
 func log_debug(fileid: int, msg: String):
 	var fileidstr = ""
@@ -139,8 +144,12 @@ func log_debug(fileid: int, msg: String):
 		fileidstr = " @" + str(fileid)
 	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
 	log_database_holder.database.global_log_count += 1
-	var log_str: String = seq_str + msg + fileidstr
-	log_message_holder.all_logs.append(log_str)
+	var log_str: String = seq_str + orig_path_short + ": " + msg + fileidstr
+	var len_diff = len(log_message_holder.all_logs) - len(log_message_holder.warnings_fails)
+	if len_diff == 100000:
+		log_str = seq_str + "Dropping all future debug logs from this file!"
+	if len_diff <= 100000:
+		log_message_holder.all_logs.append(log_str)
 	log_database_holder.database.log_debug([null, fileid, self.guid, 0], msg)
 
 
@@ -160,7 +169,7 @@ func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 		fileidstr += " @" + str(fileid)
 	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
 	log_database_holder.database.global_log_count += 1
-	var log_str: String = seq_str + fieldstr + msg + fileidstr
+	var log_str: String = seq_str + orig_path_short + ": " + WARNING_COLOR_TAG + fieldstr + msg + fileidstr
 	log_message_holder.all_logs.append(log_str)
 	log_message_holder.warnings_fails.append(log_str)
 	var xref: Array = remote_ref
@@ -185,7 +194,7 @@ func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 		fileidstr += " @" + str(fileid)
 	var seq_str: String = "%08d " % log_database_holder.database.global_log_count
 	log_database_holder.database.global_log_count += 1
-	var log_str: String = seq_str + fieldstr + msg + fileidstr
+	var log_str: String = seq_str + orig_path_short + ": " + ERROR_COLOR_TAG + fieldstr + msg + fileidstr
 	log_message_holder.all_logs.append(log_str)
 	log_message_holder.warnings_fails.append(log_str)
 	log_message_holder.fails.append(log_str)
@@ -759,7 +768,11 @@ func _init():
 
 
 func init_with_file(file: Object, path: String):
+	self.orig_path = path
 	self.path = path
+	orig_path_short = path
+	if len(path.get_basename()) > 25:
+		orig_path_short = path.get_basename().substr(0, 30) + "..." + path.get_extension()
 	self.resource_name = path
 	type_to_fileids = {}.duplicate()  # push_back is not idempotent. must clear to avoid duplicates.
 	if file == null:
