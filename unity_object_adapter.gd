@@ -22,6 +22,9 @@ const monoscript: GDScript = preload("./monoscript.gd")
 const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
 const human_trait = preload("./humanoid/human_trait.gd")
 const humanoid_transform_util = preload("./humanoid/transform_util.gd")
+const unidot_utils_class = preload("./unidot_utils.gd")
+
+var unidot_utils = unidot_utils_class.new()
 
 const ANIMATION_TREE_ACTIVE = true # false # Set to false to debug or avoid auto-playing animations
 
@@ -2450,7 +2453,7 @@ class UnityAnimationClip:
 			clip.track_set_path(track_idx, new_path)
 		clip.set_meta("resolved_to_default_paths", new_resolved_to_default)
 		if clip.resource_path != StringName():
-			ResourceSaver.save(clip, clip.resource_path)
+			adapter.unidot_utils.save_resource(clip, clip.resource_path)
 		return clip
 
 	# NOTE: This function is dead code (unused).
@@ -2965,12 +2968,10 @@ class UnityAnimationClip:
 			else:
 				res_path = meta.path.get_basename() + (".%d.tres" % [self.fileID])
 			res_path = "res://" + res_path
-			if FileAccess.file_exists(res_path):
-				anim.take_over_path(res_path)
-			ResourceSaver.save(anim, res_path)
+			adapter.unidot_utils.save_resource(anim, res_path)
 			meta.insert_resource(self.fileID, anim)
 		else:
-			ResourceSaver.save(anim, anim.resource_path)
+			adapter.unidot_utils.save_resource(anim, anim.resource_path)
 		return anim
 
 
@@ -3978,8 +3979,7 @@ class UnityGameObject:
 			var sub_scene_filename: String = meta.path.substr(0, len(meta.path) - 5) + "." + str(self.name) + ".tscn"
 			var ps: PackedScene = PackedScene.new()
 			ps.pack(ret)
-			ps.take_over_path(sub_scene_filename)
-			ResourceSaver.save(ps, sub_scene_filename)
+			adapter.unidot_utils.save_resource(ps, sub_scene_filename)
 			ret.scene_file_path = sub_scene_filename
 			orig_meta_owner.set_editable_instance(ret, true)
 			#ps = ResourceLoader.load(sub_scene_filename)

@@ -194,9 +194,6 @@ class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var inited: bool = false
 	var pid: Object
 
-	const ERROR_COLOR_TAG := asset_meta_class.ERROR_COLOR_TAG
-	const WARNING_COLOR_TAG := asset_meta_class.WARNING_COLOR_TAG
-
 	func _init(package_import_dialog_val: Object):
 		pid = package_import_dialog_val
 
@@ -214,9 +211,9 @@ class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 		var off1: int = linestr.find(":")
 		var beg: String = linestr.substr(0, linestr.find(":", off1 + 1) + 2)
 		var ret: Dictionary = default_highlight
-		if beg.contains(ERROR_COLOR_TAG):
+		if beg.contains(asset_meta_class.ERROR_COLOR_TAG):
 			ret = fail_highlight
-		if beg.contains(WARNING_COLOR_TAG):
+		if beg.contains(asset_meta_class.WARNING_COLOR_TAG):
 			ret = warn_highlight
 		ret = ret.duplicate()
 		ret[off1] = ret[8]

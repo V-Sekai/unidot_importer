@@ -9,6 +9,9 @@ const post_import_material_remap_script: GDScript = preload("./post_import_unity
 const convert_scene: GDScript = preload("./convert_scene.gd")
 const raw_parsed_asset: GDScript = preload("./raw_parsed_asset.gd")
 const bone_map_editor_plugin: GDScript = preload("./bone_map_editor_plugin.gd")
+const unidot_utils_class = preload("./unidot_utils.gd")
+
+var unidot_utils = unidot_utils_class.new()
 
 const ASSET_TYPE_YAML = 1
 const ASSET_TYPE_MODEL = 2
@@ -38,6 +41,7 @@ func write_sentinel_png(sentinel_filename: String):
 
 
 class AssetHandler:
+	var unidot_utils = unidot_utils_class.new()
 	var editor_interface: EditorInterface = null
 
 	func _init():
@@ -488,10 +492,7 @@ class YamlHandler:
 			if created_res != null:
 				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext  # ".skin.tres"
 				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
-				if FileAccess.file_exists(new_pathname):
-					created_res.take_over_path(new_pathname)
-				created_res.resource_path = new_pathname
-				ResourceSaver.save(created_res, new_pathname)
+				unidot_utils.save_resource(created_res, new_pathname)
 				#created_res = load(new_pathname)
 				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)
 
@@ -507,10 +508,7 @@ class YamlHandler:
 			return false
 		if godot_resource != null:
 			# Save main resource at end, so that it can reference extra resources.
-			if FileAccess.file_exists(pkgasset.pathname):
-				godot_resource.take_over_path(pkgasset.pathname)
-			godot_resource.resource_path = pkgasset.pathname
-			ResourceSaver.save(godot_resource, pkgasset.pathname)
+			unidot_utils.save_resource(godot_resource, pkgasset.pathname)
 		if godot_resource == null or pkgasset.pathname.ends_with(DEBUG_RAW_PARSED_ASSET_TYPES):
 			var rpa = raw_parsed_asset.new()
 			rpa.path = pkgasset.pathname
@@ -520,9 +518,7 @@ class YamlHandler:
 				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
 				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
 			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
-			if FileAccess.file_exists(pkgasset.pathname + ".raw.tres"):
-				rpa.take_over_path(pkgasset.pathname + ".raw.tres")
-			ResourceSaver.save(rpa, pkgasset.pathname + ".raw.tres")
+			unidot_utils.save_resource(rpa, pkgasset.pathname + ".raw.tres")
 		return true
 
 
@@ -538,26 +534,8 @@ class SceneHandler:
 		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
-			if FileAccess.file_exists(pkgasset.pathname):
-				packed_scene.take_over_path(pkgasset.pathname)
-			else:
-				# Godot is giving an error in ResourceSaver.save() that it can't read the uid from the file while it's writing (get_uid)
-				# Why and how?!
-				# Let's experiment with manual UID generation...
-				# pkgasset.parsed_meta.
-				# ResourceUID.id_to_text(calc_md5(pkgasset.guid))
-				var new_uid = ResourceUID.create_id()
-				pkgasset.log_debug(ResourceUID.id_to_text(new_uid))
-				ResourceUID.add_id(new_uid, "res://" + pkgasset.pathname)
-				var fa: FileAccess = FileAccess.open("res://" + pkgasset.pathname, FileAccess.WRITE)
-				fa.store_string('[gd_scene format=3 uid="' + ResourceUID.id_to_text(new_uid) + '"]\n\n[node name="Node3D" type="Node3D"]\n')
-				fa.flush()
-				fa.close()
-				fa = null
-				EditorPlugin.new().get_editor_interface().get_resource_filesystem().update_file("res://" + pkgasset.pathname)
-			packed_scene.resource_path = "res://" + pkgasset.pathname
-			ResourceSaver.save(packed_scene, "res://" + pkgasset.pathname)
-			EditorPlugin.new().get_editor_interface().reload_scene_from_path("res://" + pkgasset.pathname)
+			unidot_utils.save_resource(packed_scene, "res://" + pkgasset.pathname)
+			unidot_utils.editor_interface.reload_scene_from_path("res://" + pkgasset.pathname)
 			return true
 		return false
 

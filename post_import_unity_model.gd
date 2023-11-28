@@ -7,6 +7,8 @@ extends EditorScenePostImport
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 const unity_object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const unidot_utils_class = preload("./unidot_utils.gd")
+
 # Use this as an example script for writing your own custom post-import scripts. The function requires you pass a table
 # of valid animation names and parameters
 
@@ -19,6 +21,7 @@ const unity_object_adapter_class: GDScript = preload("./unity_object_adapter.gd"
 #              "padding":[239,59,202,202,202,202,94,94,94,94],"unwrapper":[0,0,0,0,0,0,0,0,0,0]}'
 
 var object_adapter = unity_object_adapter_class.new()
+var unidot_utils = unidot_utils_class.new()
 var default_material: Material = null
 
 const ROOT_NODE_NAME = "//RootNode"
@@ -77,6 +80,7 @@ class ParseState:
 	var legacy_material_name_setting: int = 1
 	var default_material: Material = null
 	var asset_database: Resource = null
+	var unidot_utils = unidot_utils_class.new()
 
 	# Uh... they... forgot a function?????
 	func pop_back(arr: PackedStringArray):
@@ -534,9 +538,7 @@ class ParseState:
 							respath = get_resource_path("animation", ".tres")
 						else:
 							respath = get_resource_path(godot_anim_name, ".tres")
-						if FileAccess.file_exists(respath):
-							anim.take_over_path(respath)
-						ResourceSaver.save(anim, respath)
+						unidot_utils.save_resource(anim, respath)
 						anim = load(respath)
 				if anim != null:
 					anim_lib.remove_animation(godot_anim_name)
@@ -641,9 +643,7 @@ class ParseState:
 							metaobj.log_debug(0, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
 							metaobj.log_debug(0, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
-						if FileAccess.file_exists(respath):
-							mat.take_over_path(respath)
-						ResourceSaver.save(mat, respath)
+						unidot_utils.save_resource(mat, respath)
 						mat = load(respath)
 						metaobj.log_debug(0, "Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
 						if mat.albedo_texture != null:
@@ -669,9 +669,7 @@ class ParseState:
 				else:
 					if mesh != null:
 						var respath: String = get_resource_path(godot_mesh_name, ".mesh")
-						if FileAccess.file_exists(respath):
-							mesh.take_over_path(respath)
-						ResourceSaver.save(mesh, respath)
+						unidot_utils.save_resource(mesh, respath)
 						mesh = load(respath)
 					if skin != null:
 						skin = skin.duplicate()
@@ -679,9 +677,7 @@ class ParseState:
 						if skel != null and skel.has_meta("humanoid_rotation_delta"):
 							skin.set_meta("humanoid_rotation_delta", skel.get_meta("humanoid_rotation_delta").duplicate())
 						var respath: String = get_resource_path(godot_mesh_name, ".skin.tres")
-						if FileAccess.file_exists(respath):
-							skin.take_over_path(respath)
-						ResourceSaver.save(skin, respath)
+						unidot_utils.save_resource(skin, respath)
 						skin = load(respath)
 				if mesh != null:
 					node.mesh = mesh
