@@ -143,7 +143,7 @@ class ParseState:
 			var bone_mapped = bone_map_dict.get(p_obj_name, "")
 			if bone_mapped != "":
 				obj_name = bone_mapped
-			metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name) + " -> " + str(obj_name))
+			# metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name) + " -> " + str(obj_name))
 		return self.godot_sanitized_to_orig_remap.get(obj_gltf_type, {}).get(obj_name, obj_name)
 
 	func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary) -> Dictionary:
@@ -151,11 +151,11 @@ class ParseState:
 		var node_name = get_orig_name("nodes", node.name)
 		for child in node.get_children():
 			name_to_node_dict = build_skinned_name_to_node_map(child, name_to_node_dict)
-		metaobj.log_debug(0, "node.name " + str(node_name) + ": " + str(name_to_node_dict))
+		# metaobj.log_debug(0, "node.name " + str(node_name) + ": " + str(name_to_node_dict))
 		if node is MeshInstance3D:
 			if node.skin != null:
 				name_to_node_dict[node_name] = node
-				metaobj.log_debug(0, "adding " + str(node_name) + ": " + str(name_to_node_dict))
+				# metaobj.log_debug(0, "adding " + str(node_name) + ": " + str(name_to_node_dict))
 		return name_to_node_dict
 
 	func get_resource_path(sanitized_name: String, extension: String) -> String:
@@ -306,7 +306,7 @@ class ParseState:
 			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
-			metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
+			# metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
 			if not node.has_meta("humanoid_rotation_delta"):
 				node.set_meta("humanoid_rotation_delta", {})
@@ -424,7 +424,7 @@ class ParseState:
 				p_pre_retarget_global_rest *= node.transform
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
-			metaobj.log_debug(0, "node " + node.name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
+			# metaobj.log_debug(0, "node " + node.name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
 			transform_fileid_to_rotation_delta[fileId_transform] = p_global_rest.affine_inverse() * p_pre_retarget_global_rest
 
 		if len(p_path) == 1:

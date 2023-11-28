@@ -1232,7 +1232,7 @@ class FbxHandler:
 				if is_translation:
 					node_name = node_name.substr(len(TRANSLATION_PFX))
 				var node_idx: int = node_names_to_index[node_name]
-				pkgasset.log_debug("anim " + str(anim.get("name", "")) + " : Adding missing track " + str(node_name) + " node_idx " + str(node_idx) + " @" + str(len(glb_bin)))
+				# pkgasset.log_debug("anim " + str(anim.get("name", "")) + " : Adding missing track " + str(node_name) + " node_idx " + str(node_idx) + " @" + str(len(glb_bin)))
 				var json_node: Dictionary = json["nodes"][node_idx]
 				var pba: PackedByteArray
 				var spb: StreamPeerBuffer = StreamPeerBuffer.new()
@@ -1259,7 +1259,7 @@ class FbxHandler:
 						spb.put_float(json_quat[flt])
 					value_accessor = add_accessor(json, glb_bin, "VEC4", 1, spb.data_array)
 				var sampler: int = len(anim["samplers"])
-				pkgasset.log_debug("animation on node " + str(node_name) + ": " + str(sampler))
+				# pkgasset.log_debug("animation on node " + str(node_name) + ": " + str(sampler))
 				anim["samplers"].append({"input": single_element_input_accessor_idx, "output": value_accessor})
 				anim["channels"].append({"sampler": sampler, "target": {"node": node_idx, "path": "translation" if is_translation else "rotation"}})
 
@@ -1465,7 +1465,7 @@ class FbxHandler:
 			var hips_node_idx = -1
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
-				pkgasset.log_debug("AAAA node name " + str(node_name))
+				# pkgasset.log_debug("AAAA node name " + str(node_name))
 				if bone_map_dict.has(node_name):
 					var godot_human_name: String = bone_map_dict[node_name]
 					if godot_human_name == "Hips":

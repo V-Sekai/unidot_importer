@@ -4209,11 +4209,11 @@ class UnityPrefabInstance:
 
 		log_debug("Prefab " + str(packed_scene.resource_path) + " ------------")
 		log_debug("Adding to parent " + str(new_parent))
-		log_debug(str(target_prefab_meta.fileid_to_nodepath))
-		log_debug(str(target_prefab_meta.prefab_fileid_to_nodepath))
-		log_debug(str(target_prefab_meta.fileid_to_skeleton_bone))
-		log_debug(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
-		log_debug(" ------------")
+		#log_debug(str(target_prefab_meta.fileid_to_nodepath))
+		#log_debug(str(target_prefab_meta.prefab_fileid_to_nodepath))
+		#log_debug(str(target_prefab_meta.fileid_to_skeleton_bone))
+		#log_debug(str(target_prefab_meta.prefab_fileid_to_skeleton_bone))
+		#log_debug(" ------------")
 #				var component_key = component.get_component_key()
 #				if not name_map.has(component_key):
 #					name_map[component_key] = component.fileID
@@ -4256,11 +4256,10 @@ class UnityPrefabInstance:
 			var target_utype: int = target_prefab_meta.fileid_to_utype.get(fileID, target_prefab_meta.prefab_fileid_to_utype.get(fileID, 0))
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(fileID, target_prefab_meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(fileID, target_prefab_meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
-			log_debug("XXXc")
 			var virtual_fileID = meta.xor_or_stripped(fileID, self.fileID)
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, virtual_fileID, target_utype)
 			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
-			log_debug("XXXd " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath) + ": " + str(uprops))
+			log_debug("XXXd Calculating prefab modifications " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath) + ": " + str(uprops))
 			if uprops.has("m_Name"):
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
@@ -4709,15 +4708,15 @@ class UnityTransform:
 		if meta.transform_fileid_to_rotation_delta.has(fileID) or meta.prefab_transform_fileid_to_rotation_delta.has(fileID):
 			rotation_delta_post = meta.transform_fileid_to_rotation_delta.get(fileID, meta.prefab_transform_fileid_to_rotation_delta.get(fileID, Transform3D.IDENTITY))
 			rotation_delta_post = rotation_delta_post.affine_inverse()
-			log_debug("convert_properties: This fileID is a humanoid bone position offset=" + str(rotation_delta_post.origin) + " rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
+			#log_debug("convert_properties: This fileID is a humanoid bone position offset=" + str(rotation_delta_post.origin) + " rotation offset=" + str(rotation_delta_post.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta_post.basis.get_scale()))
 			has_post = true
 		if meta.transform_fileid_to_parent_fileid.has(fileID) or meta.prefab_transform_fileid_to_parent_fileid.has(fileID):
 			var parent_fileid: int = meta.transform_fileid_to_parent_fileid.get(fileID, meta.prefab_transform_fileid_to_parent_fileid.get(fileID))
 			if meta.transform_fileid_to_rotation_delta.has(parent_fileid) or meta.prefab_transform_fileid_to_rotation_delta.has(parent_fileid):
 				rotation_delta = meta.transform_fileid_to_rotation_delta.get(parent_fileid, meta.prefab_transform_fileid_to_rotation_delta.get(parent_fileid))
-				log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child position offset=" + str(rotation_delta.origin) + " rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta.basis.get_scale()))
-		else:
-			log_debug("convert_properties: Node has no parent.")
+				#log_debug("convert_properties: parent fileID " + str(parent_fileid) + " is a humanoid bone with child position offset=" + str(rotation_delta.origin) + " rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale offset=" + str(rotation_delta.basis.get_scale()))
+		#else:
+		#	log_debug("convert_properties: Node has no parent.")
 
 		var rot_quat: Quaternion = Quaternion.IDENTITY
 		var orig_rot_quat: Quaternion = rotation_delta.basis.get_rotation_quaternion().inverse() * orig_rot_godot * rotation_delta_post.basis.get_rotation_quaternion().inverse()
@@ -4745,7 +4744,7 @@ class UnityTransform:
 			rot_quat.z = -rot_quat.z
 			rot_quat = rotation_delta.basis.get_rotation_quaternion() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion()
 			outdict["quaternion"] = rot_quat
-			log_debug("Rotation would be " + str(outdict["quaternion"]) + " (" + str(rot_quat.get_euler() * 180.0 / PI) + " deg)")
+			#log_debug("Rotation would be " + str(outdict["quaternion"]) + " (" + str(rot_quat.get_euler() * 180.0 / PI) + " deg)")
 		else:
 			rot_quat = orig_rot_godot
 		rot_quat = rotation_delta.basis.get_rotation_quaternion().inverse() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion().inverse()
@@ -4753,13 +4752,13 @@ class UnityTransform:
 		rot_quat.z = -rot_quat.z
 
 		var orig_scale: Vector3 = (rotation_delta.basis.inverse() * Basis.from_scale(orig_scale_godot) * rotation_delta_post.basis.inverse()).get_scale()
-		log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
+		#log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
 		var input_scale_vec: Vector3
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)
 		if typeof(scale) == TYPE_VECTOR3:
 			input_scale_vec = scale as Vector3
 			var scale_vec: Vector3 = scale as Vector3
-			log_debug("Scale originally is " + str(scale_vec))
+			#log_debug("Scale originally is " + str(scale_vec))
 			# FIXME: Godot handles scale 0 much worse than Unity. Try to avoid it.
 			if scale_vec.x > -1e-7 && scale_vec.x < 1e-7:
 				scale_vec.x = 1e-7
@@ -4769,19 +4768,19 @@ class UnityTransform:
 				scale_vec.z = 1e-7
 			scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
 			outdict["scale"] = scale_vec
-			log_debug("Scale would be " + str(outdict["scale"]))
+			#log_debug("Scale would be " + str(outdict["scale"]))
 		else:
 			input_scale_vec = orig_scale
 
 		var orig_pos: Vector3 = (rotation_delta.basis.inverse() * orig_pos_godot) * Vector3(-1, 1, 1)
-		log_debug("Original position: " + str(orig_pos_godot) + " -> " + str(orig_pos))
+		#log_debug("Original position: " + str(orig_pos_godot) + " -> " + str(orig_pos))
 		var pos_tmp: Variant = get_vector(uprops, "m_LocalPosition", orig_pos)
 		if typeof(pos_tmp) == TYPE_VECTOR3:
 			var pos_vec: Vector3 = pos_tmp as Vector3
-			log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)) + " adding " + str(rot_quat * (input_scale_vec * rotation_delta_post.origin)))
+			#log_debug("Position originally is " + str(pos_vec * Vector3(-1, 1, 1)) + " adding " + str(rot_quat * (input_scale_vec * rotation_delta_post.origin)))
 			pos_vec = rotation_delta * (pos_vec * Vector3(-1, 1, 1) + rot_quat * (input_scale_vec * rotation_delta_post.origin)) # * rotation_delta_post.basis #.get_rotation_quaternion()
 			outdict["position"] = pos_vec
-			log_debug("Position would be " + str(outdict["position"]))
+			#log_debug("Position would be " + str(outdict["position"]))
 
 		return outdict
 
