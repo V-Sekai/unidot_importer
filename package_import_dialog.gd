@@ -788,12 +788,18 @@ func on_import_fully_completed():
 
 func update_task_color(tw: RefCounted):
 	var ti: TreeItem = tw.extra
-	if tw.asset.parsed_meta == null:
+	if tw.did_fail and tw.asset.parsed_meta == null:
+		ti.set_icon(0, status_error_icon)
+		ti.set_custom_color(0, Color("#ffbb77"))
+	elif tw.asset.parsed_meta == null:
 		ti.set_icon(0, status_success_icon)
 		ti.set_custom_color(0, Color("#ddffbb"))
 	else:
 		var holder: asset_meta_class.LogMessageHolder = tw.asset.parsed_meta.log_message_holder
-		if not tw.is_loaded:
+		if tw.did_fail:
+			ti.set_icon(0, status_error_icon)
+			ti.set_custom_color(0, Color("#ff7733"))
+		elif not tw.is_loaded:
 			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff4422"))
 		elif holder.has_fails():
@@ -1025,7 +1031,10 @@ func _asset_processing_finished(tw: Object):
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
 	ti.set_metadata(1, tw.asset)
-	ti.set_custom_color(0, Color("#44ffff"))
+	if tw.did_fail:
+		update_task_color(tw)
+	else:
+		ti.set_custom_color(0, Color("#44ffff"))
 	if ti.get_button_count(0) > 0:
 		ti.erase_button(0, 0)
 	tw.asset.log_debug("Asset database object is now " + str(asset_database))
@@ -1040,11 +1049,13 @@ func _asset_processing_finished(tw: Object):
 	#
 	if tw.asset.parsed_meta == null:
 		tw.asset.parsed_meta = asset_database.create_dummy_meta(tw.asset.guid)
+		tw.asset.log_fail("Did not successfully parse meta.")
 	tw.asset.log_debug("For guid " + str(tw.asset.guid) + ": internal_data=" + str(tw.asset.parsed_meta.internal_data))
 	tw.asset.log_debug("Finished processing meta path " + str(tw.asset.parsed_meta.path) + " guid " + str(tw.asset.parsed_meta.guid) + " opath " + str(tw.output_path))
-	if not asset_adapter.uses_godot_importer(tw.asset):
-		asset_database.insert_meta(tw.asset.parsed_meta)
-	if tw.asset.asset_tar_header != null:
+	if not tw.did_fail:
+		if not asset_adapter.uses_godot_importer(tw.asset):
+			asset_database.insert_meta(tw.asset.parsed_meta)
+	if not tw.did_fail and tw.asset.asset_tar_header != null:
 		var extn = tw.output_path.get_extension()
 		var asset_type = asset_adapter.get_asset_type(tw.asset)
 		asset_all.push_back(tw)

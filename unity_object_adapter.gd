@@ -1125,6 +1125,7 @@ class UnityRuntimeAnimatorController:
 		return null
 
 	func create_animation_library_clips_at_node(animator: RefCounted, node_parent: Node, animation_guid_fileid_to_name: Dictionary, requested_clips: Dictionary) -> AnimationLibrary:
+		var animation_guid_fileid_to_name_new: Dictionary
 		for key in animation_guid_fileid_to_name:
 			var guid_fid = key.split(":")
 			var anim_guid = guid_fid[0]
@@ -1146,22 +1147,53 @@ class UnityRuntimeAnimatorController:
 			elif anim_res == null and anim_clip_obj != null:
 				anim_res = anim_clip_obj.create_animation_clip_at_node(animator, node_parent)
 			elif anim_res != null and anim_clip_obj != null and node_parent != null:
-				anim_clip_obj.adapt_animation_clip_at_node(animator, node_parent, anim_res)
+				anim_res = anim_clip_obj.adapt_animation_clip_at_node(animator, node_parent, anim_res)
+			var clip_sn := StringName(clip_name)
 			if anim_res != null:
-				anim_library.add_animation(StringName(clip_name), anim_res)
-		anim_library.set_meta("animation_guid_fileid_to_name", animation_guid_fileid_to_name)
+				anim_library.add_animation(clip_sn, anim_res)
+			var target_guid: String
+			if typeof(requested_clips[clip_name][2]) == TYPE_NIL:
+				target_guid = meta.guid
+			else:
+				target_guid = requested_clips[clip_name][2]
+			animation_guid_fileid_to_name_new[target_guid + ":" + str(requested_clips[clip_name][1])] = clip_sn
+		anim_library.set_meta(&"guid_fileid_to_animation_name", animation_guid_fileid_to_name_new)
 		return anim_library
 
 	func adapt_animation_player_at_node(animator: RefCounted, anim_player: AnimationPlayer):
 		var node_parent: Node = anim_player.get_parent()
-		var virtual_animation_clip: UnityAnimationClip = adapter.instantiate_unity_object(meta, 0, 0, "AnimationClip")
+		var virtual_generic_animation_clip: UnityAnimationClip = adapter.instantiate_unity_object(meta, 0, 0, "AnimationClip")
 		log_debug("Current fileid_to_nodepath: " + str(meta.fileid_to_nodepath.keys()) + " prefab " + str(meta.prefab_fileid_to_nodepath.keys()))
 		for library_name in anim_player.get_animation_library_list():
 			var library: AnimationLibrary = anim_player.get_animation_library(library_name)
-			for clip_name in library.get_animation_list():
+			var animation_guid_fileid_to_name: Dictionary = library.get_meta(&"guid_fileid_to_animation_name", {})
+			var done_names: Dictionary
+			for key in animation_guid_fileid_to_name:
+				var guid_fid = key.split(":")
+				var anim_guid = guid_fid[0]
+				var anim_fileid: int = guid_fid[1].to_int()
+				var anim_ref = [null, anim_fileid, anim_guid, 2]
+				var clip_name = animation_guid_fileid_to_name[key]
+				done_names[clip_name] = true
+				if not library.has_animation(clip_name):
+					log_warn("Library is missing animation " + str(clip_name))
+					continue
 				var clip = library.get_animation(clip_name)
 				log_debug("Adapting AnimationClip " + clip_name + " at node " + str(node_parent.name))
-				virtual_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
+				var virtual_animation_clip: UnityAnimationClip = adapter.instantiate_unity_object(meta.lookup_meta(anim_ref), anim_ref[1], 0, "AnimationClip")
+				var new_clip: Animation = virtual_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
+				if new_clip != null and new_clip != clip:
+					library.remove_animation(clip_name)
+					library.add_animation(clip_name, new_clip)
+			for clip_name in library.get_animation_list():
+				if done_names.has(clip_name) or clip_name == &"RESET" or clip_name == &"_T-Pose_":
+					continue
+				var clip: Animation = library.get_animation(clip_name)
+				log_warn("Adapting unrecognized AnimationClip " + clip_name + " at node " + str(node_parent.name))
+				var new_clip: Animation = virtual_generic_animation_clip.adapt_animation_clip_at_node(animator, node_parent, clip)
+				if new_clip != null and new_clip != clip:
+					library.remove_animation(clip_name)
+					library.add_animation(clip_name, new_clip)
 
 	func get_godot_type() -> String:
 		return "AnimationNodeBlendTree"
@@ -1987,6 +2019,8 @@ class UnityAnimationClip:
 			nodepath = "."
 		elif str(nodepath).begins_with(str(animator_nodepath) + "/"):
 			nodepath = NodePath(str(nodepath).substr(len(str(animator_nodepath)) + 1))
+		elif str(animator_nodepath) == "." or str(nodepath) == ".":
+			pass
 		else:
 			log_warn("NodePath " + str(nodepath) + " not within the animator path " + str(animator_nodepath), "", [null,current_fileID,"",0])
 		if not extra_path.is_empty():
@@ -2227,6 +2261,26 @@ class UnityAnimationClip:
 		var identical: int = 0
 		var scale_tracks: Dictionary
 		var rot_tracks: Dictionary
+		var transform_nodepath_to_fileid: Dictionary
+		var mesh_nodepath_to_fileid: Dictionary
+		var reverse_gameobject_to_name: Dictionary
+		var reverse_gameobject_to_parent: Dictionary
+		for fileid in meta.gameobject_name_to_fileid_and_children:
+			var dic: Dictionary = meta.gameobject_name_to_fileid_and_children[fileid]
+			for chld in dic:
+				if typeof(chld) == TYPE_STRING:
+					reverse_gameobject_to_name[dic[chld]] = chld
+					reverse_gameobject_to_parent[dic[chld]] = fileid
+		for fileid in meta.fileid_to_nodepath:
+			var nodepath: NodePath = meta.fileid_to_nodepath[fileid]
+			var skel_bone: String = meta.fileid_to_skeleton_bone.get(fileid, "")
+			if not skel_bone.is_empty():
+				nodepath = NodePath(String(nodepath) + ":" + skel_bone)
+			# internal_data.get("godot_sanitized_to_orig_remap", {})
+			if meta.fileid_to_utype[fileid] == 4: # Transform
+				transform_nodepath_to_fileid[nodepath] = meta.fileid_to_gameobject_fileid.get(fileid, 0)
+			elif meta.fileid_to_utype[fileid] == 137: # SkinnedMeshRenderer
+				mesh_nodepath_to_fileid[nodepath] = meta.fileid_to_gameobject_fileid.get(fileid, 0)
 		for track_idx in range(clip.get_track_count()):
 			var typ: int = clip.track_get_type(track_idx)
 			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
@@ -2239,23 +2293,66 @@ class UnityAnimationClip:
 			var typ: int = clip.track_get_type(track_idx)
 			var resolved_key: String = str(clip.track_get_path(track_idx)).replace("%GeneralSkeleton/", "")
 			var resolved_subpath: String = NodePath(resolved_key).get_concatenated_subnames()
+			'''
+			@export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
+			@export var fileid_to_skeleton_bone: Dictionary = {}  # int -> string: scene_node_state.add_fileID_to_skeleton_bone
+			@export var fileid_to_utype: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
+			@export var fileid_to_gameobject_fileid: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
+			@export var type_to_fileids: Dictionary = {}  # string -> Array[int]: parse_binary_asset/parse_asset
+			@export var godot_resources: Dictionary = {}  # int -> Resource: insert_resource/override_resource
+			@export var main_object_id: int = 0  # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
+			@export var gameobject_name_to_fileid_and_children: Dictionary = {}  # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
+			'''
+			var source_fileid: int = 0
 			match typ:
 				Animation.TYPE_BLEND_SHAPE:
-					resolved_key = "B" + resolved_key
-				Animation.TYPE_VALUE:
-					resolved_key = "V" + resolved_key
+					var mesh_key: NodePath = NodePath(clip.track_get_path(track_idx).get_concatenated_names())
+					if mesh_nodepath_to_fileid.has(mesh_key):
+						source_fileid = mesh_nodepath_to_fileid[mesh_key]
 				Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
-					resolved_key = "T" + resolved_key
-				_:
-					log_warn(str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
+					var transform_key: NodePath = clip.track_get_path(track_idx)
+					if transform_nodepath_to_fileid.has(transform_key):
+						source_fileid = transform_nodepath_to_fileid[transform_key]
+
+			var orig_info: Array
+			if source_fileid != 0:
+				var source_path_components: PackedStringArray
+				var parent_fileid := source_fileid
+				while parent_fileid != 0 and reverse_gameobject_to_name.has(parent_fileid) and len(source_path_components) < 100:
+					source_path_components.append(reverse_gameobject_to_name[parent_fileid])
+					parent_fileid = reverse_gameobject_to_parent[parent_fileid]
+				if source_path_components.is_empty():
+					log_warn("Unable to lookup reverse name " + str(parent_fileid))
+				source_path_components.reverse()
+				var source_path: String = "/".join(source_path_components)
+				var source_classID: int
+				if typ == Animation.TYPE_BLEND_SHAPE:
+					resolved_key = "B" + source_path + ":" + resolved_subpath
+					source_classID = 137
+				else:
+					resolved_key = "T" + source_path
+					resolved_subpath = ""
+					source_classID = 4
+				orig_info = [source_path, resolved_key, source_classID]
+				log_debug("Converting imported Godot NodePath to " + str([source_path, resolved_key, source_classID]))
+			else:
+				match typ:
+					Animation.TYPE_BLEND_SHAPE:
+						resolved_key = "B" + resolved_key
+					Animation.TYPE_VALUE:
+						resolved_key = "V" + resolved_key
+					Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
+						resolved_key = "T" + resolved_key
+					_:
+						log_warn(str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
+						new_track_names.append([clip.track_get_path(track_idx), "", []])
+						continue  # unsupported track type.
+				if not resolved_to_default_paths.has(resolved_key):
+					if not resolved_key.begins_with("T%GeneralSkeleton"): # This is normal
+						log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
 					new_track_names.append([clip.track_get_path(track_idx), "", []])
-					continue  # unsupported track type.
-			if not resolved_to_default_paths.has(resolved_key):
-				if not resolved_key.begins_with("T%GeneralSkeleton"): # This is normal
-					log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
-				new_track_names.append([clip.track_get_path(track_idx), "", []])
-				continue
-			var orig_info: Array = resolved_to_default_paths[resolved_key]
+					continue
+				orig_info = resolved_to_default_paths[resolved_key]
 			var path: String = orig_info[0]
 			var attr: String = orig_info[1]
 			var classID: int = orig_info[2]
@@ -2337,7 +2434,13 @@ class UnityAnimationClip:
 	func adapt_animation_clip_at_node(animator: RefCounted, node_parent: Node, clip: Animation):
 		var generated_track_nodepaths: Array = adapt_track_nodepaths_for_node(animator, node_parent, clip)
 		if generated_track_nodepaths.is_empty():  # Already adapted.
-			return
+			return clip
+		if meta.importer_type != "NativeFormatImporter" and meta.importer_type != "DefaultImporter":
+			if meta.godot_resources.has(-fileID):
+				return meta.get_godot_resource([null, -fileID, null, 0])
+			clip = clip.duplicate()
+			clip.resource_path = clip.resource_path.get_basename().get_basename() + ".adapted.anim"
+			meta.insert_resource_path(-fileID, clip.resource_path)
 		# var resolved_to_default_paths: Dictionary = clip.get_meta("resolved_to_default_paths", {})
 		var new_resolved_to_default: Dictionary = {}.duplicate()
 		for track_idx in range(clip.get_track_count()):
@@ -2350,6 +2453,7 @@ class UnityAnimationClip:
 		clip.set_meta("resolved_to_default_paths", new_resolved_to_default)
 		if clip.resource_path != StringName():
 			ResourceSaver.save(clip, clip.resource_path)
+		return clip
 
 	# NOTE: This function is dead code (unused).
 	# The idea is if there are multiple "solutions" to adapting animation clips, this could allow storing both
@@ -5754,7 +5858,7 @@ class UnityAnimation:
 				anim_res = anim_clip_obj.create_animation_clip_at_node(self, node.get_parent())
 				anim_name = StringName(anim_clip_obj.keys["m_Name"])
 			elif anim_res != null and anim_clip_obj != null:
-				anim_clip_obj.adapt_animation_clip_at_node(self, node.get_parent(), anim_res)
+				anim_res = anim_clip_obj.adapt_animation_clip_at_node(self, node.get_parent(), anim_res)
 				anim_name = StringName(anim_clip_obj.keys["m_Name"])
 			else:
 				anim_name = StringName(anim_res.resource_name)

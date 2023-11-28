@@ -1046,12 +1046,20 @@ class FbxHandler:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8()  # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
+		var d := DirAccess.open("res://")
+		d.rename(temp_input_path, temp_input_path + "x")
+		d.remove(temp_input_path + "x")
 		var outfile: FileAccess = FileAccess.open(temp_input_path, FileAccess.WRITE_READ)
 		outfile.store_buffer(fbx_file)
 		outfile.flush()
 		pkgasset.log_debug("Flushed " + str(temp_input_path))
 		outfile.close()
 		pkgasset.log_debug("Closed " + str(temp_input_path))
+		var retry_count: int = 0
+		while not FileAccess.open(temp_input_path, FileAccess.READ_WRITE) and retry_count < 40:
+			pkgasset.log_debug("Retry " + str(temp_input_path) + " " + str(retry_count))
+			OS.delay_msec(500)
+			retry_count += 1
 		outfile = null
 		var unique_texture_map: Dictionary = {}
 		var texture_dirname = full_tmpdir
@@ -1064,7 +1072,6 @@ class FbxHandler:
 				replaced_extension = "jpg"
 			unique_texture_map[fn_filename.get_basename() + "." + replaced_extension] = fn_filename
 		pkgasset.log_debug("Referenced textures: " + str(unique_texture_map.keys()))
-		var d = DirAccess.open("res://")
 		var tex_not_exists = {}
 		for fn in unique_texture_map.keys():
 			if not d.file_exists(texture_dirname + "/" + fn):
@@ -1313,6 +1320,11 @@ class FbxHandler:
 		pkgasset.log_debug(addon_path + " " + " ".join(cmdline_args))
 		var ret = OS.execute(addon_path, cmdline_args, stdout)
 		for i in range(5):
+			OS.delay_msec(500)
+			#d.rename(tmpdir + "/" + path, tmpdir + "/x" + path)
+			#d.copy(tmpdir + "/x" + path, tmpdir + "/" + path)
+			#d.remove(tmpdir + "/x" + path)
+			OS.delay_msec(500)
 			# Hack, but I don't know what to do about this for now. The .close() is async or something.
 			if ret == 1 and "".join(stdout).strip_edges().is_empty():
 				pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
@@ -1325,6 +1337,7 @@ class FbxHandler:
 		var f: FileAccess = FileAccess.open(gltf_output_path, FileAccess.READ)
 		if f == null:
 			pkgasset.log_fail("Failed to open gltf output " + gltf_output_path)
+			return ""
 		var data: String = f.get_buffer(f.get_length()).get_string_from_utf8()
 		f.close()
 		f = null

@@ -13,6 +13,7 @@ class ThreadWork:
 	var tmpdir: String
 	var output_path: String
 	var extra: Variant
+	var did_fail: bool
 	var is_loaded: bool
 
 
@@ -34,7 +35,10 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 	asset_processing_started.emit(tw)
 	tw.output_path = asset_adapter.preprocess_asset(asset_database, tw.asset, tw.tmpdir, thread_subdir)
 	# It has not yet been added to the database, so do not use rename()
-	if tw.asset.parsed_meta != null:
-		tw.asset.parsed_meta.path = tw.output_path
-	tw.asset.pathname = tw.output_path
+	if tw.output_path == "":
+		tw.did_fail = true
+	else:
+		if tw.asset.parsed_meta != null:
+			tw.asset.parsed_meta.path = tw.output_path
+		tw.asset.pathname = tw.output_path
 	asset_processing_finished.emit(tw)
