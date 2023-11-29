@@ -203,7 +203,7 @@ func preload_builtin_assets():
 	var quad_mesh: QuadMesh = QuadMesh.new()
 	quad_mesh.orientation = PlaneMesh.FACE_Z
 	quad_mesh.flip_faces = true
-	quad_mesh.size = Vector2(-1.0, 1.0)
+	quad_mesh.size = Vector2(1.0, 1.0)
 	unity_builtin.override_resource(10210, "Quad", quad_mesh)
 
 	var unity_extra = asset_meta_class.new()

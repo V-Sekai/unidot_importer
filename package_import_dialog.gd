@@ -660,7 +660,7 @@ func _show_importer_common() -> void:
 	var vbox := VBoxContainer.new()
 	vbox.size_flags_vertical = Control.SIZE_FILL
 	vbox.size_flags_horizontal = Control.SIZE_FILL
-	var hbox := HBoxContainer.new()
+	var hbox := HSplitContainer.new()
 	hbox.size_flags_vertical = Control.SIZE_FILL
 	hbox.size_flags_horizontal = Control.SIZE_FILL
 	main_dialog_tree = Tree.new()

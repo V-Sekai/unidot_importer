@@ -315,6 +315,24 @@ class UnityObject:
 			node.mesh = props.get("_mesh")
 			node.material_override = null
 
+		if props.has("_lightmap_static"):
+			if props["_lightmap_static"]:
+				var has_uv2: bool = false
+				if node.mesh is ArrayMesh:
+					var array_mesh := node.mesh as ArrayMesh
+					has_uv2 = 0 != (array_mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2)
+				if node.mesh is PrimitiveMesh:
+					var prim_mesh := node.mesh as PrimitiveMesh
+					prim_mesh.add_uv2 = true
+					has_uv2 = true
+				if has_uv2:
+					node.gi_mode = GeometryInstance3D.GI_MODE_STATIC
+				else:
+					node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+			else:
+				# GI_MODE_DISABLED seems buggy and ignores light probes.
+				node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
+
 		current_materials.resize(new_materials_size)
 		for i in range(new_materials_size):
 			current_materials[i] = props.get("_materials/" + str(i), current_materials[i])
@@ -811,7 +829,16 @@ class UnityMaterial:
 			ret.heightmap_texture = get_texture(texProperties, "_ParallaxMap")
 			if ret.heightmap_texture != null:
 				ret.heightmap_enabled = true
-				ret.heightmap_scale = get_float(floatProperties, "_Parallax", 1.0)
+				# Godot generated standard shader code looks something like this:
+				# float depth = 1.0 - texture(texture_heightmap, base_uv).r;
+				# vec2 ofs = base_uv - view_dir.xy * depth * heightmap_scale * 0.01;
+				# ------
+				# Note in particular the * 0.01 multiplier.
+				# Unfortunately, Godot does not have a heightmap bias setting (such as 0.5)
+				# Therefore, it is not possible to represent a heightmap completely accurately
+				# And we must pick a direction: positive or negative. In this case I choose negative.
+				# Which causes the heightmap to "pop out" of the surface.
+				ret.heightmap_scale = -100.0 * get_float(floatProperties, "_Parallax", 1.0)
 		if kws.get("_SPECULARHIGHLIGHTS_OFF", false):
 			ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		if kws.get("_GLOSSYREFLECTIONS_OFF", false):
@@ -3828,6 +3855,9 @@ class UnityGameObject:
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.values()[0])
+				if component.utype == 33:
+					if keys.has("m_StaticEditorFlags"):
+						component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
 				if ret == null:
 					log_fail("Unable to create godot node " + component.type + " on null skeleton", "bone", self)
 				var tmp = component.create_godot_node(state, ret)
@@ -3926,6 +3956,10 @@ class UnityGameObject:
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.values()[0])
+				if component.utype == 33:
+					if keys.has("m_StaticEditorFlags"):
+						component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
+
 				var tmp = component.create_godot_node(state, ret)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
@@ -4229,6 +4263,15 @@ class UnityPrefabInstance:
 			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
 			var obj_value: Array = mod.get("objectReference", [null, 0, "", null])
 			var value: String = mod.get("value", "")
+
+			if property_key == "m_StaticEditorFlags":
+				# 33 - filter, 23 - renderer
+				# We really want the MeshRenderer to learn about the static lightmap flag.
+				var source_fileID_mr: int = pgntfac.get(source_obj_ref[1], gntfac.get(source_obj_ref[1], {})).get(23, 0)
+				if source_fileID_mr != 0:
+					var flags_val: int = value.to_int()
+					source_obj_ref = [null, source_fileID_mr, target_prefab_meta.guid, 0]
+
 			var fileID: int = source_obj_ref[1]
 			if not fileID_to_keys.has(fileID):
 				fileID_to_keys[fileID] = {}.duplicate()
@@ -4453,6 +4496,8 @@ class UnityPrefabInstance:
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				if attachment == null:
 					log_fail("Unable to create godot node " + component.type + " on null attachment ", "attachment", component)
+				# FIXME: We do not currently store m_StaticEditorFlags on the GameObject
+				# so there is no way to assign m_StaticEditorFlags on newly-created MeshFilter components.
 				var tmp = component.create_godot_node(state, attachment)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
@@ -4830,8 +4875,12 @@ class UnityCollider:
 		var new_node: CollisionShape3D = CollisionShape3D.new()
 		log_debug("Creating collider at " + self.name + " type " + self.type + " parent name " + str(new_parent.name if new_parent != null else "NULL") + " path " + str(state.owner.get_path_to(new_parent) if new_parent != null else NodePath()) + " body name " + str(state.body.name if state.body != null else "NULL") + " path " + str(state.owner.get_path_to(state.body) if state.body != null else NodePath()))
 		new_node.shape = self.shape
-		if state.body == null:
-			var new_body := StaticBody3D.new()
+		if state.body == null or keys.get("m_IsTrigger", 0) != 0:
+			var new_body: Node3D
+			if keys.get("m_IsTrigger", 0) != 0:
+				new_body = Area3D.new()
+			else:
+				new_body = StaticBody3D.new()
 			new_body.name = self.type
 			new_parent.add_child(new_body, true)
 			new_body.owner = state.owner
@@ -5094,6 +5143,9 @@ class UnityMeshFilter:
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
+		var flags_val: int = keys.get("m_StaticEditorFlags", 0) # We copy this from the GameObject to the MeshRenderer.
+		var lightmap_static: bool = (flags_val & 1) != 0
+		outdict["_lightmap_static"] = lightmap_static
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
@@ -5140,6 +5192,36 @@ class UnityMeshRenderer:
 
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
+		var flags_val: int = keys.get("m_StaticEditorFlags", 0) # We copy this from the GameObject to the MeshRenderer.
+		var lightmap_static: bool = (flags_val & 1) != 0
+		outdict["_lightmap_static"] = lightmap_static
+		var lightmap_scale: float = keys.get("m_ScaleInLightmap", 1)
+		if lightmap_scale <= 1.55:
+			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_1X
+		elif lightmap_scale <= 3.05:
+			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_2X
+		elif lightmap_scale <= 6.05:
+			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_4X
+		else:
+			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_8X
+
+		# if flags_val & 16: # Occludee static
+		# if flags_val & 2: # Occluder static
+		if keys.get("m_DynamicOccludee", 1) == 1:
+			outdict["ignore_occlusion_culling"] = false
+		else:
+			outdict["ignore_occlusion_culling"] = true
+
+		match keys.get("m_CastShadows", 1):
+			0:
+				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			2:
+				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			3:
+				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			_:
+				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
 		if uprops.has("m_Materials"):
 			outdict["_materials_size"] = len(uprops.get("m_Materials"))
 			var idx: int = 0
