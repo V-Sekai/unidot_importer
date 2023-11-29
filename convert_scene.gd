@@ -26,6 +26,15 @@ func smallestTransform(a, b):
 		return b.fileID < a.fileID
 
 
+func get_global_transform(node: Node):
+	if not (node is Node3D):
+		return Transform3D.IDENTITY
+	var n3d = node as Node3D
+	if node.get_parent() == null or n3d.top_level:
+		return n3d.transform
+	return get_global_transform(node.get_parent()) * n3d.transform
+
+
 func recursive_print(pkgasset, node: Node, indent: String = ""):
 	var fnstr = "" if str(node.scene_file_path) == "" else (" (" + str(node.scene_file_path) + ")")
 	pkgasset.log_debug(indent + str(node.name) + ": owner=" + str(node.owner.name if node.owner != null else "") + fnstr)
@@ -332,6 +341,45 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					# Enabled PostProcessingVolume with matching layer.
 					if mono.keys.get("isGlobal", 0) == 1 and mono.keys.get("weight", 0) > 0.0:
 						mono.log_debug("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
+
+	var light_probes: Array[Node] = scene_contents.find_children("*", "LightmapProbe")
+	var heights = []
+
+	for probe in light_probes:
+		heights.append(get_global_transform(probe).origin.y)
+	# LightmapProbe operations are non-linear.
+	# Godot becomes very slow if you have 2600 probes, and it crashes with "Out of memory" if you have more than 2700
+	# (Out of memory due to resizing an array over 1 billion elements, not due to actual memory consumption)
+	# So we will limit probes scene-wide to 2500.
+	var did_warn_too_many: bool = false
+	const max_probe_before_sampling: int = 1500
+	const max_probe_after_sampling: int = 300
+	const probe_sample_denom: int = 13
+	var max_height: float = 1000.0
+	if len(heights) > max_probe_before_sampling:
+		heights.sort()
+		max_height = heights[max_probe_before_sampling]
+	if len(heights) > max_probe_after_sampling:
+		var min_x: int = min(len(heights), max_probe_before_sampling)
+		var probe_sample_num: int = max_probe_after_sampling * probe_sample_denom / min_x
+		pkgasset.log_warn("Deleting " + str(len(heights) - max_probe_before_sampling) + " light probes above y=" + str(max_height) + " to prevent engine bug.")
+		pkgasset.log_warn("Sampling " + str(min_x * probe_sample_num / probe_sample_denom) + " remaining light probes to prevent engine bug.")
+		var i: int = 0
+		for probe in light_probes:
+			var delete_probe: bool = get_global_transform(probe).origin.y >= max_height
+			if delete_probe:
+				pkgasset.log_debug("Deleting probe " + str(probe.get_parent().name + "/" + str(probe.name)) + " at " + str(probe.transform.origin))
+			else:
+				i += 1
+				if (i % probe_sample_denom) >= probe_sample_num:
+					delete_probe = true
+					pkgasset.log_debug("Deleting/sampling probe " + str(probe.get_parent().name + "/" + str(probe.name)) + " at " + str(probe.transform.origin))
+			if delete_probe:
+				if probe.owner != scene_contents:
+					pkgasset.log_fail("Unable to delete light probe at " + str(probe.transform.origin) + " because of scene instance. Please modify " + str(probe.owner.scene_file_path))
+				probe.owner = null
+				probe.get_parent().remove_child(probe)
+				probe.queue_free()
 
 	var packed_scene: PackedScene = PackedScene.new()
 	packed_scene.pack(scene_contents)
