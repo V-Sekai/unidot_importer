@@ -5653,6 +5653,14 @@ class UnityLight:
 		return outdict
 
 
+class UnityAudioClip:
+	extends UnityObject
+
+	# We only support importing audio clips for now.
+	func create_godot_resource() -> Resource:
+		return null
+
+
 class UnityAudioSource:
 	extends UnityBehaviour
 
@@ -5907,7 +5915,7 @@ class UnityMonoBehaviour:
 			var sobj = meta.lookup(setting)
 			match str(sobj.monoscript[2]):
 				"adb84e30e02715445aeb9959894e3b4d":  # Tonemap
-					env.set_meta("glow", sobj.keys)
+					env.set_meta("tonemap", sobj.keys)
 				"48a79b01ea5641d4aa6daa2e23605641":  # Glow
 					env.set_meta("glow", sobj.keys)
 		return env
@@ -6033,6 +6041,61 @@ class UnityAnimator:
 			else:
 				outdict["root_motion_track"] = NodePath()
 		return outdict
+
+
+class UnityLODGroup:
+	extends UnityBehaviour
+
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		if keys.get("m_Enabled"):
+			state.prefab_state.lod_groups.append(self)
+		return super.create_godot_node(state, new_parent) # make a default node.
+
+
+class UnityTextMesh:
+	extends UnityRenderer
+
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var text: String = keys.get("m_Text", "")
+
+		var label := Label3D.new()
+		label.text = text
+		label.name = text.get_slice("\n", 0).strip_edges().validate_node_name().substr(50).strip_edges()
+		state.add_child(label, new_parent, self)
+
+		var color: Color
+		var v: Variant = keys.get("m_Color", Color())
+		if typeof(v) == TYPE_COLOR:
+			color = keys.get("m_Color", Color())
+		elif typeof(v) == TYPE_DICTIONARY:
+			var color32: int = v.get("rgba")
+			color = Color(((color32 & 0xff000000) >> 24) / 255.0, ((color32 & 0xff0000) >> 16) / 255.0, ((color32 & 0xff00) >> 8) / 255.0, (color32 & 0xff) / 255.0)
+		label.modulate = color
+		match keys.get("m_Alignment", 0):
+			0:
+				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			1:
+				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			2:
+				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var font_size: int = keys.get("m_FontSize", 0)
+		if font_size <= 0:
+			font_size = 13 # ?? default Arial?
+		var line_spacing: float = keys.get("m_LineSpacing")
+		label.line_spacing = (line_spacing - 1.0) * font_size * 1.5 # Not sure why the 1.5 but it seems to be.
+		label.font = meta.get_godot_resource(keys.get("m_Font", [null, 0, "", 0]))
+		label.pixel_size = 0.005 * keys.get("m_CharacterSize", 1)
+		label.position = Vector3(0, 0, keys.get("m_OffsetZ", 0))
+		var anchor: int = keys.get("m_Anchor", 0)
+		if anchor >= 0 and anchor <= 2:
+			label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		if anchor >= 3 and anchor <= 5:
+			label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		if anchor >= 6 and anchor <= 8:
+			label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		# In Godot, Horizontal alignment is tied to left/right anchor.
+		label.outline_size = 4
+		return label
 
 
 ### ================ IMPORTER TYPES ================
@@ -6380,7 +6443,7 @@ var _type_dictionary: Dictionary = {
 	# "AudioBehaviour": UnityAudioBehaviour,
 	# "AudioBuildInfo": UnityAudioBuildInfo,
 	# "AudioChorusFilter": UnityAudioChorusFilter,
-	# "AudioClip": UnityAudioClip,
+	"AudioClip": UnityAudioClip,
 	# "AudioDistortionFilter": UnityAudioDistortionFilter,
 	# "AudioEchoFilter": UnityAudioEchoFilter,
 	# "AudioFilter": UnityAudioFilter,
@@ -6400,7 +6463,7 @@ var _type_dictionary: Dictionary = {
 	# "AudioMixerSnapshotController": UnityAudioMixerSnapshotController,
 	# "AudioReverbFilter": UnityAudioReverbFilter,
 	# "AudioReverbZone": UnityAudioReverbZone,
-	# DISABLED FOR NOW: "AudioSource": UnityAudioSource,
+	"AudioSource": UnityAudioSource,
 	"Avatar": UnityAvatar,
 	"AvatarMask": UnityAvatarMask,
 	# "BaseAnimationTrack": UnityBaseAnimationTrack,
@@ -6500,7 +6563,7 @@ var _type_dictionary: Dictionary = {
 	# "LineRenderer": UnityLineRenderer,
 	# "LocalizationAsset": UnityLocalizationAsset,
 	# "LocalizationImporter": UnityLocalizationImporter,
-	# "LODGroup": UnityLODGroup,
+	"LODGroup": UnityLODGroup,
 	# "LookAtConstraint": UnityLookAtConstraint,
 	# "LowerResBlitTexture": UnityLowerResBlitTexture,
 	"Material": UnityMaterial,
@@ -6619,7 +6682,7 @@ var _type_dictionary: Dictionary = {
 	"TerrainData": UnityTerrainData,
 	"TerrainLayer": UnityTerrainLayer,
 	"TextAsset": UnityTextAsset,
-	# "TextMesh": UnityTextMesh,
+	"TextMesh": UnityTextMesh,
 	"TextScriptImporter": UnityTextScriptImporter,
 	"Texture": UnityTexture,
 	"Texture2D": UnityTexture2D,

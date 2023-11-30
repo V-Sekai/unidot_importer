@@ -4,8 +4,8 @@
 @tool
 extends RefCounted
 
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
-const human_trait_class: GDScript = preload("./humanoid/human_trait.gd")
+const object_adapter_class := preload("./unity_object_adapter.gd")
+const human_trait_class := preload("./humanoid/human_trait.gd")
 var object_adapter_class_inst = object_adapter_class.new()
 
 # NOTE: All new member variables must be copied/added to `func duplicate()`
@@ -46,6 +46,8 @@ class PrefabState:
 
 	var main_cameras: Array = [].duplicate()
 	var animator_node_to_object: Dictionary = {}.duplicate()
+
+	var lod_groups: Array = [].duplicate()
 
 #var root_nodepath: Nodepath = Nodepath("/")
 
