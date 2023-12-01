@@ -3725,6 +3725,23 @@ class UnityTextAsset:
 		return meta # Don't error even though we didn't technically create a Godot resource.
 
 
+class UnityPhysicMaterial:
+	extends UnityObject
+
+	func get_godot_type() -> String:
+		return "PhysicsMaterial"
+
+	func get_godot_resource() -> Resource:
+		var mat := PhysicsMaterial.new()
+		mat.bounce = keys.get("bounciness", 0.0)
+		mat.friction = keys.get("dynamicFriction", 1.0)
+		# Average, Minimum, Multiply, Maximum
+		# Godot's "rough" behavior is closest to Maximum so we use that.
+		mat.rough = (keys.get("frictionCombine", 0) == 3)
+		# Minimum or Multiply are probably closest to the absorbent behavior.
+		mat.absorbent = (keys.get("bounceCombine", 0) % 3 != 0)
+		return mat
+
 ### ================ GAME OBJECT TYPE ================
 class UnityGameObject:
 	extends UnityObject
@@ -3859,9 +3876,12 @@ class UnityGameObject:
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.values()[0])
-				if component.utype == 33:
-					if keys.has("m_StaticEditorFlags"):
-						component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
+				if keys.has("m_StaticEditorFlags"):
+					component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
+				if keys.has("m_Layer"):
+					component.keys["m_Layer"] = keys["m_Layer"]
+				if keys.has("m_TagString"):
+					component.keys["m_TagString"] = keys["m_TagString"]
 				if ret == null:
 					log_fail("Unable to create godot node " + component.type + " on null skeleton", "bone", self)
 				var tmp = component.create_godot_node(state, ret)
@@ -3923,8 +3943,16 @@ class UnityGameObject:
 
 		for component_ref in components:
 			var component = meta.lookup(component_ref.values()[0])
+			if component.type == "CharacterController":
+				ret = component.create_physics_body(state, new_parent, name)
+				transform.configure_node(ret)
+				component.configure_node(ret)
+				extra_fileID.push_back(transform)
+				state = state.state_with_body(ret)
+		for component_ref in components:
+			var component = meta.lookup(component_ref.values()[0])
 			# Some components take priority and must be created here.
-			if component.type == "Rigidbody":
+			if ret == null and component.type == "Rigidbody":
 				ret = component.create_physics_body(state, new_parent, name)
 				transform.configure_node(ret)
 				component.configure_node(ret)
@@ -3960,10 +3988,12 @@ class UnityGameObject:
 				skip_first = false
 			else:
 				var component = meta.lookup(component_ref.values()[0])
-				if component.utype == 33:
-					if keys.has("m_StaticEditorFlags"):
-						component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
-
+				if keys.has("m_StaticEditorFlags"):
+					component.keys["m_StaticEditorFlags"] = keys["m_StaticEditorFlags"]
+				if keys.has("m_Layer"):
+					component.keys["m_Layer"] = keys["m_Layer"]
+				if keys.has("m_TagString"):
+					component.keys["m_TagString"] = keys["m_TagString"]
 				var tmp = component.create_godot_node(state, ret)
 				if tmp is AnimationPlayer or tmp is AnimationTree:
 					animator_node_to_object[tmp] = component
@@ -4268,13 +4298,20 @@ class UnityPrefabInstance:
 			var obj_value: Array = mod.get("objectReference", [null, 0, "", null])
 			var value: String = mod.get("value", "")
 
-			if property_key == "m_StaticEditorFlags":
+			if property_key == "m_StaticEditorFlags" or property_key == "m_Layer" or property_key == "m_TagString":
+				var value_var: Variant = value
+				if property_key != "m_TagString":
+					value_var = value.to_int()
 				# 33 - filter, 23 - renderer
-				# We really want the MeshRenderer to learn about the static lightmap flag.
-				var source_fileID_mr: int = pgntfac.get(source_obj_ref[1], gntfac.get(source_obj_ref[1], {})).get(23, 0)
-				if source_fileID_mr != 0:
-					var flags_val: int = value.to_int()
-					source_obj_ref = [null, source_fileID_mr, target_prefab_meta.guid, 0]
+				# We really want the MeshRenderer and Rigidbody to learn about the static lightmap flag.
+				var child_components: Dictionary = pgntfac.get(source_obj_ref[1], gntfac.get(source_obj_ref[1], {}))
+				for key in child_components:
+					if typeof(key) != TYPE_STRING:
+						var component_fileID: int = child_components[key]
+						if component_fileID != 0:
+							if not fileID_to_keys.has(component_fileID):
+								fileID_to_keys[component_fileID] = {}.duplicate()
+							fileID_to_keys.get(component_fileID)[property_key] = value_var
 
 			var fileID: int = source_obj_ref[1]
 			if not fileID_to_keys.has(fileID):
@@ -4946,7 +4983,20 @@ class UnityCollider:
 				outdict["transform"] = complex_xform * Transform3D(basis, center)
 			else:
 				outdict["rotation_degrees"] = basis.get_euler() * 180 / PI
+		if uprops.has("m_Material"):
+			outdict["_material"] = meta.get_godot_resource(uprops.get("m_Material"))
 		return outdict
+
+	func apply_node_props(node: Node, props: Dictionary):
+		if props.has("_material"):
+			var parent_rigid: RigidBody3D = node.get_parent() as RigidBody3D
+			if parent_rigid != null:
+				parent_rigid.physics_material_override = props.get("_material")
+			var parent_static: StaticBody3D = node.get_parent() as StaticBody3D
+			if parent_static != null:
+				parent_static.physics_material_override = props.get("_material")
+			props.erase("_material")
+		super.apply_node_props(node, props)
 
 	func get_basis_from_direction(direction: int):
 		return Basis()
@@ -5128,11 +5178,30 @@ class UnityRigidbody:
 		state.add_child(new_node, new_parent, self)
 		return new_node
 
-	# TODO: Add properties for rigidbody (e.g. mass, etc.).
-	# NOTE: We do not allow changing m_IsKinematic because that's a Godot type change!
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
-		outdict["freeze"] = uprops.get("m_IsKinematic", 0) != 0
+		if uprops.has("m_IsKinematic"):
+			outdict["freeze"] = uprops["m_IsKinematic"] != 0
+		if uprops.has("m_Mass"):
+			outdict["mass"] = uprops["m_Mass"]
+		if uprops.has("m_Drag"):
+			outdict["linear_damp"] = uprops["m_Drag"]
+		if uprops.has("m_UseGravity"):
+			outdict["gravity_scale"] = 1.0 * uprops["m_UseGravity"] # 0 or 1
+		if uprops.has("m_AngularDrag"):
+			outdict["angular_damp"] = uprops["m_AngularDrag"]
+		if uprops.has("m_CollisionDetection"):
+			outdict["continuous_cd"] = uprops["m_CollisionDetection"] != 0
+		if uprops.has("m_Constraints"):
+			outdict["lock_rotation"] = (uprops["m_Constraints"] & 112) == 112 # 16, 32, 64 lock axes.
+			outdict["axis_lock_angular_x"] = (uprops["m_Constraints"] & 16) != 0
+			outdict["axis_lock_angular_y"] = (uprops["m_Constraints"] & 32) != 0
+			outdict["axis_lock_angular_z"] = (uprops["m_Constraints"] & 64) != 0
+			outdict["axis_lock_linear_x"] = (uprops["m_Constraints"] & 2) != 0
+			outdict["axis_lock_linear_y"] = (uprops["m_Constraints"] & 4) != 0
+			outdict["axis_lock_linear_z"] = (uprops["m_Constraints"] & 8) != 0
+		if uprops.has("m_Layer"):
+			outdict["collision_layer"] = uprops.get("m_Layer")
 		return outdict
 
 	func create_physical_bone(state: RefCounted, godot_skeleton: Skeleton3D, name: String):
@@ -5142,6 +5211,66 @@ class UnityRigidbody:
 		state.add_child(new_node, godot_skeleton, self)
 		return new_node
 
+
+class UnityCharacterController:
+	extends UnityBehaviour
+
+	func get_godot_type() -> String:
+		return "CharacterBody3D"
+
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		return null
+
+	func create_physics_body(state: RefCounted, new_parent: Node3D, name: String) -> Node:
+		var character: CharacterBody3D = CharacterBody3D.new()
+		character.name = name  # Not type: This replaces the usual transform node.
+		state.add_child(character, new_parent, self)
+		var collision_shape := CollisionShape3D.new()
+		collision_shape.name = "CapsuleShape3D"
+		var capsule := CapsuleShape3D.new()
+		collision_shape.shape = capsule
+		character.add_child(collision_shape)
+		collision_shape.owner = character.owner
+		return character
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_Height"):
+			outdict["_height"] = uprops.get("m_Height", 2.0)
+		if uprops.has("m_Radius"):
+			outdict["_radius"] = uprops.get("m_Radius", 0.5)
+		if uprops.has("m_Center"):
+			outdict["_center"] = uprops.get("m_Center", Vector3.ZERO) * Vector3(-1,1,1)
+		if uprops.has("m_SlopeLimit"):
+			outdict["floor_max_angle"] = uprops.get("m_SlopeLimit", 45) * PI / 180.0
+		if uprops.has("m_SkinWidth"):
+			outdict["floor_snap_length"] = uprops.get("m_SkinWidth", 0.1)
+		# What to do with m_StepOffset... Godot doesn't have this?
+		if uprops.has("m_Material"):
+			outdict["_material"] = meta.get_godot_resource(uprops.get("m_Material"))
+		if uprops.has("m_Layer"):
+			outdict["collision_layer"] = uprops.get("m_Layer")
+		return outdict
+
+	func apply_node_props(node: Node, props: Dictionary):
+		var coll_shape: CollisionShape3D = node.get_node("CapsuleShape3D") as CollisionShape3D
+		if coll_shape != null:
+			var capsule_shape: CapsuleShape3D = coll_shape.shape as CapsuleShape3D
+			if capsule_shape != null:
+				if props.has("_height"):
+					capsule_shape.height = props["_height"]
+					props.erase("_height")
+				if props.has("_radius"):
+					capsule_shape.radius = props["_radius"]
+					props.erase("_radius")
+				if props.has("_center"):
+					coll_shape.position = props["_center"]
+					props.erase("_center")
+				# TODO: Godot does not yet support per-collision-shape materials
+				#if props.has("_material"):
+				#	capsule_shape.physics_material_override = props["_material"]
+				#	props.erase("_material")
+		super.apply_node_props(node, props)
 
 class UnityMeshFilter:
 	extends UnityComponent
@@ -5167,7 +5296,60 @@ class UnityMeshFilter:
 
 class UnityRenderer:
 	extends UnityBehaviour
-	pass
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = self.convert_properties_component(node, uprops)
+		if uprops.has("m_Layer"):
+			outdict["layers"] = (1 << uprops["m_Layer"])
+		if uprops.has("m_StaticEditorFlags"):
+			var flags_val: int = uprops.get("m_StaticEditorFlags", 0) # We copy this from the GameObject to the MeshRenderer.
+			var lightmap_static: bool = (flags_val & 1) != 0
+			outdict["_lightmap_static"] = lightmap_static
+		if uprops.has("m_ScaleInLightmap"):
+			var lightmap_scale: float = uprops.get("m_ScaleInLightmap", 1)
+			if lightmap_scale <= 1.55:
+				outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_1X
+			elif lightmap_scale <= 3.05:
+				outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_2X
+			elif lightmap_scale <= 6.05:
+				outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_4X
+			else:
+				outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_8X
+
+		# if flags_val & 16: # Occludee static
+		# if flags_val & 2: # Occluder static
+		if uprops.has("m_DynamicOccludee"):
+			outdict["ignore_occlusion_culling"] = uprops.get("m_DynamicOccludee", 1) != 1
+
+		if uprops.has("m_CastShadows"):
+			match uprops.get("m_CastShadows", 1):
+				0:
+					outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				2:
+					outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+				3:
+					outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+				_:
+					outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+		if uprops.has("m_Materials"):
+			outdict["_materials_size"] = len(uprops.get("m_Materials"))
+			var idx: int = 0
+			for m in uprops.get("m_Materials", []):
+				outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+				idx += 1
+			log_debug("Converted mesh prop " + str(outdict))
+		else:
+			if uprops.has("m_Materials.Array.size"):
+				outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
+			const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
+			for prop in uprops:
+				if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
+					var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
+					var m: Array = get_ref(uprops, prop)
+					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
+			log_debug("Converted mesh prop " + str(outdict) + "  for uprop " + str(uprops))
+		return outdict
 
 
 class UnityMeshRenderer:
@@ -5197,57 +5379,6 @@ class UnityMeshRenderer:
 			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
-
-	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
-		var outdict = self.convert_properties_component(node, uprops)
-		var flags_val: int = keys.get("m_StaticEditorFlags", 0) # We copy this from the GameObject to the MeshRenderer.
-		var lightmap_static: bool = (flags_val & 1) != 0
-		outdict["_lightmap_static"] = lightmap_static
-		var lightmap_scale: float = keys.get("m_ScaleInLightmap", 1)
-		if lightmap_scale <= 1.55:
-			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_1X
-		elif lightmap_scale <= 3.05:
-			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_2X
-		elif lightmap_scale <= 6.05:
-			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_4X
-		else:
-			outdict["gi_lightmap_scale"] = MeshInstance3D.LIGHTMAP_SCALE_8X
-
-		# if flags_val & 16: # Occludee static
-		# if flags_val & 2: # Occluder static
-		if keys.get("m_DynamicOccludee", 1) == 1:
-			outdict["ignore_occlusion_culling"] = false
-		else:
-			outdict["ignore_occlusion_culling"] = true
-
-		match keys.get("m_CastShadows", 1):
-			0:
-				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			2:
-				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
-			3:
-				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-			_:
-				outdict["cast_shadow"] = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-
-		if uprops.has("m_Materials"):
-			outdict["_materials_size"] = len(uprops.get("m_Materials"))
-			var idx: int = 0
-			for m in uprops.get("m_Materials", []):
-				outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
-				idx += 1
-			log_debug("Converted mesh prop " + str(outdict))
-		else:
-			if uprops.has("m_Materials.Array.size"):
-				outdict["_materials_size"] = uprops.get("m_Materials.Array.size")
-			const MAT_ARRAY_PREFIX: String = "m_Materials.Array.data["
-			for prop in uprops:
-				if str(prop).begins_with(MAT_ARRAY_PREFIX) and str(prop).ends_with("]"):
-					var idx: int = str(prop).substr(len(MAT_ARRAY_PREFIX), len(str(prop)) - 1 - len(MAT_ARRAY_PREFIX)).to_int()
-					var m: Array = get_ref(uprops, prop)
-					outdict["_materials/" + str(idx)] = meta.get_godot_resource(m)
-			log_debug("Converted mesh prop " + str(outdict) + "  for uprop " + str(uprops))
-		return outdict
 
 	# TODO: convert_properties
 	# both material properties as well as material references??
@@ -5659,6 +5790,8 @@ class UnityLight:
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
 		elif uprops.has("m_CullingMask.m_Bits"):
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+		if uprops.has("m_TagString"):
+			outdict["editor_only"] = uprops["m_TagString"] == "EditorOnly"
 		return outdict
 
 
@@ -5796,9 +5929,10 @@ class UnityCamera:
 		if uprops.has("field of view"):
 			outdict["fov"] = uprops.get("field of view")
 		if uprops.has("orthographic"):
-			outdict["projection_mode"] = uprops.get("orthographic")
+			outdict["projection"] = Camera3D.PROJECTION_ORTHOGONAL if uprops.get("orthographic") else Camera3D.PROJECTION_PERSPECTIVE
 		if uprops.has("orthographic size"):
-			outdict["size"] = uprops.get("orthographic size")
+			if uprops.get("orthographic", 0):
+				outdict["size"] = min(0.000011, uprops.get("orthographic size"))
 		return outdict
 
 
@@ -6071,40 +6205,55 @@ class UnityTextMesh:
 		label.text = text
 		label.name = text.get_slice("\n", 0).strip_edges().validate_node_name().substr(50).strip_edges()
 		state.add_child(label, new_parent, self)
-
-		var color: Color
-		var v: Variant = keys.get("m_Color", Color())
-		if typeof(v) == TYPE_COLOR:
-			color = keys.get("m_Color", Color())
-		elif typeof(v) == TYPE_DICTIONARY:
-			var color32: int = v.get("rgba")
-			color = Color(((color32 & 0xff000000) >> 24) / 255.0, ((color32 & 0xff0000) >> 16) / 255.0, ((color32 & 0xff00) >> 8) / 255.0, (color32 & 0xff) / 255.0)
-		label.modulate = color
-		match keys.get("m_Alignment", 0):
-			0:
-				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-			1:
-				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			2:
-				label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		var font_size: int = keys.get("m_FontSize", 0)
-		if font_size <= 0:
-			font_size = 13 # ?? default Arial?
-		var line_spacing: float = keys.get("m_LineSpacing")
-		label.line_spacing = (line_spacing - 1.0) * font_size * 1.5 # Not sure why the 1.5 but it seems to be.
-		label.font = meta.get_godot_resource(keys.get("m_Font", [null, 0, "", 0]))
-		label.pixel_size = 0.005 * keys.get("m_CharacterSize", 1)
-		label.position = Vector3(0, 0, keys.get("m_OffsetZ", 0))
-		var anchor: int = keys.get("m_Anchor", 0)
-		if anchor >= 0 and anchor <= 2:
-			label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-		if anchor >= 3 and anchor <= 5:
-			label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		if anchor >= 6 and anchor <= 8:
-			label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		# In Godot, Horizontal alignment is tied to left/right anchor.
 		label.outline_size = 4
 		return label
+
+	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
+		var outdict = super.convert_properties(node, uprops) # UnityRenderer
+		var color: Color
+		if uprops.has("m_Color"):
+			var v: Variant = uprops.get("m_Color", Color())
+			if typeof(v) == TYPE_COLOR:
+				color = uprops.get("m_Color", Color())
+			elif typeof(v) == TYPE_DICTIONARY:
+				var color32: int = v.get("rgba")
+				color = Color(((color32 & 0xff000000) >> 24) / 255.0, ((color32 & 0xff0000) >> 16) / 255.0, ((color32 & 0xff00) >> 8) / 255.0, (color32 & 0xff) / 255.0)
+			outdict["modulate"] = color
+		if uprops.has("m_Alignment"):
+			match uprops.get("m_Alignment", 0):
+				0:
+					outdict["horizontal_alignment"] = HORIZONTAL_ALIGNMENT_LEFT
+				1:
+					outdict["horizontal_alignment"] = HORIZONTAL_ALIGNMENT_CENTER
+				2:
+					outdict["horizontal_alignment"] = HORIZONTAL_ALIGNMENT_RIGHT
+		var font_size: int = 13
+		if node as Label3D != null:
+			font_size = node.font_size
+		if uprops.has("m_FontSize"):
+			font_size = uprops.get("m_FontSize", 0)
+			if font_size <= 0:
+				font_size = 13 # ?? default Arial?
+			outdict["font_size"] = font_size
+		if uprops.has("m_LineSpacing"):
+			var line_spacing: float = uprops.get("m_LineSpacing")
+			outdict["line_spacing"] = (line_spacing - 1.0) * font_size * 1.5 # Not sure why the 1.5 but it seems to be.
+		if uprops.has("m_Font"):
+			outdict["font"] = meta.get_godot_resource(uprops.get("m_Font", [null, 0, "", 0]))
+		if uprops.has("m_CharacterSize"):
+			outdict["pixel_size"] = 0.005 * uprops.get("m_CharacterSize", 1)
+		if uprops.has("m_OffsetZ"):
+			outdict["position"] = Vector3(0, 0, uprops.get("m_OffsetZ", 0))
+		if uprops.has("m_Anchor"):
+			var anchor: int = uprops.get("m_Anchor", 0)
+			if anchor >= 0 and anchor <= 2:
+				outdict["vertical_alignment"] = VERTICAL_ALIGNMENT_TOP
+			if anchor >= 3 and anchor <= 5:
+				outdict["vertical_alignment"] = VERTICAL_ALIGNMENT_CENTER
+			if anchor >= 6 and anchor <= 8:
+				outdict["vertical_alignment"] = VERTICAL_ALIGNMENT_BOTTOM
+			# In Godot, Horizontal alignment is tied to left/right anchor.
+		return outdict
 
 
 ### ================ IMPORTER TYPES ================
@@ -6496,7 +6645,7 @@ var _type_dictionary: Dictionary = {
 	"CapsuleCollider": UnityCapsuleCollider,
 	# "CapsuleCollider2D": UnityCapsuleCollider2D,
 	# "CGProgram": UnityCGProgram,
-	# "CharacterController": UnityCharacterController,
+	"CharacterController": UnityCharacterController,
 	# "CharacterJoint": UnityCharacterJoint,
 	# "CircleCollider2D": UnityCircleCollider2D,
 	"Cloth": UnityCloth,
@@ -6610,7 +6759,7 @@ var _type_dictionary: Dictionary = {
 	# "ParticleSystem": UnityParticleSystem,
 	# "ParticleSystemForceField": UnityParticleSystemForceField,
 	# "ParticleSystemRenderer": UnityParticleSystemRenderer,
-	# "PhysicMaterial": UnityPhysicMaterial,
+	"PhysicMaterial": UnityPhysicMaterial,
 	# "Physics2DSettings": UnityPhysics2DSettings,
 	# "PhysicsManager": UnityPhysicsManager,
 	# "PhysicsMaterial2D": UnityPhysicsMaterial2D,
