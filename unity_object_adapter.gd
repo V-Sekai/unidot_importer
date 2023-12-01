@@ -1784,19 +1784,19 @@ class UnityAnimatorState:
 				xval += 200
 				bt.connect_node(&"TimeScale", 0, last_node)
 				last_node = &"TimeScale"
+			if time_param_active:
+				var seeknode = AnimationNodeTimeSeek.new()
+				seeknode.set_meta("seek_request", controller.get_parameter_uniq_name(keys["m_TimeParameter"]))
+				var node_name = StringName("TimeSeek")
+				bt.add_node(node_name, seeknode, Vector2(xval, 0))
+				xval += 200
+				bt.connect_node(node_name, 0, last_node)
+				last_node = node_name
 			if speed_param_active:
 				var tsnode = AnimationNodeTimeScale.new()
 				tsnode.set_meta("scale", controller.get_parameter_uniq_name(keys["m_SpeedParameter"]))
 				var node_name = StringName("TimeScaleParam")
 				bt.add_node(node_name, tsnode, Vector2(xval, 0))
-				xval += 200
-				bt.connect_node(node_name, 0, last_node)
-				last_node = node_name
-			if time_param_active:
-				var seeknode = AnimationNodeTimeSeek.new()
-				seeknode.set_meta("seek_position", controller.get_parameter_uniq_name(keys["m_TimeParameter"]))
-				var node_name = StringName("TimeSeek")
-				bt.add_node(node_name, seeknode, Vector2(xval, 0))
 				xval += 200
 				bt.connect_node(node_name, 0, last_node)
 				last_node = node_name
