@@ -623,8 +623,14 @@ class BaseModelHandler:
 		#var idx: int = 0
 		subresources["animations"] = {}
 
+		var used_animation_names: Dictionary = pkgasset.parsed_meta.internal_data.get("used_animation_names", {})
 		for anim_clip in anim_clips:
 			var take_name = anim_clip["take_name"]
+			if not used_animation_names.has(take_name):
+				for key in used_animation_names:
+					pkgasset.log_warn("Substituting requested takeName " + str(take_name) + " for first animation " + str(key))
+					take_name = key # Usually just one. Often "Take 001"
+					break
 			if not subresources["animations"].has(take_name):
 				subresources["animations"][take_name] = {}
 			var take: Dictionary = subresources["animations"][take_name]
@@ -1536,6 +1542,7 @@ class FbxHandler:
 		# skinned_parents use the original gltf names before the remap.
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
+		var used_animation_names: Dictionary
 		# Anything after this point will be using sanitized names, and should go through godot_sanitized_to_orig_remap / bone_map_dict
 		for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
@@ -1587,6 +1594,7 @@ class FbxHandler:
 				var sanitized_try_name: String = sanitize_unique_name(try_name)
 				if key == "animations":
 					sanitized_try_name = sanitize_anim_name(try_name)
+					used_animation_names[sanitized_try_name] = elem
 				if orig_name != sanitized_try_name:
 					pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key][sanitized_try_name] = orig_name
 				if key == "nodes":
@@ -1606,6 +1614,7 @@ class FbxHandler:
 		# humanoid_original_transforms uses post-sanitized node names.
 		pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
 		pkgasset.parsed_meta.internal_data["original_rotations"] = original_rotations
+		pkgasset.parsed_meta.internal_data["used_animation_names"] = used_animation_names
 
 		var out_json_data: PackedByteArray = JSON.new().stringify(json).to_utf8_buffer()
 		var full_output: PackedByteArray = out_json_data

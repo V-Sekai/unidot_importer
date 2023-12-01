@@ -3715,7 +3715,7 @@ class UnityTextAsset:
 	func get_godot_extension() -> String:
 		return "." + meta.path.get_extension()
 
-	func get_godot_resource() -> Resource:
+	func create_godot_resource() -> Resource:
 		var fa: FileAccess = FileAccess.open(meta.path, FileAccess.WRITE)
 		var script: Variant = keys.get("m_Script", PackedByteArray())
 		if typeof(script) == TYPE_STRING:
@@ -3731,7 +3731,10 @@ class UnityPhysicMaterial:
 	func get_godot_type() -> String:
 		return "PhysicsMaterial"
 
-	func get_godot_resource() -> Resource:
+	func get_godot_extension() -> String:
+		return ".phymat"
+
+	func create_godot_resource() -> Resource:
 		var mat := PhysicsMaterial.new()
 		mat.bounce = keys.get("bounciness", 0.0)
 		mat.friction = keys.get("dynamicFriction", 1.0)
@@ -4988,7 +4991,7 @@ class UnityCollider:
 		return outdict
 
 	func apply_node_props(node: Node, props: Dictionary):
-		if props.has("_material"):
+		if props.get("_material") != null:
 			var parent_rigid: RigidBody3D = node.get_parent() as RigidBody3D
 			if parent_rigid != null:
 				parent_rigid.physics_material_override = props.get("_material")
