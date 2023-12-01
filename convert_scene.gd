@@ -303,35 +303,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		pkgasset.log_fail("Failed to parse scene " + pkgasset.pathname)
 		return null
 
-	for lod_group in ps.lod_groups:
-		var prev_distance_m: float = 0.0
-		var prev_fade_m: float = 0.0
-		# Formula: 0.65 / screenRelativeHeight * m_Size = distance_in_meters
-		# For example, 0.65 / 0.8125 * 5 = 4.0
-		# or 0.65 / 0.216 * 1 = 3.0
-		var size_m = lod_group.keys.get("m_Size", 1.0)
-		var animate_crossfade: bool = lod_group.keys.get("m_AnimateCrossFading", 0) == 1
-		for lod in lod_group.keys.get("m_LODS"):
-			var screen_relative_height: float = lod.get("screenRelativeHeight", 1.0)
-			var distance_m = 0.65 / screen_relative_height * size_m
-			var fade_width: float = lod.get("fadeTransitionWidth", 0.0)
-			if animate_crossfade:
-				fade_width = 0.5 # Hardcode half a meter of fade overlap. No idea...
-			else:
-				fade_width = fade_width * (distance_m - prev_distance_m) # fraction of the length of this LOD.
-			for renderer_ref in lod.get("renderers", []):
-				var np: NodePath = lod_group.meta.fileid_to_nodepath.get(renderer_ref[1], lod_group.meta.prefab_fileid_to_nodepath.get(renderer_ref[1], NodePath()))
-				if not np.is_empty():
-					var geom_inst: GeometryInstance3D = scene_contents.get_node(np)
-					if geom_inst != null:
-						geom_inst.visibility_range_begin = prev_distance_m
-						geom_inst.visibility_range_begin_margin = prev_fade_m
-						geom_inst.visibility_range_end = distance_m
-						geom_inst.visibility_range_end_margin = fade_width
-						# Dependencies seems buggy, so we use Self and don't set the visibility parent.
-						geom_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-			prev_distance_m = distance_m
-			prev_fade_m = fade_width
+	process_lod_groups(scene_contents, ps)
 
 	if not is_prefab:
 		# Remove redundant directional light.
@@ -425,3 +397,48 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
 	#pkgasset.log_debug(pi.get_child_count())
 	return packed_scene
+
+
+func process_lod_groups(scene_contents: Node, ps: RefCounted):
+
+	for lod_group in ps.lod_groups:
+		var prev_distance_m: float = 0.0
+		var prev_fade_m: float = 0.0
+		# Formula: 0.65 / screenRelativeHeight * m_Size = distance_in_meters
+		# For example, 0.65 / 0.8125 * 5 = 4.0
+		# or 0.65 / 0.216 * 1 = 3.0
+		# Unity's scale factor is confusingly aspect ratio dependent.
+		# We scale by another factor or 2 to account for 16:9 aspect ratio.
+		# It seems to make LOD switches less noticeable.
+		var size_m = lod_group.keys.get("m_Size", 1.0)
+		var animate_crossfade: bool = lod_group.keys.get("m_AnimateCrossFading", 0) == 1
+		for lod in lod_group.keys.get("m_LODs", []):
+			var screen_relative_height: float = lod.get("screenRelativeHeight", 1.0)
+			var distance_m = 2.0 * 0.65 / screen_relative_height * size_m
+			var fade_width: float = lod.get("fadeTransitionWidth", 0.0)
+			if animate_crossfade:
+				fade_width = 0.5 # Hardcode half a meter of fade overlap. No idea...
+			else:
+				fade_width = fade_width * (distance_m - prev_distance_m) # fraction of the length of this LOD.
+			for renderer_ref_dict in lod.get("renderers", []):
+				var renderer_ref: Array
+				if typeof(renderer_ref_dict) == TYPE_DICTIONARY:
+					renderer_ref = renderer_ref_dict["renderer"]
+				var np: NodePath = lod_group.meta.fileid_to_nodepath.get(renderer_ref[1], lod_group.meta.prefab_fileid_to_nodepath.get(renderer_ref[1], NodePath()))
+				if not np.is_empty():
+					var node: Node = scene_contents.get_node(np)
+					var visual_inst: VisualInstance3D = node as VisualInstance3D
+					if node != null and visual_inst == null:
+						visual_inst = node.get_child(0) as VisualInstance3D
+					if visual_inst != null:
+						visual_inst.visibility_range_begin = prev_distance_m
+						visual_inst.visibility_range_begin_margin = prev_fade_m
+						visual_inst.visibility_range_end = distance_m
+						visual_inst.visibility_range_end_margin = fade_width
+						# Dependencies seems buggy, so we use Self and don't set the visibility parent.
+						#visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+						# Self is really hard to work with as it has overlap...
+						# So we'll use DISABLED for now... which should act like low-water mark / high-water mark.
+						visual_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+			prev_distance_m = distance_m
+			prev_fade_m = fade_width

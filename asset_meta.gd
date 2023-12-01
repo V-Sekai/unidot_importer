@@ -139,6 +139,8 @@ const WARNING_COLOR_TAG := "warn: "
 
 # Log messages related to this asset
 func log_debug(fileid: int, msg: String):
+	if log_message_holder == null or log_database_holder == null:
+		return # We had a use-after-free crash here on one import run
 	var fileidstr = ""
 	if fileid != 0:
 		fileidstr = " @" + str(fileid)
@@ -156,6 +158,8 @@ func log_debug(fileid: int, msg: String):
 # Anything that is unexpected but does not necessarily imply corruption.
 # For example, successfully loaded a resource with default fileid
 func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
+	if log_message_holder == null or log_database_holder == null:
+		return
 	var fieldstr: String = ""
 	if not field.is_empty():
 		fieldstr = "." + field + ": "
@@ -181,6 +185,8 @@ func log_warn(fileid: int, msg: String, field: String = "", remote_ref: Array = 
 # Anything that implies the asset will be corrupt / lost data.
 # For example, some reference or field could not be assigned.
 func log_fail(fileid: int, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
+	if log_message_holder == null or log_database_holder == null:
+		return
 	var fieldstr = ""
 	if not field.is_empty():
 		fieldstr = "." + field + ": "

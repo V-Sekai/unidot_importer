@@ -808,6 +808,10 @@ class UnityMaterial:
 						ret.uv1_offset = get_texture_offset(texProperties, name)
 						break
 
+		if ret.albedo_texture == null:
+			ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
+			ret.uv1_offset = get_texture_offset(texProperties, "_MainTex")
+
 		# TODO: ORM not yet implemented.
 		if true: # kws.get("_NORMALMAP", false):
 			ret.normal_texture = get_texture(texProperties, "_BumpMap")
@@ -3939,8 +3943,8 @@ class UnityGameObject:
 		if ret == null:
 			ret = Node3D.new()
 			transform.configure_node(ret)
-		ret.name = name
-		state.add_child(ret, new_parent, transform)
+			ret.name = name
+			state.add_child(ret, new_parent, transform)
 		for ext in extra_fileID:
 			state.add_fileID(ret, ext)
 		var skip_first: bool = true
@@ -4740,7 +4744,11 @@ class UnityTransform:
 		# FIXME: Do we need convert_properties_component?
 		# var outdict = convert_properties_component(node, uprops)
 		var n3d: Node3D = node as Node3D
-		return _convert_properties_pos_scale(uprops, n3d.position, n3d.quaternion, n3d.scale)
+		if n3d == null:
+			log_warn("Unable to convert Transform properties using original values.")
+			return _convert_properties_pos_scale(uprops, Vector3.ZERO, Quaternion.IDENTITY, Vector3.ONE)
+		else:
+			return _convert_properties_pos_scale(uprops, n3d.position, n3d.quaternion, n3d.scale)
 
 	func _convert_properties_pos_scale(uprops: Dictionary, orig_pos_godot: Vector3, orig_rot_godot: Quaternion, orig_scale_godot: Vector3) -> Dictionary:
 		var outdict: Dictionary
@@ -5314,6 +5322,7 @@ class UnitySkinnedMeshRenderer:
 		# TODO: skin??
 		ret.skin = edit_skin(component_name, get_skin(), gdskel)
 		# TODO: duplicate skin and assign the correct bone names to match self.bones array
+		ret.lod_bias = 128 # Disable builtin LODs on skinned meshes due to multiple bugs.
 		return ret
 
 	var bones: Array:
@@ -5550,7 +5559,7 @@ class UnityLight:
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var light: Light3D
-		# TODO: Change Light to use set()
+		# TODO: Change Light to use set() and convert_properties system
 		var unityLightType = lightType
 		if unityLightType == 0:
 			# Assuming default cookie
