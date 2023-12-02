@@ -58,6 +58,7 @@ var importer  # unity_object_adapter.UnityAssetImporter subclass
 
 var prefab_transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 var prefab_transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
+var prefab_transform_fileid_to_scale_signs: Dictionary = {} # int -> Vector3(+/-1, +/-1, +/-1) only if not +1,+1,+1 or -1,-1,-1.
 var prefab_fileid_to_nodepath = {}
 var prefab_fileid_to_skeleton_bone = {}  # int -> string
 var prefab_fileid_to_utype = {}  # int -> int
@@ -74,6 +75,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var prefab_source_id_pair_to_stripped_id: Dictionary = {} # Vector2i -> int. if not here, we do XOR.
 @export var transform_fileid_to_rotation_delta: Dictionary = {} # int -> Transform
 @export var transform_fileid_to_parent_fileid: Dictionary = {} # int -> int
+@export var transform_fileid_to_scale_signs: Dictionary = {} # int -> Vector3(+/-1, +/-1, +/-1) only if not +1,+1,+1 or -1,-1,-1.
 @export var fileid_to_nodepath: Dictionary = {}  # int -> NodePath: scene_node_state.add_fileID
 @export var fileid_to_skeleton_bone: Dictionary = {}  # int -> string: scene_node_state.add_fileID_to_skeleton_bone
 @export var fileid_to_utype: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
@@ -367,6 +369,10 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 		self.prefab_fileid_to_gameobject_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.fileid_to_gameobject_fileid.get(target_fileid), prefab_fileid)
 	for target_fileid in target_prefab_meta.prefab_fileid_to_gameobject_fileid:
 		self.prefab_fileid_to_gameobject_fileid[xor_or_stripped(target_fileid, prefab_fileid)] = xor_or_stripped(target_prefab_meta.prefab_fileid_to_gameobject_fileid.get(target_fileid), prefab_fileid)
+	for target_fileid in target_prefab_meta.transform_fileid_to_scale_signs:
+		self.prefab_transform_fileid_to_scale_signs[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.transform_fileid_to_scale_signs.get(target_fileid)
+	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_scale_signs:
+		self.prefab_transform_fileid_to_scale_signs[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.prefab_transform_fileid_to_scale_signs.get(target_fileid)
 
 
 func calculate_prefab_nodepaths_recursive():

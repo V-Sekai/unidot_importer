@@ -66,6 +66,7 @@ class ParseState:
 	var transform_fileid_to_parent_fileid: Dictionary = {}.duplicate()
 	var humanoid_original_transforms: Dictionary
 	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
+	var transform_fileid_to_scale_signs: Dictionary
 
 	var all_name_map: Dictionary = {}.duplicate()
 
@@ -420,12 +421,19 @@ class ParseState:
 				animplayer = child
 				break
 
-		if not (node is AnimationPlayer):
+		if node is Node3D:
+			# The only known case of non-Node3D is AnimationPlayer
 			p_global_rest *= node.transform
 			if humanoid_original_transforms.has(node.name):
 				p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
 			else:
 				p_pre_retarget_global_rest *= node.transform
+
+			# For the purpose of determining which coordinate are negative, treat 0 as positive
+			# Though Godot probably malfunctions in other ways if scale axes are 0, since it will lose the rotation.
+			var signs: Vector3 = (node.scale.sign() + Vector3(0.5,0.5,0.5)).sign()
+			if not signs.is_equal_approx(Vector3.ONE) and not signs.is_equal_approx(-Vector3.ONE):
+				transform_fileid_to_scale_signs[fileId_transform] = signs
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			# metaobj.log_debug(0, "node " + node.name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
@@ -905,6 +913,7 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.prefab_gameobject_name_to_fileid_and_children = ps.all_name_map
 	metaobj.humanoid_skeleton_hip_position = ps.humanoid_skeleton_hip_position
+	metaobj.transform_fileid_to_scale_signs = ps.transform_fileid_to_scale_signs
 
 	if not asset_database.in_package_import:
 		asset_database.save()

@@ -229,6 +229,9 @@ class UnityObject:
 			skel.set_bone_pose_position(bone_idx, props["position"])
 		if props.has("scale"):
 			skel.set_bone_pose_scale(bone_idx, props["scale"])
+			var signs: Vector3 = (props["scale"].sign() + Vector3(0.5,0.5,0.5)).sign()
+			if not signs.is_equal_approx(Vector3.ONE) and not signs.is_equal_approx(-Vector3.ONE):
+				meta.transform_fileid_to_scale_signs[fileID] = signs
 
 	func convert_skeleton_properties(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
 		var props: Dictionary = self.convert_properties(skel, uprops)
@@ -238,12 +241,23 @@ class UnityObject:
 		if node == null:
 			return
 		var props: Dictionary = self.convert_properties(node, self.keys)
+		apply_component_props(node, props)
 		apply_node_props(node, props)
 
+	# Called once per component, not per-node. Only use for things that need a reference to the component
+	func apply_component_props(node: Node, props: Dictionary):
+		if props.has("scale"):
+			var signs: Vector3 = (props["scale"].sign() + Vector3(0.5,0.5,0.5)).sign()
+			if not signs.is_equal_approx(Vector3.ONE) and not signs.is_equal_approx(-Vector3.ONE):
+				meta.transform_fileid_to_scale_signs[fileID] = signs
+
+	# Called at least once per node. Most properties are set up in this way, since nodes are affected by multiple components
+	# Note that self.fileID may be pointing to a random component (or the GameObject itself) in this function.
 	func apply_node_props(node: Node, props: Dictionary):
 		if node is MeshInstance3D:
 			self.apply_mesh_renderer_props(meta, node, props)
 		log_debug(str(node.name) + ": " + str(props))
+
 		for propname in props:
 			if typeof(props.get(propname)) == TYPE_NIL:
 				continue
@@ -4436,6 +4450,7 @@ class UnityPrefabInstance:
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unity_object
 				var converted: Dictionary = virtual_unity_object.convert_properties(existing_node, uprops)
 				log_debug("Converted props " + str(converted) + " from " + str(nodepath_to_keys.get(target_nodepath)) + " at " + str(virtual_unity_object.uniq_key))
+				virtual_unity_object.apply_component_props(existing_node, converted)
 				if not nodepath_to_keys.has(target_nodepath):
 					nodepath_to_keys[target_nodepath] = converted
 				else:
@@ -4787,10 +4802,37 @@ class UnityTransform:
 		if n3d == null:
 			log_warn("Unable to convert Transform properties using original values.")
 			return _convert_properties_pos_scale(uprops, Vector3.ZERO, Quaternion.IDENTITY, Vector3.ONE)
+		elif n3d is Skeleton3D and skeleton_bone_index != -1:
+			return _convert_properties_pos_scale(uprops,
+				n3d.get_bone_pose_position(skeleton_bone_index),
+				n3d.get_bone_pose_rotation(skeleton_bone_index),
+				n3d.get_bone_pose_scale(skeleton_bone_index))
 		else:
 			return _convert_properties_pos_scale(uprops, n3d.position, n3d.quaternion, n3d.scale)
 
 	func _convert_properties_pos_scale(uprops: Dictionary, orig_pos_godot: Vector3, orig_rot_godot: Quaternion, orig_scale_godot: Vector3) -> Dictionary:
+		# We only insert them here if it's not 1,1,1 or -1,-1,-1 which are the only two godot supported scale signs.
+		var cur_signs: Vector3 = (orig_scale_godot.sign() + Vector3(0.5,0.5,0.5)).sign()
+		# We need to be careful not to double-apply the sign logic, since Godot will cache the correct signs in memory sometimes.
+		# log_debug("signs are " + str(meta.transform_fileid_to_scale_signs) + " | prefab signs are " + str(meta.prefab_transform_fileid_to_scale_signs) + "  fileID is " + str(fileID) + " " + str(cur_signs))
+		if cur_signs.is_equal_approx(Vector3.ONE) or cur_signs.is_equal_approx(-Vector3.ONE):
+			if meta.transform_fileid_to_scale_signs.has(fileID) or meta.prefab_transform_fileid_to_scale_signs.has(fileID):
+				var signs: Vector3 = meta.transform_fileid_to_scale_signs.get(fileID, meta.prefab_transform_fileid_to_scale_signs.get(fileID))
+				cur_signs = signs
+				var cnt: int = int(signs.x < 0) + int(signs.y < 0) + int(signs.z < 0)
+				orig_scale_godot = abs(orig_scale_godot) * signs
+				if cnt != 1:
+					signs *= -1 # Make sure exactly one is negative
+				if signs.x < 0: # Rotate about X axis 180 degrees
+					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about x, now cur_signs is " + str(cur_signs))
+					orig_rot_godot = Quaternion(1, 0, 0, 0) * orig_rot_godot
+				elif signs.y < 0: # Rotate about Y axis 180 degrees
+					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about y, now cur_signs is " + str(cur_signs))
+					orig_rot_godot = Quaternion(0, 1, 0, 0) * orig_rot_godot
+				else: # Rotate about Z axis 180 degrees
+					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about z, now cur_signs is " + str(cur_signs))
+					orig_rot_godot = Quaternion(0, 0, 1, 0) * orig_rot_godot
+
 		var outdict: Dictionary
 		var rotation_delta: Transform3D
 		#var pos_rotation_delta: Transform3D
@@ -4842,7 +4884,7 @@ class UnityTransform:
 		rot_quat.y = -rot_quat.y
 		rot_quat.z = -rot_quat.z
 
-		var orig_scale: Vector3 = (rotation_delta.basis.inverse() * Basis.from_scale(orig_scale_godot) * rotation_delta_post.basis.inverse()).get_scale()
+		var orig_scale: Vector3 = cur_signs * (rotation_delta.basis.inverse() * Basis.from_scale(orig_scale_godot.abs()) * rotation_delta_post.basis.inverse()).get_scale()
 		#log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
 		var input_scale_vec: Vector3
 		var scale: Variant = get_vector(uprops, "m_LocalScale", orig_scale)
@@ -4857,7 +4899,8 @@ class UnityTransform:
 				scale_vec.y = 1e-7
 			if scale_vec.z > -1e-7 && scale_vec.z < 1e-7:
 				scale_vec.z = 1e-7
-			scale_vec = (rotation_delta.basis * Basis.from_scale(scale_vec) * rotation_delta_post.basis).get_scale()
+			var new_signs: Vector3 = (scale_vec.sign() + Vector3(0.5,0.5,0.5)).sign()
+			scale_vec = new_signs * (rotation_delta.basis * Basis.from_scale(scale_vec.abs()) * rotation_delta_post.basis).get_scale()
 			outdict["scale"] = scale_vec
 			#log_debug("Scale would be " + str(outdict["scale"]))
 		else:
