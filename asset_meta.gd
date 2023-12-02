@@ -394,12 +394,16 @@ func calculate_prefab_nodepaths_recursive():
 
 
 func xor_or_stripped(fileID: int, prefab_fileID: int) -> int:
+	# Note the first part of this is looking up a pair of 64-bit integer keys in Godot which only supports tuples of 32-bits each.
 	return prefab_source_id_pair_to_stripped_id.get(Vector4i(
 			~(~prefab_fileID >> 32) if prefab_fileID < 0 else prefab_fileID >> 32,
 			prefab_fileID & 0xffffffff,
 			~(~fileID >> 32) if fileID < 0 else fileID >> 32,
 			fileID & 0xffffffff),
-		prefab_fileID ^ fileID)
+	# https://forum.unity.com/threads/how-is-fileid-generated-for-m_correspondingsourceobject.726704/#post-4851011
+	# See also excellent reference code by gamedolphon:
+	# https://github.com/gamedolphin/bevity/blob/master/pkg/primitives/prefabs.rs
+		(prefab_fileID ^ fileID) & 0x7fffffffffffffff)
 
 
 # This overrides a built-in resource, storing the resource inside the database itself.
