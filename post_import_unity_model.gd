@@ -361,6 +361,12 @@ class ParseState:
 		# node.get_parent() == null or 
 		if len(p_path) == 2 and str(p_path[1]) == "root":
 			key = preserve_hierarchy_orig_root_node_name
+			if key != "":
+				# Some transformed gltf files will have skinned meshes as direct root nodes in "scenes"
+				# We want to handle these at the same time we handle the root node.
+				for child in skinned_parent_to_node.get("", {}):
+					skinned_parent_to_node[preserve_hierarchy_orig_root_node_name].append(child)
+				skinned_parent_to_node.erase("")
 		var skinned_children = skinned_parent_to_node.get(key, [])
 		skinned_parent_to_node.erase(key)
 		for child in skinned_children:
@@ -488,18 +494,27 @@ class ParseState:
 		# node.get_parent() == null or 
 		if len(p_path) == 2 and str(p_path[1]) == "root":
 			key = preserve_hierarchy_orig_root_node_name
-		for child in skinned_parent_to_node.get(key, {}):
-			metaobj.log_warn(0, "Skinned parent from non-bone " + str(node.name) + ": " + str(child.name))
-			var orig_child_name: String = get_orig_name("nodes", child.name)
-			var new_id: int = 0
-			if len(p_path) == 1:
-				# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
-				metaobj.log_fail(0, "Root node shouldn't have any skinned meshes when root is folded")
-			p_path.push_back(orig_child_name)
-			new_id = self.iterate_node(child, p_path, true, fileId_transform)
-			pop_back(p_path)
-			if new_id != 0:
-				self.all_name_map[fileId_go][orig_child_name] = new_id
+			if key != "":
+				# Some transformed gltf files will have skinned meshes as direct root nodes in "scenes"
+				# We want to handle these at the same time we handle the root node.
+				for child in skinned_parent_to_node.get("", {}):
+					skinned_parent_to_node[preserve_hierarchy_orig_root_node_name].append(child)
+				skinned_parent_to_node.erase("")
+		if node is Node3D:
+			var skinned_children = skinned_parent_to_node.get(key, [])
+			skinned_parent_to_node.erase(key)
+			for child in skinned_children:
+				metaobj.log_debug(0, "Skinned parent from non-bone " + str(node.name) + ": " + str(child.name))
+				var orig_child_name: String = get_orig_name("nodes", child.name)
+				var new_id: int = 0
+				if len(p_path) == 1:
+					# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
+					metaobj.log_fail(0, "Root node shouldn't have any skinned meshes when root is folded")
+				p_path.push_back(orig_child_name)
+				new_id = self.iterate_node(child, p_path, true, fileId_transform)
+				pop_back(p_path)
+				if new_id != 0:
+					self.all_name_map[fileId_go][orig_child_name] = new_id
 		if animplayer != null:
 			self.iterate_node(animplayer, p_path, false, fileId_transform)
 		return fileId_go
