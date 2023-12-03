@@ -597,8 +597,9 @@ class BaseModelHandler:
 		# I think these are the default settings now?? The option no longer exists???
 		### cfile.set_value("params", "materials/location", 1) # Store on Mesh, not Node.
 		### cfile.set_value("params", "materials/storage", 0) # Store in file. post-import will export.
-		cfile.set_value_compare("params", "animation/fps", 30)  # FIXME: This may fail in files whose FBX framerate is not 30
-		# Due to passing bake30 to FBX2glTF, it may ignore the original framerate...
+
+		cfile.set_value_compare("params", "animation/fps", pkgasset.parsed_meta.internal_data.get("anim_bake_fps", 30))
+		# fps should match the bake30 option passed to FBX2glTF, it may ignore the original framerate...
 		# Unity seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
 		# Humanoid animations in particular are sensititve to immutable tracks being shared across rigs.
@@ -623,6 +624,7 @@ class BaseModelHandler:
 		#var idx: int = 0
 		subresources["animations"] = {}
 
+		var fps_ratio: float = pkgasset.parsed_meta.internal_data.get("anim_frames_fps_ratio", 1.0)
 		var used_animation_names: Dictionary = pkgasset.parsed_meta.internal_data.get("used_animation_names", {})
 		for anim_clip in anim_clips:
 			var take_name = anim_clip["take_name"]
@@ -636,10 +638,11 @@ class BaseModelHandler:
 			var take: Dictionary = subresources["animations"][take_name]
 			var idx: int = take.get("slices/amount", 0) + 1  # 1-indexed
 			var prefix: String = "slice_" + str(idx)
+
 			# FIXME: If take_name == name, godot won't actually apply the slice data.
 			take[prefix + "/name"] = anim_clip.get("name")
-			take[prefix + "/start_frame"] = anim_clip.get("start_frame")
-			take[prefix + "/end_frame"] = anim_clip.get("end_frame")
+			take[prefix + "/start_frame"] = fps_ratio * anim_clip.get("start_frame")
+			take[prefix + "/end_frame"] = fps_ratio * anim_clip.get("end_frame")
 			take["settings/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/loop_mode"] = anim_clip.get("loop_mode")
 			take[prefix + "/save_to_file/enabled"] = false  # TODO
@@ -814,6 +817,9 @@ class FbxHandler:
 	func convert_to_float(s: String) -> Variant:
 		return s.to_float()
 
+	func convert_to_int(s: String) -> int:
+		return s.to_int()
+
 	func _is_fbx_binary(fbx_file_binary: PackedByteArray) -> bool:
 		return find_in_buffer(fbx_file_binary, "Kaydara FBX Binary".to_ascii_buffer(), 0, 64) != -1
 
@@ -966,6 +972,133 @@ class FbxHandler:
 		output_buf += fbx_file_binary.slice(newline_pos, len(fbx_file_binary))
 		return output_buf
 
+	const fbx_time_modes: Dictionary = {
+		# 0 (default) Appears to equate to KTIME_ONE_SECOND, or 46186158000 FPS.
+		0: 30, # However, the importer treats TimeMode=0 as 30fps, which is all we care about.
+		1: 120,
+		2: 100,
+		3: 60,
+		4: 50,
+		5: 48,
+		6: 30,
+		7: 30, # No idea... assume default = 60
+		8: 29.97, # "NTSC"
+		9: 29.97,
+		10: 25, # "PAL"
+		11: 24, # "CINEMA"
+		12: 1000, # milliseconds
+		13: 23.976, # cinematic
+	}
+
+	func _preprocess_fbx_anim_fps_binary(pkgasset: Object, fbx_file_binary: PackedByteArray) -> float:
+		var filename: String = pkgasset.pathname
+		var needle_buf: PackedByteArray = "\u0001PS\u0008...TimeModeS\u0004...enumS".to_ascii_buffer()
+		needle_buf[4] = 0
+		needle_buf[5] = 0
+		needle_buf[6] = 0
+		needle_buf[17] = 0
+		needle_buf[18] = 0
+		needle_buf[19] = 0
+		var fps = 1.0
+		var time_mode_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
+		if time_mode_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find TimeMode in Binary FBX.")
+			return 30
+		var spb := StreamPeerBuffer.new()
+		spb.data_array = fbx_file_binary
+		spb.big_endian = false
+		spb.seek(time_mode_pos + len(needle_buf))
+		var tmps: String = spb.get_string(spb.get_32())
+		if spb.get_8() != ("S").to_ascii_buffer()[0]:
+			pkgasset.log_fail(filename + ": time mode type not a string, or subdatatype invalid " + str(tmps) + "|" + str(spb.get_position()))
+			return 30
+		spb.get_string(spb.get_32())
+		if spb.get_8() != ("I").to_ascii_buffer()[0]:
+			pkgasset.log_fail(filename + ": TimeMode enum value not an integer")
+			return 30
+		var enum_value: int = spb.get_32()
+		if fbx_time_modes.has(enum_value):
+			fps = fbx_time_modes[enum_value]
+			pkgasset.log_debug(filename + ": FBX standard framerate " + str(fps))
+			return fps
+
+		needle_buf = "\u0001PS\u000F...CustomFrameRateS".to_ascii_buffer()
+		needle_buf[4] = 0
+		needle_buf[5] = 0
+		needle_buf[6] = 0
+		var custom_fps_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
+		if custom_fps_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find TimeMode in Binary FBX.")
+			return 30
+		spb.seek(custom_fps_pos + len(needle_buf))
+		var datatype: String = spb.get_string(spb.get_32())
+		if spb.get_8() != ("S").to_ascii_buffer()[0]:  # ord() is broken?!
+			pkgasset.log_fail(filename + ": not a string, or datatype invalid " + datatype)
+			return 30
+		var subdatatype: String = spb.get_string(spb.get_32())
+		if spb.get_8() != ("S").to_ascii_buffer()[0]:
+			pkgasset.log_fail(filename + ": not a string, or subdatatype invalid " + datatype + " " + subdatatype)
+			return 30
+		var extratype: String = spb.get_string(spb.get_32())
+		var number_type = spb.get_8()
+		var is_double: bool = false
+		if number_type == ("F").to_ascii_buffer()[0]:
+			fps = spb.get_float()
+		elif number_type == ("D").to_ascii_buffer()[0]:
+			fps = spb.get_double()
+			is_double = true
+		else:
+			pkgasset.log_fail(filename + ": not a float or double " + str(number_type))
+			return 30
+
+		pkgasset.log_debug(filename + ": Binary FBX: Custom Anim Framerate=" + str(fps))
+		# assets will have CustomFrameRate = -1 if TimeMode != 14
+		if fps < 0 or is_zero_approx(fps):
+			pkgasset.log_warn(filename + ": invalid CustomFrameRate: " + str(fps) + ": from time mode=" + str(enum_value))
+			return 30
+		return fps
+
+	func _preprocess_fbx_anim_fps_ascii(pkgasset: Object, buffer_as_ascii: String) -> float:
+		var filename: String = pkgasset.pathname
+		var time_mode_pos: int = buffer_as_ascii.find('"TimeMode"')
+		if time_mode_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			return 30
+		var newline_pos: int = buffer_as_ascii.find("\n", time_mode_pos)
+		var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
+		if newline_pos == -1 or comma_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			return 30
+
+		var fps: float = 1
+		var time_mode_str: String = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
+		pkgasset.log_debug("TimeMode as string is " + str(time_mode_str))
+		var enum_value: int = convert_to_int(str(time_mode_str))
+		if fbx_time_modes.has(enum_value):
+			fps = fbx_time_modes[enum_value]
+			pkgasset.log_debug(filename + ": ASCII FBX standard framerate " + str(fps))
+			return fps
+
+		var framerate_pos: int = buffer_as_ascii.find('"CustomFrameRate"')
+		if framerate_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			return 30
+		newline_pos = buffer_as_ascii.find("\n", framerate_pos)
+		comma_pos = buffer_as_ascii.rfind(",", newline_pos)
+		if newline_pos == -1 or comma_pos == -1:
+			pkgasset.log_fail(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			return 30
+
+		var custom_fps_str: String = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
+		pkgasset.log_debug("CustomFrameRate as string is " + str(custom_fps_str))
+		fps = convert_to_float(str(custom_fps_str))
+		pkgasset.log_debug(filename + ": ASCII FBX: Custom Anim Framerate=" + str(fps))
+		# assets will have CustomFrameRate = -1 if TimeMode != 14
+		if fps < 0 or is_zero_approx(fps):
+			pkgasset.log_warn(filename + ": invalid CustomFrameRate: " + str(fps) + ": from time mode=" + str(enum_value))
+			return 30
+		return fps
+
 	func _get_parent_textures_paths(source_file_path: String) -> Dictionary:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
 		var retlist: Dictionary = {}
@@ -1026,15 +1159,27 @@ class FbxHandler:
 			debug_outfile = null
 
 		var is_binary: bool = _is_fbx_binary(fbx_file)
+		var fps: float
 		var texture_name_list: PackedStringArray = PackedStringArray()
 		if is_binary:
 			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
+			fps = _preprocess_fbx_anim_fps_binary(pkgasset, fbx_file)
 			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
 			var buffer_as_ascii: String = fbx_file.get_string_from_utf8()  # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
+			fps = _preprocess_fbx_anim_fps_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
+		var closest_bake_fps: float = 30
+		if fps <= 25:
+			closest_bake_fps = 24
+		if fps >= 40:
+			closest_bake_fps = 60
+		var fps_ratio: float = closest_bake_fps / fps
+		pkgasset.parsed_meta.internal_data["anim_orig_fbx_fps"] = fps
+		pkgasset.parsed_meta.internal_data["anim_bake_fps"] = closest_bake_fps
+		pkgasset.parsed_meta.internal_data["anim_frames_fps_ratio"] = fps_ratio
 		d.rename(temp_input_path, temp_input_path + "x")
 		d.remove(temp_input_path + "x")
 		var outfile: FileAccess = FileAccess.open(temp_input_path, FileAccess.WRITE_READ)
@@ -1304,7 +1449,8 @@ class FbxHandler:
 		# --long-indices auto
 		# --compute-normals never|broken|missing|always
 		# --blend-shape-normals --blend-shape-tangents
-		var cmdline_args := ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", "bake30", "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path]
+		var fps_bake_mode: String = "bake" + str(pkgasset.parsed_meta.internal_data.get("anim_bake_fps", 30))
+		var cmdline_args := ["--pbr-metallic-roughness", "--fbx-temp-dir", tmpdir + "/" + thread_subdir, "--normalize-weights", "1", "--anim-framerate", fps_bake_mode, "-i", tmpdir + "/" + path, "-o", tmp_gltf_output_path]
 		pkgasset.log_debug(addon_path + " " + " ".join(cmdline_args))
 		var ret = OS.execute(addon_path, cmdline_args, stdout)
 		for i in range(5):
