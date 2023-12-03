@@ -272,14 +272,9 @@ class ParseState:
 		# SCRIPT ERROR: Invalid type in function 'register_resource' in base 'RefCounted (ParseState)'.
 		# The Object-derived class of argument 5 (null instance) is not a subclass of the expected argument class. (Resource)
 		var gltf_type = "meshes"
-		if p_type == "Mesh":
-			metaobj.imported_mesh_paths[p_name] = str(p_resource.resource_path)
-			metaobj.imported_mesh_paths["Root Scene_" + p_name] = str(p_resource.resource_path)
 		if p_type == "Material":
-			metaobj.imported_material_paths[p_name] = str(p_resource.resource_path)
 			gltf_type = "materials"
 		if p_type == "AnimationClip":
-			metaobj.imported_animation_paths[p_name] = str(p_resource.resource_path)
 			gltf_type = "animations"
 		metaobj.insert_resource(fileId_object, p_resource)
 		metaobj.log_debug(0, "Register " + str(metaobj.guid) + ":" + str(fileId_object) + ": " + str(p_type) + " '" + str(p_name) + "' " + str(p_resource))
@@ -523,14 +518,14 @@ class ParseState:
 				continue
 			var anim: Animation = anim_lib.get_animation(godot_anim_name)
 			var anim_name: String = get_orig_name("animations", godot_anim_name)
-			if saved_animations_by_name.has(anim_name):
-				anim = saved_animations_by_name.get(anim_name)
+			if saved_animations_by_name.has(godot_anim_name):
+				anim = saved_animations_by_name.get(godot_anim_name)
 				if anim != null:
 					anim_lib.remove_animation(godot_anim_name)
 					anim_lib.add_animation(godot_anim_name, anim)
 				continue
-			saved_animations_by_name[anim_name] = null
-			metaobj.log_debug(0, "Process ANIM " + str(godot_anim_name))
+			saved_animations_by_name[godot_anim_name] = null
+			metaobj.log_debug(0, "Process ANIM " + str(anim_name) + " (" + str(godot_anim_name) + ")")
 			#if not has_obj_id("AnimationClip", get_orig_name("animations", anim_name))
 			#if fileId == 0:
 			#	metaobj.log_fail(0, "Missing fileId for Animation " + str(anim_name))
@@ -551,7 +546,8 @@ class ParseState:
 				if anim != null:
 					anim_lib.remove_animation(godot_anim_name)
 					anim_lib.add_animation(godot_anim_name, anim)
-					saved_animations_by_name[anim_name] = anim
+					saved_animations_by_name[godot_anim_name] = anim
+					metaobj.imported_animation_paths[godot_anim_name] = str(anim.resource_path)
 					self.register_resource(anim, anim_name, "AnimationClip", fileId)
 			# metaobj.log_debug(0, "AnimationPlayer " + str(scene.get_path_to(node)) + " / Anim " + str(i) + " anim_name: " + anim_name + " resource_name: " + str(anim.resource_name))
 			i += 1
@@ -572,14 +568,14 @@ class ParseState:
 		if is_obj:
 			godot_mesh_name = default_obj_mesh_name
 		var mesh_name: String = get_orig_name("meshes", godot_mesh_name)
-		if saved_meshes_by_name.has(mesh_name):
-			mesh = saved_meshes_by_name.get(mesh_name)
+		if saved_meshes_by_name.has(godot_mesh_name):
+			mesh = saved_meshes_by_name.get(godot_mesh_name)
 			if mesh != null:
 				node.mesh = mesh
 			if node.skin != null:
-				node.skin = saved_skins_by_name.get(mesh_name)
+				node.skin = saved_skins_by_name.get(godot_mesh_name)
 		else:
-			saved_meshes_by_name[mesh_name] = null
+			saved_meshes_by_name[godot_mesh_name] = null
 			for i in range(mesh.get_surface_count()):
 				var mat: Material = mesh.surface_get_material(i)
 				if mat == null:
@@ -590,14 +586,14 @@ class ParseState:
 					mat_name = "No Name"
 				if is_obj:
 					mat_name = default_obj_mesh_name + "Mat"  # unity seems to use this rule
-				if saved_materials_by_name.has(mat_name):
-					mat = saved_materials_by_name.get(mat_name)
+				if saved_materials_by_name.has(godot_mat_name):
+					mat = saved_materials_by_name.get(godot_mat_name)
 					if mat != null:
 						mesh.surface_set_material(i, mat)
 					continue
-				saved_materials_by_name[mat_name] = null
+				saved_materials_by_name[godot_mat_name] = null
 				var fileId = get_obj_id("Material", PackedStringArray(), mat_name)
-				metaobj.log_debug(0, "Materials " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
+				metaobj.log_debug(0, "Material " + str(mat_name) + " (" + str(godot_mat_name) + ") import " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
 				if not importMaterials:
 					mat = default_material
 				elif not extractLegacyMaterials and fileId == 0 and not use_new_names:
@@ -661,13 +657,14 @@ class ParseState:
 					metaobj.log_debug(0, "Mat for " + str(i) + " is " + str(mat))
 					if mat != null:
 						mesh.surface_set_material(i, mat)
-						saved_materials_by_name[mat_name] = mat
+						saved_materials_by_name[godot_mat_name] = mat
+						metaobj.imported_material_paths[godot_mat_name] = str(mat.resource_path)
 						register_resource(mat, mat_name, "Material", fileId)
 				# metaobj.log_debug(0, "MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name if mesh != null else "NULL")+ " Material " + str(i) + " name " + str(mat.resource_name if mat != null else "NULL"))
 			# metaobj.log_debug(0, "Looking up " + str(mesh_name) + " in " + str(objtype_to_name_to_id.get("Mesh", {})))
 			var fileId: int = get_obj_id("Mesh", PackedStringArray(), mesh_name)
 			if fileId == 0:
-				metaobj.log_fail(0, "Missing fileId for Mesh " + str(mesh_name))
+				metaobj.log_fail(0, "Missing fileId for Mesh " + str(mesh_name) + " (" + str(godot_mesh_name) + ")")
 			else:
 				var skin: Skin = node.skin
 				if external_objects_by_id.has(fileId):
@@ -689,11 +686,13 @@ class ParseState:
 						skin = load(respath)
 				if mesh != null:
 					node.mesh = mesh
-					saved_meshes_by_name[mesh_name] = mesh
+					saved_meshes_by_name[godot_mesh_name] = mesh
+					metaobj.imported_mesh_paths[godot_mesh_name] = str(mesh.resource_path)
+					metaobj.imported_mesh_paths["Root Scene_" + godot_mesh_name] = str(mesh.resource_path)
 					register_resource(mesh, mesh_name, "Mesh", fileId, skin)
 					if skin != null:
 						node.skin = skin
-						saved_skins_by_name[mesh_name] = skin
+						saved_skins_by_name[godot_mesh_name] = skin
 		is_obj = false
 
 func _post_import(p_scene: Node) -> Object:

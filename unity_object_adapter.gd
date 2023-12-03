@@ -802,25 +802,22 @@ class UnityMaterial:
 				continue
 			if not name.ends_with("Map"):
 				albedo_textures_to_try.append(name)
+		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
 		for name in texProperties:
 			if name == "_BumpMap" or name == "_OcclusionMap" or name == "_MetallicGlossMap" or name == "_ParallaxMap":
 				continue
-			if name.ends_with("Map"):
+			if name.ends_with("ColorMap") or name.ends_with("BaseMap"):
 				albedo_textures_to_try.append(name)
-		# Pick a random non-null texture property as albedo. Prefer texture slots not ending with "Map"
-		if ret.albedo_texture == null:
-			for name in texProperties:
-				if name.ends_with("Map"):
-					continue
-				var env = texProperties.get(name, {})
-				var texref: Array = env.get("m_Texture", [null, 0, "", 0])
-				if not texref.is_empty():
-					ret.albedo_texture = meta.get_godot_resource(texref)
-					if ret.albedo_texture != null:
-						log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
-						ret.uv1_scale = get_texture_scale(texProperties, name)
-						ret.uv1_offset = get_texture_offset(texProperties, name)
-						break
+		for name in albedo_textures_to_try:
+			var env = texProperties.get(name, {})
+			var texref: Array = env.get("m_Texture", [null, 0, "", 0])
+			if not texref.is_empty():
+				ret.albedo_texture = meta.get_godot_resource(texref)
+				if ret.albedo_texture != null:
+					log_debug("Trying to get albedo from " + str(name) + ": " + str(ret.albedo_texture))
+					ret.uv1_scale = get_texture_scale(texProperties, name)
+					ret.uv1_offset = get_texture_offset(texProperties, name)
+					break
 
 		if ret.albedo_texture == null:
 			ret.uv1_scale = get_texture_scale(texProperties, "_MainTex")
@@ -873,7 +870,7 @@ class UnityMaterial:
 			var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
 			if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
 				metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
-			if not metallic_gloss_texture_ref.is_empty():
+			if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
 				metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
 				if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
 					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, true)
@@ -4363,7 +4360,7 @@ class UnityPrefabInstance:
 			var virtual_fileID = meta.xor_or_stripped(fileID, self.fileID)
 			var virtual_unity_object: UnityObject = adapter.instantiate_unity_object_from_utype(meta, virtual_fileID, target_utype)
 			var uprops: Dictionary = fileID_to_keys.get(fileID, {})
-			log_debug("XXXd Calculating prefab modifications " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath) + ": " + str(uprops))
+			log_debug("XXXd Calculating prefab modifications " + str(target_prefab_meta.guid) + "/" + str(fileID) + "/" + str(target_nodepath) + ":" + target_skel_bone + " " + str(uprops))
 			if uprops.has("m_Name"):
 				var m_Name: String = uprops["m_Name"]
 				state.add_prefab_rename(fileID, m_Name)
@@ -4395,7 +4392,7 @@ class UnityPrefabInstance:
 					virtual_unity_object.assign_controller(animtree.get_node(animtree.anim_player), animtree, uprops["m_Controller"])
 			log_debug("Looking up instanced object at " + str(target_nodepath) + ": " + str(existing_node))
 			if target_skel_bone.is_empty() and existing_node == null:
-				log_fail("FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops), "empty" if uprops.is_empty() else uprops.keys()[0], virtual_unity_object)
+				log_fail(str(fileID) + " FAILED to get_node to apply mod to node at path " + str(target_nodepath) + "!! Mod is " + str(uprops), "empty" if uprops.is_empty() else uprops.keys()[0], virtual_unity_object)
 			elif target_skel_bone.is_empty():
 				if existing_node.has_meta("unidot_keys"):
 					var orig_meta: Variant = existing_node.get_meta("unidot_keys")
@@ -4627,8 +4624,8 @@ class UnityPrefabInstance:
 
 			var name_map = {}
 			for child_transform in ps.child_transforms_by_stripped_id.get(transform_asset.fileID, []):
-				if child_transform.gameObject != null:
-					log_debug("Adding " + str(child_transform.gameObject.name) + " to " + str(par.name))
+				if child_transform.gameObject != null and attachment != null:
+					log_debug("Adding " + str(child_transform.gameObject.name) + " to " + str(attachment.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
 				if attachment == null:
 					log_fail("Unable to recurse to child_transform " + child_transform.uniq_key + " on null bone attachment", "children", self)
