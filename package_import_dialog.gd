@@ -28,6 +28,7 @@ const STATE_IMPORTING_SCENES = 7
 const STATE_DONE_IMPORT = 8
 
 var import_worker = import_worker_class.new()
+var import_worker2 = import_worker_class.new()
 var meta_worker = meta_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
 var object_adapter = object_adapter_class.new()
@@ -109,6 +110,8 @@ func _init():
 	meta_worker.asset_processing_finished.connect(self._meta_completed, CONNECT_DEFERRED)
 	import_worker.asset_processing_finished.connect(self._asset_processing_finished, CONNECT_DEFERRED)
 	import_worker.asset_processing_started.connect(self._asset_processing_started, CONNECT_DEFERRED)
+	import_worker2.stage2 = true
+	import_worker2.asset_processing_finished.connect(self._asset_processing_stage2_finished, CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	editor_filesystem.resources_reimported.connect(self._resource_reimported)
@@ -467,6 +470,14 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 			p_ti.remove_child(child_ti)
 
 	if not p_ti.is_checked(0) and p_ti.get_child_count() == 0:
+		var path = p_ti.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
+		var asset = pkg.path_to_pkgasset.get(path)
+		if asset != null:
+			# After the user has made their selection, it is important that we treat all unselected files
+			# as if they do not exist. Some operations such as roughness texture generation (stage2)
+			# use this dictionary to find not-yet-imported smoothness textures
+			pkg.path_to_pkgasset.erase(path)
+			pkg.guid_to_pkgasset.erase(asset.guid)
 		return false
 	# Check if column 1 (type) is "Directory". is there a cleaner way to do this?
 	if was_directory and p_ti.get_child_count() == 0:
@@ -939,7 +950,7 @@ func do_import_step():
 	if asset_work_waiting_write.is_empty() and tree_dialog_state == STATE_TEXTURES and not written_additional_textures:
 		written_additional_textures = true
 		for tw in asset_materials_and_other:
-			for filename in asset_adapter.write_additional_import_dependencies(tw.asset):
+			for filename in asset_adapter.write_additional_import_dependencies(tw.asset, pkg.guid_to_pkgasset):
 				tw.asset.parsed_meta.log_debug(0, "Additional import dependency discovered: " + str(filename))
 				if filename.is_empty():
 					continue
@@ -976,9 +987,20 @@ func _done_preprocessing_assets():
 	self.import_worker.stop_all_threads_and_wait()
 	asset_database.log_debug([null, 0, "", 0], "Joined.")
 	asset_database.save()
+	import_worker2.start_threads(THREAD_COUNT)
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
-	for tw in asset_materials_and_other:
-		asset_adapter.write_additional_import_dependencies_scan_only(tw.asset, pkg.guid_to_pkgasset)
+
+	import_worker2.set_stage2(pkg.guid_to_pkgasset)
+	var visited = {}.duplicate()
+	var second_pass: Array = [].duplicate()
+	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass, true)
+
+
+func _done_preprocessing_assets_stage2():
+	asset_database.log_debug([null, 0, "", 0], "Finished all preprocessing stage2!!")
+	self.import_worker2.stop_all_threads_and_wait()
+	asset_database.log_debug([null, 0, "", 0], "Joined 2.")
+	asset_database.save()
 
 
 func start_godot_import(tw: Object):
@@ -1102,9 +1124,16 @@ func _asset_processing_started(tw: Object):
 	ti.set_custom_color(0, Color("#228888"))
 
 
-func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Array) -> int:
+func _asset_processing_stage2_finished(tw: Object):
+	_currently_preprocessing_assets -= 1
+	var ti: TreeItem = tw.extra
+	if _currently_preprocessing_assets == 0:
+		_done_preprocessing_assets_stage2()
+
+func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Array, is_second_stage: bool=false) -> int:
 	var ret: int = 0
-	if ti.is_checked(0) or ti.get_cell_mode(0) != TreeItem.CELL_MODE_CHECK:
+	# I think this now runs after _prune_unselected_items so it should always be true
+	if ti.is_checked(0) or ti.get_cell_mode(0) != TreeItem.CELL_MODE_CHECK: # It's now always CELL_MODE_STRING
 		var path = ti.get_tooltip_text(0)  # tooltip contains the path so no need to use metadata
 		if not path.is_empty():
 			var asset = pkg.path_to_pkgasset.get(path)
@@ -1112,7 +1141,11 @@ func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Arr
 				asset_database.log_fail([null, 0, "", 0], "Path " + str(path) + " has null asset!")
 			else:
 				ret += 1
-				if not asset.parsed_meta.meta_dependency_guids.is_empty():
+				if is_second_stage:
+					asset.parsed_meta.log_debug(0, "Queueing for import_worker2")
+					_currently_preprocessing_assets += 1
+					import_worker2.push_asset(asset, tmpdir, ti)
+				elif not asset.parsed_meta.meta_dependency_guids.is_empty():
 					asset.parsed_meta.log_debug(0, "Meta has dependencies " + str(asset.parsed_meta.dependency_guids))
 					second_pass.append(ti)
 				else:
@@ -1122,7 +1155,7 @@ func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Arr
 				if ti.get_button_count(0) <= 0:
 					ti.add_button(0, spinner_icon, -1, true, "Loading...")
 	for chld in ti.get_children():
-		ret += _preprocess_recursively(chld, visited, second_pass)
+		ret += _preprocess_recursively(chld, visited, second_pass, is_second_stage)
 	return ret
 
 

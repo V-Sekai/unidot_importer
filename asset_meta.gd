@@ -40,6 +40,7 @@ var object_adapter: RefCounted = object_adapter_class.new()
 var database_holder
 var log_database_holder
 var log_message_holder = LogMessageHolder.new()
+var mutex := Mutex.new() # Currently used only in bake_roughness_textures_if_needed
 @export var path: String = ""
 @export var orig_path: String = ""
 var orig_path_short: String

@@ -1978,7 +1978,7 @@ func preprocess_asset(asset_database: Object, pkgasset: Object, tmpdir: String, 
 	return ""
 
 
-func write_additional_import_dependencies_scan_only(pkgasset: Object, guid_to_pkgasset: Dictionary):
+func preprocess_asset_stage2(pkgasset: Object, tmpdir: String, guid_to_pkgasset: Dictionary, stage2_dict_lock: Mutex, stage2_extra_asset_dict: Dictionary):
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 	if pkgasset.parsed_asset == null:
@@ -1987,31 +1987,66 @@ func write_additional_import_dependencies_scan_only(pkgasset: Object, guid_to_pk
 	for key in pkgasset.parsed_asset.assets:
 		var obj = pkgasset.parsed_asset.assets[key]
 		if obj.type == "Material":
-			var ret: String = obj.bake_roughness_texture_if_needed(true, guid_to_pkgasset)
+			var ret: String = obj.bake_roughness_texture_if_needed(tmpdir, guid_to_pkgasset, stage2_dict_lock, stage2_extra_asset_dict)
 			if not ret.is_empty():
 				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " baked a roughness texture " + str(ret))
 			else:
 				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " did not have a roughness texture")
 
 
-func write_additional_import_dependencies(pkgasset: Object, force_keep: bool=false) -> Array[String]:
-	var path = pkgasset.orig_pathname
-	pkgasset.parsed_meta.log_debug(0, "Write additional " + str(path))
-	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Dictionary) -> Array[String]:
 	var dependencies: Array[String]
-	if pkgasset.parsed_asset == null:
-		pkgasset.parsed_meta.log_debug(0, "Asset was not parsed " + str(path))
-		return dependencies
-	for key in pkgasset.parsed_asset.assets:
-		var obj = pkgasset.parsed_asset.assets[key]
-		if obj.type == "Material":
-			var ret: String = obj.bake_roughness_texture_if_needed(false)
-			if not ret.is_empty():
-				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " baked a roughness texture " + str(ret))
-				dependencies.append(ret)
-			else:
-				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " did not have a roughness texture")
-	pkgasset.parsed_meta.log_debug(0, "Returning extra dependencies " + str(dependencies))
+	for extra_tex_filename in pkgasset.parsed_meta.internal_data.get("extra_textures", []):
+		if extra_tex_filename.validate_filename().is_empty():
+			pkgasset.log_fail("pathname became empty: " + str(extra_tex_filename))
+			continue
+		var extra_tex_data: Dictionary = pkgasset.parsed_meta.internal_data["extra_textures"][extra_tex_filename].duplicate()
+		var temp_path: String = extra_tex_data["temp_path"]
+		var source_meta_guid: String = extra_tex_data["source_meta_guid"]
+		var source_meta: Object
+		if guid_to_pkgasset.has(source_meta_guid):
+			source_meta = guid_to_pkgasset[source_meta_guid].parsed_meta
+		if source_meta == null:
+			source_meta = pkgasset.parsed_meta.lookup_meta_by_guid(source_meta_guid)
+		if source_meta == null:
+			pkgasset.log_fail("Unable to write import file for " + str(extra_tex_filename) + " due to missing guid " + str(source_meta_guid))
+			continue
+		extra_tex_data.erase("temp_path")
+		extra_tex_data.erase("source_meta_guid")
+		var path = pkgasset.orig_pathname
+		var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+
+		var cfile_source := ConfigFile.new()
+		var cfile := ConfigFile.new() # AssetHandler.ConfigFileCompare.new(pkgasset)
+		if cfile_source.load("res://" + source_meta.path + ".import") != OK:
+			pkgasset.log_fail("Unable to load source " + str(source_meta.path) + ".import file for extra texture " + extra_tex_filename)
+			continue
+		cfile.set_value("remap", "importer", cfile_source.get_value("remap", "importer", "texture"))
+		cfile.set_value("remap", "importer2", cfile_source.get_value("remap", "importer", "texture"))
+		pkgasset.log_debug("Extra dependency " + str(extra_tex_filename) + " from " + str(source_meta.path) + " has importer " + str(cfile.get_value("remap", "importer")))
+		cfile.set_value("remap", "type", cfile_source.get_value("remap", "type", "CompressedTexture2D"))
+		if cfile.load("res://" + extra_tex_filename + ".import") != OK:
+			pkgasset.log_fail("Unable to load " + str(source_meta.path) + "extra texture " + extra_tex_filename + ".import file")
+			continue
+		for section_key in cfile_source.get_section_keys("params"):
+			if not extra_tex_data.has(section_key):
+				cfile.set_value("params", section_key, cfile_source.get_value("params", section_key))
+		for section_key in extra_tex_data:
+			cfile.set_value("params", section_key, extra_tex_data[section_key])
+		cfile.save("res://" + extra_tex_filename + ".import")
+		var hackhack = FileAccess.get_file_as_string("res://" + extra_tex_filename + ".import")
+		# WHY?!?!?!?! ConfigFile always writes importer="keep" no matter what I do above
+		# So we do a string replace, which seems to work.
+		hackhack = hackhack.replace('importer="keep"', 'importer="texture"')
+		var f := FileAccess.open("res://" + extra_tex_filename + ".import", FileAccess.WRITE_READ)
+		f.store_string(hackhack)
+		f.close()
+		
+		var dres = DirAccess.open("res://")
+		pkgasset.log_debug("Renaming " + temp_path + " to " + extra_tex_filename)
+		dres.rename(temp_path, extra_tex_filename)
+		dependencies.append(extra_tex_filename)
+	pkgasset.parsed_meta.internal_data.erase("extra_textures")
 	return dependencies
 
 

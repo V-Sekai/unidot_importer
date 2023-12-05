@@ -873,11 +873,12 @@ class UnityMaterial:
 			if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
 				metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
 				if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
-					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, true)
+					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref, false)
 					log_debug("Found metallic roughness texture " + str(metallic_gloss_texture_ref) + " => " + str(metallic_texture))
 					use_glossmap = true
 				if metallic_texture == null:
 					if use_glossmap:
+						log_debug("Load roughness " + str(load("res://Assets/ArchVizPRO Interior Vol.6/3D MATERIAL/Tiles_White/Tiles_White_metallic.roughness.png")))
 						log_warn("Unable to load metallic roughness texture. Trying metallic gloss.", "_MetallicGlossMap", metallic_gloss_texture_ref)
 					metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
 					metallic_texture = meta.get_godot_resource(metallic_gloss_texture_ref)
@@ -909,7 +910,7 @@ class UnityMaterial:
 		assign_object_meta(ret)
 		return ret
 
-	func bake_roughness_texture_if_needed(scan_only: bool=false, guid_to_pkgasset: Dictionary={}) -> String:
+	func bake_roughness_texture_if_needed(tmp_path: String, guid_to_pkgasset: Dictionary, stage2_dict_lock: Mutex, stage2_extra_asset_dict: Dictionary) -> String:
 		var kws = get_keywords()
 		var floatProperties = get_float_properties()
 		var texProperties = get_tex_properties()
@@ -924,6 +925,7 @@ class UnityMaterial:
 			metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
 		# Not any more: Material has _METALLICGLOSSMAP enabled.
 		if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
+			log_debug("Material has null _MetallicGlossMap")
 			# null gloss: no roughness to bake
 			return ""
 		log_debug("gloss map ref is " + str(metallic_gloss_texture_ref))
@@ -936,47 +938,73 @@ class UnityMaterial:
 		if target_meta == null:
 			log_warn("Failed to lookup gloss texture ref", "_MetallicGlossMap", metallic_gloss_texture_ref)
 			return ""
+		target_meta.mutex.lock()
 		var pathname: String = target_meta.path
-		# The texture file already exists on disk in the unidot folder.
 		var roughness_filename = pathname.get_basename() + ".roughness.png"
-		if scan_only:
-			if not FileAccess.file_exists(roughness_filename):
-				var cfile = ConfigFile.new()
-				cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
-				# Make an empty "keep" importer file so it will not be imported.
-				cfile.set_value("remap", "importer", "keep")
-				cfile.save("res://" + roughness_filename + ".import")
-				log_debug("Generated dummy roughness " + str(roughness_filename))
-				# Make an empty file so it will be found by a scan!
-				var f: FileAccess = FileAccess.open(roughness_filename, FileAccess.WRITE_READ)
-				f.close()
-				f = null
-			else:
-				log_debug("Already existing roughness " + str(roughness_filename))
-			print(roughness_filename)
-			return roughness_filename
-		if FileAccess.file_exists(pathname):
-			var image := Image.load_from_file(pathname)
+		# Sometimes multiple materials reference the same roughness texture. We to avoid generating the same texture multiple times.
+		stage2_dict_lock.lock()
+		if stage2_extra_asset_dict.has(roughness_filename):
+			stage2_dict_lock.unlock()
+			target_meta.mutex.unlock()
+			return ""
+		stage2_extra_asset_dict[roughness_filename] = true
+		stage2_dict_lock.unlock()
+		var ret: String = _bake_roughness_texture_locked(tmp_path, target_meta, roughness_filename, glossiness_value, guid_to_pkgasset)
+		target_meta.mutex.unlock()
+		return ret
+
+	func _bake_roughness_texture_locked(tmp_path: String, target_meta: Object, roughness_filename: String, glossiness_value: float, guid_to_pkgasset: Dictionary) -> String:
+		var pathname: String = target_meta.path
+		if FileAccess.file_exists(roughness_filename):
+			var fa := FileAccess.open(roughness_filename, FileAccess.READ)
+			if fa != null:
+				if fa.get_length() > 0:
+					if not target_meta.godot_resources.has(-target_meta.main_object_id):
+						target_meta.insert_resource_path(-target_meta.main_object_id, "res://" + roughness_filename)
+					log_debug("Roughness texture already exists. Modified " + str(target_meta.guid) + "/" + str(target_meta.path) + " godot_resources: " + str(target_meta.godot_resources))
+					return "" # Nothing new to import.
+		var image: Image
+		if FileAccess.file_exists(tmp_path + "/" + pathname):
+			image = Image.load_from_file(tmp_path + "/" + pathname)
+		elif FileAccess.file_exists(pathname):
+			image = Image.load_from_file(pathname)
+		if image != null:
 			log_debug("Texture " + str(pathname) + " exists. Loaded " + str(image))
 			if image != null and image.get_width() > 0 and image.get_height() > 0:
-				var cfile := ConfigFile.new()
-				if cfile.load("res://" + pathname + ".import") != OK:
-					log_fail("bake_roughness_texture unable to read .import file for " + str(pathname))
-					return ""
-				cfile.set_value("params", "roughness/mode", 5)
+				if not meta.internal_data.has("extra_textures"):
+					meta.internal_data["extra_textures"] = {}
+				meta.internal_data["extra_textures"][roughness_filename] = {
+					"temp_path": tmp_path + "/" + roughness_filename,
+					"source_meta_guid": target_meta.guid,
+					"roughness/mode": 5,
+				}
+				if not FileAccess.file_exists(roughness_filename + ".import"):
+					var cfile = ConfigFile.new()
+					cfile.set_value("remap", "path", "unidot_default_remap_path")  # must be non-empty. hopefully ignored.
+					# Make an empty "keep" importer file so it will not be imported.
+					cfile.set_value("remap", "importer", "keep")
+					cfile.save("res://" + roughness_filename + ".import")
+					log_debug("Generated dummy roughness " + str(roughness_filename))
+				if not FileAccess.file_exists(roughness_filename):
+					# Make an empty file so it will be found by a scan!
+					var f: FileAccess = FileAccess.open(roughness_filename, FileAccess.WRITE_READ)
+					f.close()
+					f = null
+				else:
+					log_debug("Already existing roughness " + str(roughness_filename))
 				var col: Color
 				for x in range(image.get_width()):
 					for y in range(image.get_width()):
 						col = image.get_pixel(x, y)
 						col.a = 1.0 - glossiness_value * col.a
 						image.set_pixel(x, y, col)
-				image.save_png(roughness_filename)
-				cfile.save("res://" + roughness_filename + ".import")
+				image.save_png(tmp_path + "/" + roughness_filename)
 				target_meta.insert_resource_path(-target_meta.main_object_id, "res://" + roughness_filename)
-				log_debug("Generated " + str(roughness_filename) + " " + str(image.get_size()))
+				log_debug("Roughness texture modified " + str(target_meta.guid) + "/" + str(target_meta.path) + " godot_resources: " + str(target_meta.godot_resources))
+				log_debug("Generated " + str(tmp_path) + "/" + str(roughness_filename) + " " + str(image.get_size()))
 				return roughness_filename
 		# TODO: Glossiness: invert color channels??
-		log_warn("Failed to generate roughness texture at " + str(pathname) + " from " + str(target_meta.guid), "_MetallicGlossMap", metallic_gloss_texture_ref)
+		log_warn("Failed to generate roughness texture at " + str(pathname) + " from " + str(target_meta.guid), "_MetallicGlossMap", [null, target_meta.main_object_id, target_meta.guid, 0])
 		return ""
 
 	func get_godot_extension() -> String:
