@@ -333,6 +333,12 @@ func _cell_selected() -> void:
 					elif col == 4:
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.fails)
 			if len(child_list) > 1:
+				if col == 2:
+					filtered_msgs.append_array(asset_database.log_message_holder.all_logs)
+				elif col == 3:
+					filtered_msgs.append_array(asset_database.log_message_holder.warnings_fails)
+				elif col == 4:
+					filtered_msgs.append_array(asset_database.log_message_holder.fails)
 				filtered_msgs.sort()
 			ti.set_metadata(col, filtered_msgs)
 			current_scroll = merge_log_lines(filtered_msgs, current_scroll)
@@ -508,6 +514,7 @@ func _selected_package(p_path: String) -> void:
 	pkg = unitypackagefile.new().init_with_filename(p_path)
 	#pkg.parse_all_meta(asset_database)
 	meta_worker.asset_database = asset_database
+	asset_database.clear_logs()
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING

@@ -717,7 +717,7 @@ func _post_import(p_scene: Node) -> Object:
 		push_error("Running _post_import script for " + str(source_file_path) + " but cannot load .import")
 
 	var rel_path = source_file_path.replace("res://", "")
-	print("Parsing meta at " + source_file_path)
+	print("Unidot Post-import " + source_file_path)
 	var asset_database: asset_database_class = asset_database_class.new().get_singleton()
 	default_material = asset_database.default_material_reference
 	var metaobj: asset_meta_class = asset_database.get_meta_at_path(rel_path)

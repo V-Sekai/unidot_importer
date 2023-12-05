@@ -11,6 +11,7 @@ const ASSET_DATABASE_PATH: String = "res://unity_asset_database.tres"
 
 var object_adapter = object_adapter_class.new()
 var in_package_import: bool = false
+var log_message_holder = asset_meta_class.LogMessageHolder.new()
 
 @export var global_log_count: int = 0
 
@@ -43,8 +44,19 @@ func save():
 	ResourceSaver.save(self, ASSET_DATABASE_PATH)
 
 
+const ERROR_COLOR_TAG := "FAIL: "
+const WARNING_COLOR_TAG := "warn: "
+
+func clear_logs():
+	log_message_holder = asset_meta_class.LogMessageHolder.new()
+
 # Log messages related to this asset
 func log_debug(local_ref: Array, msg: String):
+	if len(local_ref) < 4 or local_ref[2] == "":
+		var seq_str: String = "%08d " % global_log_count
+		global_log_count += 1
+		var log_str: String = seq_str + "GLOBAL: " + msg
+		log_message_holder.all_logs.append(log_str)
 	if ENABLE_CONSOLE_DEBUGGING:
 		print(".unidot. " + str(local_ref[2]) + ":" + str(local_ref[1]) + " : " + msg)
 
@@ -52,6 +64,14 @@ func log_debug(local_ref: Array, msg: String):
 # Anything that is unexpected but does not necessarily imply corruption.
 # For example, successfully loaded a resource with default fileid
 func log_warn(local_ref: Array, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
+	if len(local_ref) < 4 or local_ref[2] == "":
+		var fieldstr: String = ""
+		if not field.is_empty():
+			fieldstr = "." + field + ": "
+		var seq_str: String = "%08d " % global_log_count
+		global_log_count += 1
+		var log_str: String = seq_str + "GLOBAL: " + WARNING_COLOR_TAG + fieldstr + msg
+		log_message_holder.all_logs.append(log_str)
 	if ENABLE_CONSOLE_DEBUGGING:
 		var fieldstr = ""
 		if not field.is_empty():
@@ -64,6 +84,14 @@ func log_warn(local_ref: Array, msg: String, field: String = "", remote_ref: Arr
 # Anything that implies the asset will be corrupt / lost data.
 # For example, some reference or field could not be assigned.
 func log_fail(local_ref: Array, msg: String, field: String = "", remote_ref: Array = [null, 0, "", null]):
+	if len(local_ref) < 4 or local_ref[2] == "":
+		var fieldstr: String = ""
+		if not field.is_empty():
+			fieldstr = "." + field + ": "
+		var seq_str: String = "%08d " % global_log_count
+		global_log_count += 1
+		var log_str: String = seq_str + "GLOBAL: " + ERROR_COLOR_TAG + fieldstr + msg
+		log_message_holder.all_logs.append(log_str)
 	if ENABLE_CONSOLE_DEBUGGING:
 		var fieldstr = ""
 		if not field.is_empty():

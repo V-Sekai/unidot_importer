@@ -795,8 +795,8 @@ func init_with_file(file: Object, path: String):
 		return  # Dummy meta object
 
 	var magic = file.get_line()
-	log_debug(0, "Parsing meta file! " + file.get_path())
 	if not magic.begins_with("fileFormatVersion:"):
+		log_fail(0, "Failed to parse meta file! " + file.get_path())
 		return
 
 	var yaml_parser = yaml_parser_class.new()
