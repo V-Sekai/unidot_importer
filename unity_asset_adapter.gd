@@ -1886,7 +1886,7 @@ var file_handlers: Dictionary = {
 	"svg": image_handler,
 	"svgz": image_handler,
 	"wav": AudioHandler.new().create_with_type("wav", "AudioStreamSample"),
-	"ogg": AudioHandler.new().create_with_type("ogg", "AudioStreamOGG"),
+	"ogg": AudioHandler.new().create_with_type("oggvorbisstr", "AudioStreamOGG"),
 	"mp3": AudioHandler.new().create_with_type("mp3", "AudioStreamMP3"),
 	# "aif": audio_handler, # Unsupported.
 	# "tif": image_handler, # Unsupported.
@@ -1914,7 +1914,16 @@ var file_handlers: Dictionary = {
 	"json": TextHandler.new(),
 	"csv": TextHandler.new(),
 	"yaml": TextHandler.new(),
-	"fnt": TextHandler.new(),
+	"fnt": AudioHandler.new().create_with_type("font_data_bmfont", "FontFile"),
+	"font": AudioHandler.new().create_with_type("font_data_bmfont", "FontFile"),
+	"ttf": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"ttc": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"otf": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"otc": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"woff": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"woff2": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"pfb": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
+	"pfm": AudioHandler.new().create_with_type("font_data_dynamic", "FontFile"),
 }
 
 
