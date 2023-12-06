@@ -27,12 +27,17 @@ var default_material: Material = null
 const ROOT_NODE_NAME = "//RootNode"
 
 
+static func get_extracted_assets_dir(model_pathname: String):
+	return model_pathname.get_base_dir().path_join("extracted")
+
+
 class ParseState:
 	var object_adapter: Object
 	var scene: Node
 	var toplevel_node: Node
 	var metaobj: Resource
 	var source_file_path: String
+	var extracted_assets_basename: String
 	var use_new_names: bool = false
 	var preserve_hierarchy: bool = false
 	var preserve_hierarchy_orig_root_node_name: String = ""
@@ -165,7 +170,7 @@ class ParseState:
 
 	func get_resource_path(sanitized_name: String, extension: String) -> String:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
-		return source_file_path.get_basename() + "." + sanitize_filename(sanitized_name) + extension
+		return extracted_assets_basename + "." + sanitize_filename(sanitized_name) + extension
 
 	func get_parent_materials_paths(material_name: String) -> Array:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
@@ -742,6 +747,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.object_adapter = object_adapter
 	ps.scene = p_scene
 	ps.source_file_path = source_file_path
+	ps.extracted_assets_basename = get_extracted_assets_dir(source_file_path).path_join(source_file_path.get_basename().get_file())
 	ps.metaobj = metaobj
 	ps.asset_database = asset_database
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})

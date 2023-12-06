@@ -1017,7 +1017,7 @@ func start_godot_import(tw: Object):
 	if asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL and force_reimport_models_checkbox.button_pressed:
 		force_reimport = true
 	if asset_database.get_meta_at_path(tw.asset.parsed_meta.path) == null:
-		tw.asset.log_warn("Asset " + str(tw.asset.parsed_meta.guid) + " alraedy existed in project but not in database.")
+		tw.asset.log_debug("Asset " + str(tw.asset.parsed_meta.guid) + " does not yet exist in asset database. It must be new.")
 		force_reimport = true
 
 	if not asset_modified and not import_modified and not force_reimport:

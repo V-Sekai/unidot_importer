@@ -567,6 +567,10 @@ class BaseModelHandler:
 						outfile = null
 						pkgasset.existing_data_md5 = calc_existing_md5(pkgasset.pathname)
 						already_rewrote_file = true
+
+		var extracted_assets_dir: String = post_import_material_remap_script.get_extracted_assets_dir(pkgasset.pathname)
+		if not DirAccess.dir_exists_absolute(extracted_assets_dir):
+			DirAccess.make_dir_absolute(extracted_assets_dir)
 		if already_rewrote_file:
 			return pkgasset.pathname
 		return ""
@@ -1435,6 +1439,9 @@ class FbxHandler:
 		var tmp_bin_output_path: String = tmpdir + "/" + thread_subdir + "/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = full_output_path.get_basename() + ".glb"
+		var extracted_assets_dir: String = post_import_material_remap_script.get_extracted_assets_dir(pkgasset.pathname)
+		if not DirAccess.dir_exists_absolute(extracted_assets_dir):
+			DirAccess.make_dir_absolute(extracted_assets_dir)
 		if USE_BUILTIN_FBX:
 			return pkgasset.pathname
 		var stdout: Array = [].duplicate()
