@@ -796,9 +796,9 @@ class UnityMaterial:
 		# But it seems to workaround a problem with some materials for now.
 		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse"]
+		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
 		for name in texProperties:
-			if name == "_MainTex" or name == "_Tex" or name == "_Albedo" or name == "_Diffuse":
+			if albedo_textures_to_try.has(name):
 				continue
 			if not name.ends_with("Map"):
 				albedo_textures_to_try.append(name)
@@ -6043,6 +6043,8 @@ class UnityReflectionProbe:
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
 		var probe: ReflectionProbe = ReflectionProbe.new()
 		probe.name = "ReflectionProbe"
+		# UPDATE_ALWAYS can crash Godot if multiple probes "see" each other
+		probe.update_mode = ReflectionProbe.UPDATE_ONCE
 		assign_object_meta(probe)
 		state.add_child(probe, new_parent, self)
 		return probe
@@ -6067,6 +6069,7 @@ class UnityReflectionProbe:
 			log_warn("Reflection Probe = Baked is not supported. Treating as Realtime / Once")
 		if uprops.get("m_Mode", 0) == 2:
 			log_warn("Reflection Probe = Custom is not supported. Treating as Realtime / Once")
+		'''
 		if uprops.get("m_Mode", 0) == 1 and uprops.get("m_RefreshMode", 0) == 1:
 			outdict["update_mode"] = 1
 		if uprops.has("m_Mode"):
@@ -6077,6 +6080,7 @@ class UnityReflectionProbe:
 				outdict["update_mode"] = 0
 		elif uprops.get("m_RefreshMode", 1) != 1:
 			outdict["update_mode"] = 0
+		'''
 		return outdict
 
 
