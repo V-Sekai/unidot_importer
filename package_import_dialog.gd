@@ -67,7 +67,13 @@ var _currently_preprocessing_assets: int = 0
 var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
+var auto_hide_checkbox: CheckBox
+var auto_select_dependencies_checkbox: CheckBox
+var auto_deselect_dependencies_checkbox: CheckBox
 var force_reimport_models_checkbox: CheckBox = null
+var progress_bar : ProgressBar
+var status_bar : Label
+var options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
 
@@ -360,7 +366,9 @@ func _cell_selected() -> void:
 		result_log_lineedit.text = '\n'.join(visible_log_lines)
 		result_log_lineedit.scroll_vertical = current_scroll
 		main_dialog_tree.size_flags_stretch_ratio = 1.0
+		options_vbox.visible = false
 		result_log_lineedit.visible = true # not visible_log_lines.is_empty()
+		main_dialog.get_ok_button().visible = false
 		result_log_lineedit.size_flags_stretch_ratio = 1.0
 
 const HUMAN_READABLE_NAMES: Dictionary = {
@@ -529,18 +537,21 @@ func _selected_package(p_path: String) -> void:
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
+	main_dialog_tree.hide_root = true
+	var hidden_root: TreeItem = main_dialog_tree.create_item()
 
-	var tree_names = ["Assets"]
-	var ti: TreeItem = main_dialog_tree.create_item()
-	ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-	ti.set_text(0, "Assets")
-	ti.set_expand_right(0, true)
-	ti.set_expand_right(1, false)
-	ti.set_checked(0, true)
-	ti.set_icon_max_width(0, 24)
-	ti.set_icon(0, folder_icon)
-	ti.set_text(1, "RootDirectory")
-	var tree_items = [ti]
+	var tree_names = []
+	var ti: TreeItem
+	#var ti: TreeItem = main_dialog_tree.create_item()
+	#ti.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
+	#ti.set_text(0, "Assets")
+	#ti.set_expand_right(0, true)
+	#ti.set_expand_right(1, false)
+	#ti.set_checked(0, true)
+	#ti.set_icon_max_width(0, 24)
+	#ti.set_icon(0, folder_icon)
+	#ti.set_text(1, "RootDirectory")
+	var tree_items = []
 	for path in pkg.paths:
 		var pkgasset = pkg.path_to_pkgasset[path]
 		var path_names: Array = path.split("/")
@@ -550,13 +561,14 @@ func _selected_package(p_path: String) -> void:
 			tree_names.pop_back()
 			tree_items.pop_back()
 			i -= 1
-		if i < 0:
-			asset_database.log_fail([null, 0, "", 0], "Path outside of Assets: " + path)
-			break
+		#if i < 0:
+		#	asset_database.log_fail([null, 0, "", 0], "Path outside of Assets: " + path)
+		#	print("Path outside of Assets: " + path)
+		#	break
 		while i < len(path_names) - 1:
 			i += 1
 			tree_names.push_back(path_names[i])
-			ti = main_dialog_tree.create_item(tree_items[i - 1])
+			ti = main_dialog_tree.create_item(null if i == 0 or tree_items.is_empty() else tree_items[i - 1])
 			tree_items.push_back(ti)
 			ti.set_expand_right(0, true)
 			ti.set_expand_right(1, false)
@@ -664,15 +676,26 @@ func show_importer_logs() -> void:
 	main_dialog.show()
 
 
+func _auto_hide_toggled(is_on: bool) -> void:
+	_keep_open_on_import = not is_on
+
+
 func _show_importer_common() -> void:
 	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
+	main_dialog.ok_button_text = "        Start Import        "
 	main_dialog.confirmed.connect(self._asset_tree_window_confirmed)
 	# "cancelled" ????
-	main_dialog.add_cancel_button("Hide")
-	main_dialog.add_button("Import and show result", false, "show_result")
+	var hide_button: Button = main_dialog.add_cancel_button("            Hide            ")
+	auto_hide_checkbox = CheckBox.new()
+	auto_hide_checkbox.text = "Hide when complete"
+	auto_hide_checkbox.button_pressed = true
+	auto_hide_checkbox.toggled.connect(self._auto_hide_toggled)
+	main_dialog.get_ok_button().visible = true
+	hide_button.add_sibling(auto_hide_checkbox)
+	# main_dialog.add_button("Import and show result", false, "show_result")
 	main_dialog.custom_action.connect(self._asset_tree_window_confirmed_custom)
 	var n: Label = main_dialog.get_label()
 	var vbox := VBoxContainer.new()
@@ -696,7 +719,6 @@ func _show_importer_common() -> void:
 	main_dialog_tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	main_dialog_tree.custom_minimum_size = Vector2(300.0, 300.0)
 	main_dialog_tree.size_flags_stretch_ratio = 1.0
-	hbox.add_child(main_dialog_tree)
 	result_log_lineedit = TextEdit.new()
 	result_log_lineedit.syntax_highlighter = ErrorSyntaxHighlighter.new(self)
 	result_log_lineedit.visible = false
@@ -704,21 +726,46 @@ func _show_importer_common() -> void:
 	result_log_lineedit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	result_log_lineedit.custom_minimum_size = Vector2(300.0, 300.0)
 	result_log_lineedit.size_flags_stretch_ratio = 1.0
-	hbox.add_child(result_log_lineedit)
-	hbox.size_flags_stretch_ratio = 1.0
-	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(hbox)
 	vbox.size_flags_stretch_ratio = 1.0
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	options_vbox = VBoxContainer.new()
+	auto_select_dependencies_checkbox = CheckBox.new()
+	auto_select_dependencies_checkbox.text = "Auto-check dependencies (shift)"
+	auto_select_dependencies_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
+	auto_select_dependencies_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	auto_select_dependencies_checkbox.size_flags_stretch_ratio = 0.0
+	options_vbox.add_child(auto_select_dependencies_checkbox)
+	auto_deselect_dependencies_checkbox = CheckBox.new()
+	auto_deselect_dependencies_checkbox.text = "Auto-uncheck dependencies (shift)"
+	auto_deselect_dependencies_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
+	auto_deselect_dependencies_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	auto_deselect_dependencies_checkbox.size_flags_stretch_ratio = 0.0
+	options_vbox.add_child(auto_deselect_dependencies_checkbox)
 	force_reimport_models_checkbox = CheckBox.new()
 	force_reimport_models_checkbox.text = "Force reimport all models"
 	force_reimport_models_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
 	force_reimport_models_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	force_reimport_models_checkbox.size_flags_stretch_ratio = 0.0
-	vbox.add_child(force_reimport_models_checkbox)
+	options_vbox.add_child(force_reimport_models_checkbox)
+	hbox.size_flags_stretch_ratio = 1.0
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hbox.add_child(options_vbox)
+	hbox.add_child(main_dialog_tree)
+	hbox.add_child(result_log_lineedit)
 	n.add_sibling(vbox)
+	progress_bar = ProgressBar.new()
+	progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_bar.size_flags_vertical = Control.SIZE_SHRINK_END
+	progress_bar.show_percentage = false
+	vbox.add_child(progress_bar)
+	status_bar = Label.new()
+	status_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status_bar.size_flags_vertical = Control.SIZE_SHRINK_END
+	status_bar.size = Vector2(100, 20)
+	vbox.add_child(status_bar)
 	base_control.add_child(main_dialog, true)
 
 	tree_dialog_state = STATE_DIALOG_SHOWING
@@ -862,6 +909,7 @@ func do_import_step():
 		asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Trying to scan more things: state=" + str(tree_dialog_state))
 		if tree_dialog_state == STATE_PREPROCESSING:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_TEXTURES
 			for tw in asset_textures:
 				asset_work_waiting_write.append(tw)
@@ -870,24 +918,28 @@ func do_import_step():
 			if tree_dialog_state == STATE_TEXTURES and not asset_materials_and_other.is_empty():
 				break
 		elif tree_dialog_state == STATE_TEXTURES:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_MATERIALS_AND_ASSETS
 			for tw in asset_materials_and_other:
 				asset_work_waiting_write.append(tw)
 			asset_work_waiting_write.reverse()
 			asset_materials_and_other = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MATERIALS_AND_ASSETS:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_MODELS
 			for tw in asset_models:
 				asset_work_waiting_write.append(tw)
 			asset_work_waiting_write.reverse()
 			asset_models = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MODELS:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_YAML_POST_MODEL
 			for tw in asset_yaml_post_model:
 				asset_work_waiting_write.append(tw)
 			asset_work_waiting_write.reverse()
 			asset_yaml_post_model = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_YAML_POST_MODEL:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_PREFABS
 			var guid_to_meta = {}.duplicate()
 			var guid_to_tw = {}.duplicate()
@@ -909,12 +961,14 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_prefabs = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_SCENES
 			for tw in asset_scenes:
 				asset_work_waiting_write.append(tw)
 			asset_work_waiting_write.reverse()
 			asset_scenes = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_SCENES:
+			progress_bar.value += 10
 			tree_dialog_state = STATE_DONE_IMPORT
 			break
 		elif tree_dialog_state == STATE_DONE_IMPORT:
@@ -927,8 +981,10 @@ func do_import_step():
 	var start_ts = Time.get_ticks_msec()
 	while not asset_work_waiting_write.is_empty():
 		var tw: Object = asset_work_waiting_write.pop_back()
+		progress_bar.value += 3
 		start_godot_import(tw)
 		if not asset_adapter.uses_godot_importer(tw.asset):
+			progress_bar.value += 7
 			var ticks_ts = Time.get_ticks_msec()
 			if ticks_ts > start_ts + 300:
 				break
@@ -966,6 +1022,7 @@ func do_import_step():
 	#asset_database.log_debug([null,0,"",0], "Writing " + str(generate_sentinel_png_filename()))
 	if not files_to_reimport.is_empty():
 		editor_filesystem.reimport_files(files_to_reimport)
+		progress_bar.value += len(files_to_reimport) * 7
 
 	var completed_scan: Array = asset_work_currently_importing
 	asset_work_currently_importing = [].duplicate()
@@ -1022,6 +1079,8 @@ func start_godot_import(tw: Object):
 
 	if not asset_modified and not import_modified and not force_reimport:
 		tw.asset.log_debug("We can skip this file!")
+		if asset_adapter.uses_godot_importer(tw.asset):
+			progress_bar.value += 7
 		var ti: TreeItem = tw.extra
 		if ti.get_button_count(0) > 0:
 			ti.erase_button(0, 0)
@@ -1036,6 +1095,7 @@ func start_godot_import(tw: Object):
 
 func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
+	progress_bar.value += 1
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
 	ti.set_metadata(1, tw.asset)
@@ -1088,6 +1148,8 @@ func _asset_processing_finished(tw: Object):
 		else:  # asset_type == asset_adapter.ASSET_TYPE_UNKNOWN:
 			tw.asset.log_debug("Asset " + str(tw.output_path) + " is other")
 			asset_materials_and_other.push_back(tw)
+	else:
+		progress_bar.value += 10 # 1 for stage2, 10 for import.
 		# start_godot_import_stub(tw) # We now write it directly in the preprocess function.
 	if _currently_preprocessing_assets == 0:
 		if not _preprocessing_second_pass.is_empty():
@@ -1126,6 +1188,7 @@ func _asset_processing_started(tw: Object):
 
 func _asset_processing_stage2_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
+	progress_bar.value += 1
 	var ti: TreeItem = tw.extra
 	if _currently_preprocessing_assets == 0:
 		_done_preprocessing_assets_stage2()
@@ -1198,6 +1261,7 @@ func _do_import_step_tick():
 
 
 func _scan_sources_complete(useless: Variant = null):
+	progress_bar.value += 5
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
 	asset_database.log_debug([null, 0, "", 0], "Reimporting sentinel to wait for import step to finish.")
@@ -1235,6 +1299,7 @@ func _scan_sources_complete(useless: Variant = null):
 func _preprocess_wait_tick():
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
+		progress_bar.value += 5
 		asset_database.log_debug([null, 0, "", 0], "Done preprocessing. ready to trigger scan_sources!")
 		preprocess_timer.timeout.disconnect(self._preprocess_wait_tick)
 		preprocess_timer.queue_free()
@@ -1274,8 +1339,15 @@ func _asset_tree_window_confirmed():
 	if tree_dialog_state != STATE_DIALOG_SHOWING:
 		return
 
+	var root_item := main_dialog_tree.get_root()
+	var toplevel_items := root_item.get_children()
+	for toplevel_child in toplevel_items:
+		if toplevel_child.get_text(1) == " ":
+			root_item.remove_child(toplevel_child)
 	_prune_unselected_items(main_dialog_tree.get_root())
-	result_log_lineedit.visible = true 
+	options_vbox.visible = false
+	result_log_lineedit.visible = true
+	main_dialog.get_ok_button().visible = false
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
@@ -1289,6 +1361,8 @@ func _asset_tree_window_confirmed():
 	var visited = {}.duplicate()
 	var second_pass: Array = [].duplicate()
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass)
+	progress_bar.show_percentage = true
+	progress_bar.max_value = _currently_preprocessing_assets * 12 + 80
 	_preprocessing_second_pass = second_pass
 	if _currently_preprocessing_assets == 0:
 		_preprocess_second_pass()
