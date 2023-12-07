@@ -404,6 +404,7 @@ var defs: Array = [].duplicate()
 var referenced_guids: Array = [].duplicate()
 var referenced_reftypes: Array = [].duplicate()
 var objs: Array = [].duplicate()
+var obj_headers: Array # [byte_offset, class_id, pathId, type_id]
 
 var meta: RefCounted = null
 
@@ -454,7 +455,7 @@ func _init(meta: RefCounted, file_contents: PackedByteArray, only_references: bo
 	meta.log_debug(0, "After defs... NOW AT: " + str(self.s.tell()))
 	if self.file_gen < 10:
 		s.get_32()
-	var obj_headers: Array = self.decode_data_headers()
+	obj_headers = self.decode_data_headers()
 	# meta.log_debug(0, "After headers... NOW AT: " + str(self.s.tell()))
 	# meta.log_debug(0, str(obj_headers))
 	if not self.decode_guids():
@@ -484,6 +485,15 @@ func decode_defs() -> Array:
 			s.get_u32()  # zeros
 	return defs
 
+
+func get_main_object_type() -> String:
+	for obj_header in obj_headers:
+		var class_id: int = obj_header[1]
+		var path_id: int = obj_header[2]
+		var type_id: int = obj_header[3]
+		if path_id > 0:
+			return defs[type_id].type_name
+	return ""
 
 #func decode_guids_backwards() -> void:
 #	var pos: int = s.tell()
@@ -613,12 +623,20 @@ func decode_data(obj_headers: Array) -> Array:
 			continue
 		var read_variant: Variant = self.defs[type_id].read(self.s, referenced_guids, referenced_reftypes)
 		var type_name: String = self.defs[type_id].type_name
+		if type_name == "EditorExtensionImpl":
+			meta.log_warn(path_id, "Ignoring EditorExtensionImpl object.")
+			continue
 		var is_stripped: bool = type_name == "EditorExtension"
 		if is_stripped:
 			type_name = object_adapter.to_classname(class_id)
 		var obj: RefCounted = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
+		if obj == null:
+			continue
 		obj.is_stripped = is_stripped
-		obj.keys = read_variant
+		if typeof(read_variant) == TYPE_DICTIONARY:
+			obj.keys = read_variant
+		else:
+			meta.log_fail(path_id, "Defs for " + str(class_id) + " " + str(type_name) + " were type " + str(typeof(read_variant)) + " value..100 " + str(read_variant).substr(0, 100))
 		# m_SourcePrefab (new PrefabInstance) and m_ParentPrefab (legacy Prefab) used in scenes and prefabs.
 		# Terrain uses prefab (trees), prototype (details) for prefab references.
 		# If there are any other unusual Object->Prefab dependencies, it might be good to list them,

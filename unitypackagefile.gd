@@ -145,6 +145,8 @@ func external_tar_with_filename(source_file: String):
 		var header = ExtractedTarFile.new(this_filename)
 		if fnparts[1] == "pathname":
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
+			if not pkgasset.pathname.get_extension().is_empty():
+				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + pkgasset.pathname.get_extension().to_lower()
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
 			var image = Image.new()
@@ -218,6 +220,8 @@ func init_with_filename(source_file: String):
 		if fnparts[1] == "pathname":
 			# Some pathnames have newline followed by "00". no idea why
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
+			if not pkgasset.pathname.get_extension().is_empty():
+				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + pkgasset.pathname.get_extension().to_lower()
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
 			var image = Image.new()

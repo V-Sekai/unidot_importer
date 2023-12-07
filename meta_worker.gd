@@ -39,7 +39,8 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 		if tw.asset.asset_tar_header != null:
 			var buf: PackedByteArray = tw.asset.asset_tar_header.get_data()
 			if buf[8] == 0 and buf[9] == 0:
-				binary_parser.new(tw.asset.parsed_meta, buf, true) # writes guid references
+				var bp = binary_parser.new(tw.asset.parsed_meta, buf, true) # writes guid references
+				tw.asset_main_object_type = bp.get_main_object_type()
 			else:
 				var yaml_str: String = buf.get_string_from_ascii()
 				yaml_parser.parse_dependency_guids(yaml_str, tw.asset.parsed_meta)

@@ -784,6 +784,16 @@ func _init():
 	pass
 
 
+func override_instantiate_object(meta: Object, fileID: int, utype: int, type: String):
+	if path.get_extension().to_lower() == "prefab":
+		type = "PrefabImporter"
+		utype = 0
+	if path.get_extension().to_lower() == "unity":
+		type = "DefaultImporter"
+		utype = 0
+	return object_adapter.instantiate_unity_object(meta, fileID, utype, type)
+
+
 func init_with_file(file: Object, path: String):
 	self.orig_path = path
 	self.path = path
@@ -811,6 +821,8 @@ func init_with_file(file: Object, path: String):
 			log_debug(output_obj.fileID, "Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
 			self.importer_keys = output_obj.keys
 			self.importer_type = output_obj.type
+			if path.get_extension() == "prefab":
+				self.importer_type = "PrefabImporter"
 			self.importer = output_obj
 			self.main_object_id = self.importer.get_main_object_id()
 			log_debug(output_obj.fileID, "Main object id for " + path + ": " + str(self.main_object_id))
