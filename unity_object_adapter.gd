@@ -5983,7 +5983,7 @@ class UnityCamera:
 			else:
 				eng = 1
 			cenv.background_color = ccol
-			cenv.background_energy = eng
+			cenv.background_energy_multiplier = eng
 		assign_object_meta(cam)
 		state.add_child(cam, par, self)
 		cam.transform = Transform3D(Basis.from_euler(Vector3(0.0, PI, 0.0)))

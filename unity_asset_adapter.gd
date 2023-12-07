@@ -158,6 +158,9 @@ class ImageHandler:
 	extends AssetHandler
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
+		if len(data_buf) < 4:
+			pkgasset.log_fail("Empty data buf")
+			return ""
 		var user_path_base = OS.get_user_data_dir()
 		var is_psd: bool = (data_buf[0] == 0x38 and data_buf[1] == 0x42 and data_buf[2] == 0x50 and data_buf[3] == 0x53)
 		var is_tiff: bool = (data_buf[0] == 0x49 and data_buf[1] == 0x49 and data_buf[2] == 0x2A and data_buf[3] == 0x00) or (data_buf[0] == 0x4D and data_buf[1] == 0x4D and data_buf[2] == 0x00 and data_buf[3] == 0x2A)
@@ -399,7 +402,7 @@ class YamlHandler:
 		outfile.flush()
 		outfile.close()
 		outfile = null
-		if buf[8] == 0 and buf[9] == 0:
+		if len(buf) > 10 and buf[8] == 0 and buf[9] == 0:
 			pkgasset.parsed_asset = pkgasset.parsed_meta.parse_binary_asset(buf)
 		else:
 			var sf: Object = tarfile.StringFile.new()

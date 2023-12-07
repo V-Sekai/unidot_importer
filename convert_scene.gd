@@ -188,7 +188,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				else:
 					eng = 1
 				env.background_color = ccol
-				env.background_energy = eng
+				env.background_energy_multiplier = eng
 				env.ambient_light_color = ccol
 				env.ambient_light_energy = eng
 				env.ambient_light_sky_contribution = 0
@@ -328,7 +328,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				if camera.environment != null:
 					env.background_mode = camera.environment.background_mode
 					env.background_color = camera.environment.background_color
-					env.background_energy = camera.environment.background_energy
+					env.background_energy_multiplier = camera.environment.background_energy_multiplier
 				for mono in node_state.get_components(camera_obj, "MonoBehaviour"):
 					if str(mono.monoscript[2]) == "948f4100a11a5c24981795d21301da5c":  # PostProcessingLayer
 						pp_layer_bits = mono.keys.get("volumeLayer.m_Bits", mono.keys.get("volumeLayer", {}).get("m_Bits", 0))
