@@ -124,13 +124,16 @@ func external_tar_with_filename(source_file: String):
 			continue
 		var guid: String = fnparts[0]
 		var type_part: String = fnparts[1]
-		if len(fnparts[1]) == 32:
+		if fnparts[0] == ".":
 			if len(fnparts) < 3:
 				continue
 			guid = fnparts[1]
 			type_part = fnparts[2]
 		if len(guid) != 32:
 			push_error("Invalid member of .unitypackage: " + str(fnparts))
+			continue
+		if type_part.is_empty():
+			# The directory entries sometimes print "x ./" or "x ./01234/"
 			continue
 		if not guid_to_pkgasset.has(guid):
 			#print("Discovered Asset " + guid)
