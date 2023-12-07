@@ -7,6 +7,8 @@ extends Resource
 const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
 const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
 const bin_parser_class: GDScript = preload("./deresuteme/decode.gd")
+const unidot_utils_class: GDScript = preload("./unidot_utils.gd")
+var unidot_utils := unidot_utils_class.new()
 
 
 class DatabaseHolder:
@@ -610,6 +612,26 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 		if not silent:
 			log_fail(0, "Failed to find Resource at " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + "! from " + path + " (" + guid + ")", "ref", unityref)
 		return null
+	if found_meta.parsed != null and found_meta.parsed.assets.get(local_id) != null:
+		godot_resources[local_id] = null # prevent infinite recursion
+		var uniobj: Object = found_meta.parsed.assets[local_id]
+		var res: Resource = uniobj.create_godot_resource()
+		if res != null:
+			var resource_name_part = uniobj.keys.get("m_Name", "")
+			if not res.resource_name.is_empty():
+				resource_name_part = res.resource_name
+			if resource_name_part.is_empty():
+				resource_name_part = str(local_id)
+			else:
+				res.resource_name = resource_name_part
+			var res_path: String = found_meta.path.get_basename() + "." + resource_name_part + uniobj.get_godot_extension()
+			var extracted_dir: String = found_meta.path.get_basename().get_base_dir().path_join("extracted")
+			if DirAccess.dir_exists_absolute(extracted_dir):
+				res_path = extracted_dir.path_join(res_path.get_file())
+			res.resource_path = res_path
+			unidot_utils.save_resource(res, res_path)
+			godot_resources[local_id] = res_path
+			return res
 	if not silent:
 		log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")", "ref", unityref)
 	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
@@ -815,7 +837,7 @@ func init_with_file(file: Object, path: String):
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj: RefCounted = yaml_parser.parse_line(lin, self, true, object_adapter.instantiate_unity_object)
+		var output_obj: RefCounted = yaml_parser.parse_line(lin, self, true, self.override_instantiate_object)
 		# unity_object_adapter.UnityObject
 		if output_obj != null:
 			log_debug(output_obj.fileID, "Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
