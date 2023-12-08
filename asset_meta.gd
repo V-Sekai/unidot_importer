@@ -219,18 +219,13 @@ func fixup_godot_extension(godot_extn: String) -> String:
 	if godot_extn.ends_with(".tres"):
 		if not log_database_holder.database.use_text_resources:
 			if godot_extn.ends_with(".anim.tres"):
-				print("anim case: " + godot_extn)
 				return godot_extn.substr(0, len(godot_extn) - 10) + ".anim"
 			if godot_extn.ends_with(".mat.tres"):
-				print("material case: " + godot_extn)
 				return godot_extn.substr(0, len(godot_extn) - 9) + ".material"
-			print("res case: " + godot_extn)
 			return godot_extn.substr(0, len(godot_extn) - 5) + ".res"
 	if godot_extn.ends_with(".tscn"):
 		if not log_database_holder.database.use_text_scenes:
-			print("scn case: " + godot_extn)
 			return godot_extn.substr(0, len(godot_extn) - 5) + ".scn"
-	print("use text format case: " + godot_extn)
 	return godot_extn
 
 

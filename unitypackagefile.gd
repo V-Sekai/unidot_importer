@@ -258,6 +258,99 @@ func init_with_filename(source_file: String):
 	return self
 
 
+func get_all_files(path: String, file_ext: String, files: Array[String]):
+	# Based on https://gist.github.com/hiulit/772b8784436898fd7f942750ad99e33e by hiulit
+	var dir = DirAccess.open(path)
+	if dir != null:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while not file_name.is_empty():
+			if dir.current_is_dir():
+				get_all_files(dir.get_current_dir().path_join(file_name), file_ext, files)
+			else:
+				if file_ext and file_name.get_extension().to_lower() != file_ext:
+					file_name = dir.get_next()
+					continue
+				files.append(dir.get_current_dir().path_join(file_name))
+			file_name = dir.get_next()
+	else:
+		push_error("An error occurred in Unidot when trying to recurse to %s." % path)
+
+
+func read_guid_from_meta_file(sf: Object) -> String:# e.g. stringfile
+	var magic = sf.get_line()
+	var guid: String
+	if not magic.begins_with("fileFormatVersion:"):
+		push_error("Failed to parse meta file! " + sf.get_path())
+		return ""
+	while true:
+		var line = sf.get_line()
+		line = line.replace("\r", "")
+		while line.ends_with("\r"):
+			line = line.substr(0, len(line) - 1)
+		if line.begins_with("guid:"):
+			guid = line.split(":")[1].strip_edges()
+			break
+		if sf.get_error() == ERR_FILE_EOF:
+			break
+	if len(guid) != 32:
+		push_error("Failed to parse correct guid " + str(guid) + "! " + sf.get_path())
+	return guid
+
+
+func init_with_asset_dir(source_file: String):
+	var dirlist: DirAccess = DirAccess.open(source_file)
+	var meta_filenames: Array[String]
+	get_all_files(source_file, "meta", meta_filenames)
+	var valid_filenames: Array[String] = []
+	for fn in meta_filenames:
+		if fn.is_empty():
+			break
+		if fn.ends_with(".meta"):
+			var file_substr: String = fn.substr(0, len(fn) - 5)
+			if FileAccess.file_exists(file_substr) and not DirAccess.dir_exists_absolute(file_substr):
+				valid_filenames.append(file_substr)
+	var guids_to_remove = [].duplicate()
+	for fn in valid_filenames:
+		var meta_fn = fn + ".meta"
+		var relative_pathname: String = source_file.get_file().path_join(fn.substr(len(dirlist.get_current_dir())).lstrip("/\\"))
+		if not relative_pathname.get_extension().is_empty():
+			relative_pathname = relative_pathname.get_basename() + "." + relative_pathname.get_extension().to_lower()
+		var pkgasset := UnityPackageAsset.new()
+		pkgasset.metadata_tar_header = ExtractedTarFile.new(meta_fn)
+		var sf = pkgasset.metadata_tar_header.get_stringfile()
+		var guid: String = read_guid_from_meta_file(sf)
+		if len(guid) != 32:
+			push_warning(str(meta_fn) + ": Invalid guid: " + str(guid))
+			continue
+		pkgasset.asset_tar_header = ExtractedTarFile.new(fn)
+		pkgasset.pathname = relative_pathname
+		pkgasset.orig_pathname = relative_pathname
+		pkgasset.guid = guid
+		pkgasset.packagefile = self
+		if not guid_to_pkgasset.has(guid):
+			guid_to_pkgasset[guid] = pkgasset
+
+	for guid in guid_to_pkgasset:
+		var pkgasset = guid_to_pkgasset[guid]
+		var path = pkgasset.pathname
+		if not pkgasset.asset_tar_header:
+			guids_to_remove.append(pkgasset.guid)
+		elif path.find("../") != -1 or path.find("/") == -1 or path.find("\\") != -1:
+			#if path != "Assets":
+			push_error("Asset " + pkgasset.guid + ": Illegal path " + path)
+			guids_to_remove.append(pkgasset.guid)
+		else:
+			# print("Asset " + pkgasset.guid + ": " + path)
+			path_to_pkgasset[path] = pkgasset
+			paths.push_back(path)
+
+	for guid in guids_to_remove:
+		guid_to_pkgasset.erase(guid)
+	paths.sort()
+	return self
+
+
 func parse_all_meta(asset_database):
 	for path in path_to_pkgasset:
 		var pkgasset = path_to_pkgasset[path]

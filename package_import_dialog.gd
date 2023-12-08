@@ -215,23 +215,17 @@ func update_progress_bar(amt: int):
 	if global_logs_tree_item.is_checked(2):
 		col = 2
 		filtered_msgs = asset_database.log_message_holder.all_logs
-		print("All logs " + str(len(filtered_msgs)))
 	elif global_logs_tree_item.is_checked(3):
 		col = 3
 		filtered_msgs = asset_database.log_message_holder.warnings_fails
-		print("warn logs " + str(len(filtered_msgs)))
 	elif global_logs_tree_item.is_checked(4):
 		col = 4
 		filtered_msgs = asset_database.log_message_holder.fails
-		print("fail logs " + str(len(filtered_msgs)))
-	print(col)
 	if col > 0:
 		var data: Variant = global_logs_tree_item.get_metadata(col)
 		var current_scroll: int = 0
 		if typeof(data) == TYPE_PACKED_STRING_ARRAY:
-			print("Unmerge " + str(len(data)))
 			current_scroll = unmerge_log_lines(data as PackedStringArray, current_scroll)
-		print("merge " + str(len(filtered_msgs)))
 		current_scroll = merge_log_lines(filtered_msgs, current_scroll)
 		global_logs_tree_item.set_metadata(col, filtered_msgs)
 		result_log_lineedit.text = '\n'.join(visible_log_lines)
@@ -634,7 +628,17 @@ func _selected_package(p_path: String) -> void:
 	asset_prefabs = [].duplicate()
 	asset_scenes = [].duplicate()
 	asset_database = asset_database_class.new().get_singleton()
-	pkg = unitypackagefile.new().init_with_filename(p_path)
+	print("Got here " + str(p_path))
+	if p_path.to_lower().ends_with(".unitypackage"):
+		pkg = unitypackagefile.new().init_with_filename(p_path)
+	elif p_path.to_lower().ends_with(".meta"):
+		if DirAccess.dir_exists_absolute(p_path.substr(0, len(p_path) - 5)):
+			pkg = unitypackagefile.new().init_with_asset_dir(p_path.substr(0, len(p_path) - 5))
+		else:
+			pkg = unitypackagefile.new().init_with_asset_dir(p_path.get_base_dir())
+	elif DirAccess.dir_exists_absolute(p_path):
+		print("It's a dir!! " + str(p_path))
+		pkg = unitypackagefile.new().init_with_asset_dir(p_path)
 	#pkg.parse_all_meta(asset_database)
 	meta_worker.asset_database = asset_database
 	asset_database.clear_logs()
@@ -767,12 +771,13 @@ func show_reimport() -> void:
 
 func show_importer() -> void:
 	file_dialog = EditorFileDialog.new()
-	file_dialog.set_title("Import Unity Package...")
-	file_dialog.add_filter("*.unitypackage")
-	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILE
+	file_dialog.add_filter("*.unitypackage, *.meta", "Asset packages or file")
+	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_ANY
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
+	file_dialog.set_title("Import .unitypackage archive, or Select Assets folder...")
 	file_dialog.file_selected.connect(self._selected_package)
+	file_dialog.dir_selected.connect(self._selected_package)
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
 	_show_importer_common()
 	check_fbx2gltf()
