@@ -77,6 +77,7 @@ var status_bar : Label
 var options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
+var global_logs_tree_item: TreeItem
 var select_by_type_tree_item: TreeItem
 var select_by_type_items: Dictionary # String -> TreeItem
 
@@ -204,6 +205,38 @@ func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bo
 			if not child:
 				continue
 			_check_recursively(child, is_checked, process_dependencies, visited_set)
+
+
+func update_progress_bar(amt: int):
+	progress_bar.value += amt
+
+	var filtered_msgs: PackedStringArray
+	var col: int = -1
+	if global_logs_tree_item.is_checked(2):
+		col = 2
+		filtered_msgs = asset_database.log_message_holder.all_logs
+		print("All logs " + str(len(filtered_msgs)))
+	elif global_logs_tree_item.is_checked(3):
+		col = 3
+		filtered_msgs = asset_database.log_message_holder.warnings_fails
+		print("warn logs " + str(len(filtered_msgs)))
+	elif global_logs_tree_item.is_checked(4):
+		col = 4
+		filtered_msgs = asset_database.log_message_holder.fails
+		print("fail logs " + str(len(filtered_msgs)))
+	print(col)
+	if col > 0:
+		var data: Variant = global_logs_tree_item.get_metadata(col)
+		var current_scroll: int = 0
+		if typeof(data) == TYPE_PACKED_STRING_ARRAY:
+			print("Unmerge " + str(len(data)))
+			current_scroll = unmerge_log_lines(data as PackedStringArray, current_scroll)
+		print("merge " + str(len(filtered_msgs)))
+		current_scroll = merge_log_lines(filtered_msgs, current_scroll)
+		global_logs_tree_item.set_metadata(col, filtered_msgs)
+		result_log_lineedit.text = '\n'.join(visible_log_lines)
+		result_log_lineedit.scroll_vertical = current_scroll
+
 
 class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var fail_highlight: Dictionary
@@ -346,23 +379,30 @@ func _cell_selected() -> void:
 						child_ti.set_selectable(sub_col, false)
 			if not data_to_unmerge.is_empty():
 				current_scroll = unmerge_log_lines(data_to_unmerge, current_scroll)
+
+			var needs_sort: bool
 			for child_ti in child_list:
 				var tw: unitypackagefile.UnityPackageAsset = child_ti.get_metadata(1)
 				var start_idx = len(filtered_msgs)
 				if tw != null:
+					if not filtered_msgs.is_empty():
+						needs_sort = true
 					if col == 2:
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.all_logs)
 					elif col == 3:
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.warnings_fails)
 					elif col == 4:
 						filtered_msgs.append_array(tw.parsed_meta.log_message_holder.fails)
-			if len(child_list) > 1:
+			if ti == global_logs_tree_item:
+				if not filtered_msgs.is_empty():
+					needs_sort = true
 				if col == 2:
 					filtered_msgs.append_array(asset_database.log_message_holder.all_logs)
 				elif col == 3:
 					filtered_msgs.append_array(asset_database.log_message_holder.warnings_fails)
 				elif col == 4:
 					filtered_msgs.append_array(asset_database.log_message_holder.fails)
+			if needs_sort:
 				filtered_msgs.sort()
 			ti.set_metadata(col, filtered_msgs)
 			current_scroll = merge_log_lines(filtered_msgs, current_scroll)
@@ -442,7 +482,7 @@ func _meta_completed(tw: Object):
 			if not dependency_guids_to_guid.has(guid):
 				dependency_guids_to_guid[guid] = {}
 			dependency_guids_to_guid[guid][pkgasset.guid] = dep_guids[guid]
-	ti.set_text(1, importer_type.replace("Default", "Scene"))
+	ti.set_text(1, "Scene" if pkgasset.orig_pathname.to_lower().ends_with(".unity") else importer_type)
 	var cls: String
 	if importer_type.begins_with("["):
 		cls = importer_type.substr(1, len(importer_type) - 2)
@@ -482,7 +522,7 @@ func _meta_completed(tw: Object):
 	ti.set_custom_color(1, color)
 
 	var obj_type: String = tw.asset_main_object_type
-	if importer_type == "Default":
+	if pkgasset.orig_pathname.to_lower().ends_with(".unity"):
 		obj_type = "Scene"
 	elif importer_type == "Model":
 		obj_type = "Model"
@@ -998,7 +1038,7 @@ func do_import_step():
 		asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Trying to scan more things: state=" + str(tree_dialog_state))
 		if tree_dialog_state == STATE_PREPROCESSING:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_TEXTURES
 			for tw in asset_textures:
 				asset_work_waiting_write.append(tw)
@@ -1008,7 +1048,7 @@ func do_import_step():
 			if tree_dialog_state == STATE_TEXTURES and not asset_materials_and_other.is_empty():
 				break
 		elif tree_dialog_state == STATE_TEXTURES:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_IMPORTING_MATERIALS_AND_ASSETS
 			for tw in asset_materials_and_other:
 				asset_work_waiting_write.append(tw)
@@ -1016,7 +1056,7 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_materials_and_other = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MATERIALS_AND_ASSETS:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_IMPORTING_MODELS
 			for tw in asset_models:
 				asset_work_waiting_write.append(tw)
@@ -1024,7 +1064,7 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_models = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MODELS:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_IMPORTING_YAML_POST_MODEL
 			for tw in asset_yaml_post_model:
 				asset_work_waiting_write.append(tw)
@@ -1032,7 +1072,7 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_yaml_post_model = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_YAML_POST_MODEL:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_IMPORTING_PREFABS
 			var guid_to_meta = {}.duplicate()
 			var guid_to_tw = {}.duplicate()
@@ -1055,7 +1095,7 @@ func do_import_step():
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " prefabs..."
 			asset_prefabs = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			tree_dialog_state = STATE_IMPORTING_SCENES
 			for tw in asset_scenes:
 				asset_work_waiting_write.append(tw)
@@ -1063,7 +1103,7 @@ func do_import_step():
 			asset_work_waiting_write.reverse()
 			asset_scenes = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_SCENES:
-			progress_bar.value += 10
+			update_progress_bar(10)
 			status_bar.text = "Completing import..."
 			tree_dialog_state = STATE_DONE_IMPORT
 			break
@@ -1077,10 +1117,10 @@ func do_import_step():
 	var start_ts = Time.get_ticks_msec()
 	while not asset_work_waiting_write.is_empty():
 		var tw: Object = asset_work_waiting_write.pop_back()
-		progress_bar.value += 3
+		update_progress_bar(3)
 		start_godot_import(tw)
 		if not asset_adapter.uses_godot_importer(tw.asset):
-			progress_bar.value += 7
+			update_progress_bar(7)
 			var ticks_ts = Time.get_ticks_msec()
 			if ticks_ts > start_ts + 300:
 				break
@@ -1118,7 +1158,7 @@ func do_import_step():
 	#asset_database.log_debug([null,0,"",0], "Writing " + str(generate_sentinel_png_filename()))
 	if not files_to_reimport.is_empty():
 		editor_filesystem.reimport_files(files_to_reimport)
-		progress_bar.value += len(files_to_reimport) * 7
+		update_progress_bar(len(files_to_reimport) * 7)
 
 	var completed_scan: Array = asset_work_currently_importing
 	asset_work_currently_importing = [].duplicate()
@@ -1192,7 +1232,7 @@ func start_godot_import(tw: Object):
 	if not asset_modified and not import_modified and not force_reimport:
 		tw.asset.log_debug("We can skip this file!")
 		if asset_adapter.uses_godot_importer(tw.asset):
-			progress_bar.value += 7
+			update_progress_bar(7)
 		var ti: TreeItem = tw.extra
 		if ti.get_button_count(0) > 0:
 			ti.erase_button(0, 0)
@@ -1207,7 +1247,7 @@ func start_godot_import(tw: Object):
 
 func _asset_processing_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
-	progress_bar.value += 1
+	update_progress_bar(1)
 	tw.asset.log_debug(str(tw.asset) + " preprocess finished!")
 	var ti: TreeItem = tw.extra
 	ti.set_metadata(1, tw.asset)
@@ -1261,7 +1301,7 @@ func _asset_processing_finished(tw: Object):
 			tw.asset.log_debug("Asset " + str(tw.output_path) + " is other")
 			asset_materials_and_other.push_back(tw)
 	else:
-		progress_bar.value += 10 # 1 for stage2, 10 for import.
+		update_progress_bar(10) # 1 for stage2, 10 for import.
 		# start_godot_import_stub(tw) # We now write it directly in the preprocess function.
 	if _currently_preprocessing_assets == 0:
 		if not _preprocessing_second_pass.is_empty():
@@ -1303,7 +1343,7 @@ func _asset_processing_started(tw: Object):
 
 func _asset_processing_stage2_finished(tw: Object):
 	_currently_preprocessing_assets -= 1
-	progress_bar.value += 1
+	update_progress_bar(1)
 	var ti: TreeItem = tw.extra
 	if _currently_preprocessing_assets == 0:
 		_done_preprocessing_assets_stage2()
@@ -1376,7 +1416,7 @@ func _do_import_step_tick():
 
 
 func _scan_sources_complete(useless: Variant = null):
-	progress_bar.value += 5
+	update_progress_bar(5)
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
 	asset_database.log_debug([null, 0, "", 0], "Reimporting sentinel to wait for import step to finish.")
@@ -1414,7 +1454,7 @@ func _scan_sources_complete(useless: Variant = null):
 func _preprocess_wait_tick():
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
-		progress_bar.value += 5
+		update_progress_bar(5)
 		asset_database.log_debug([null, 0, "", 0], "Done preprocessing. ready to trigger scan_sources!")
 		preprocess_timer.timeout.disconnect(self._preprocess_wait_tick)
 		preprocess_timer.queue_free()
@@ -1459,10 +1499,21 @@ func _asset_tree_window_confirmed():
 	for toplevel_child in toplevel_items:
 		if toplevel_child.get_text(1) == " ":
 			root_item.remove_child(toplevel_child)
+
 	_prune_unselected_items(main_dialog_tree.get_root())
 	options_vbox.visible = false
 	result_log_lineedit.visible = true
 	main_dialog.get_ok_button().visible = false
+
+	global_logs_tree_item = root_item.create_child(0)
+	global_logs_tree_item.set_text(0, "Global Logs")
+	global_logs_tree_item.set_text(1, " ")
+	global_logs_tree_item.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
+	global_logs_tree_item.set_checked(2, true)
+	global_logs_tree_item.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
+	global_logs_tree_item.set_text(2, "Logs")
+	global_logs_tree_item.set_selectable(2, true)
+	global_logs_tree_item.set_icon(2, log_icon)
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
