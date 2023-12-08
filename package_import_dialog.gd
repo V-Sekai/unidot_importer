@@ -68,9 +68,10 @@ var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
 var auto_hide_checkbox: CheckBox
-var auto_select_dependencies_checkbox: CheckBox
-var auto_deselect_dependencies_checkbox: CheckBox
-var force_reimport_models_checkbox: CheckBox = null
+var dont_auto_select_dependencies_checkbox: CheckBox
+var save_text_resources: CheckBox
+var save_text_scenes: CheckBox
+var skip_reimport_models_checkbox: CheckBox = null
 var progress_bar : ProgressBar
 var status_bar : Label
 var options_vbox : VBoxContainer
@@ -309,7 +310,13 @@ func _cell_selected() -> void:
 	if col == 0 or col == 1:
 		if ti != null:  # and col == 1:
 			var new_checked: bool = !ti.is_indeterminate(0) and !ti.is_checked(0)
-			var process_dependencies: bool = not Input.is_key_pressed(KEY_SHIFT)
+			var process_dependencies: bool = false
+			if new_checked and dont_auto_select_dependencies_checkbox.button_pressed:
+				process_dependencies = true
+			if not new_checked and not dont_auto_select_dependencies_checkbox.button_pressed:
+				process_dependencies = true
+			if Input.is_key_pressed(KEY_SHIFT):
+				process_dependencies = not process_dependencies
 			_check_recursively(ti, new_checked, process_dependencies)
 	elif col >= 2:
 		ti.set_checked(col, not ti.is_checked(col))
@@ -536,6 +543,16 @@ func _selected_package(p_path: String) -> void:
 	asset_database.clear_logs()
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
+
+	dont_auto_select_dependencies_checkbox = _add_checkbox_option(options_vbox, "Hold shift to select dependencies", false if asset_database.auto_select_dependencies else true)
+	dont_auto_select_dependencies_checkbox.toggled.connect(self._dont_auto_select_dependencies_checkbox_changed)
+	save_text_resources = _add_checkbox_option(options_vbox, "Save resources as text .tres (slow)", true if asset_database.use_text_resources else false)
+	save_text_resources.toggled.connect(self._save_text_resources_changed)
+	save_text_scenes = _add_checkbox_option(options_vbox, "Save scenes as text .tscn (slow)", true if asset_database.use_text_scenes else false)
+	save_text_scenes.toggled.connect(self._save_text_scenes_changed)
+	skip_reimport_models_checkbox = _add_checkbox_option(options_vbox, "Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
+	skip_reimport_models_checkbox.toggled.connect(self._skip_reimport_models_checkbox_changed)
+
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
 	var hidden_root: TreeItem = main_dialog_tree.create_item()
@@ -680,6 +697,33 @@ func _auto_hide_toggled(is_on: bool) -> void:
 	_keep_open_on_import = not is_on
 
 
+func _add_checkbox_option(options_vbox: VBoxContainer, optname: String, defl: bool = false) -> CheckBox:
+	var checkbox := CheckBox.new()
+	checkbox.text = optname
+	checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
+	checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	checkbox.size_flags_stretch_ratio = 0.0
+	options_vbox.add_child(checkbox)
+	checkbox.button_pressed = defl
+	return checkbox
+
+
+func _save_text_resources_changed(val: bool):
+	asset_database.use_text_resources = val
+
+
+func _save_text_scenes_changed(val: bool):
+	asset_database.use_text_scenes = val
+
+
+func _dont_auto_select_dependencies_checkbox_changed(val: bool):
+	asset_database.auto_select_dependencies = not val
+
+
+func _skip_reimport_models_checkbox_changed(val: bool):
+	asset_database.skip_reimport_models = val
+
+
 func _show_importer_common() -> void:
 	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
@@ -731,24 +775,6 @@ func _show_importer_common() -> void:
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	options_vbox = VBoxContainer.new()
-	auto_select_dependencies_checkbox = CheckBox.new()
-	auto_select_dependencies_checkbox.text = "Auto-check dependencies (shift)"
-	auto_select_dependencies_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
-	auto_select_dependencies_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	auto_select_dependencies_checkbox.size_flags_stretch_ratio = 0.0
-	options_vbox.add_child(auto_select_dependencies_checkbox)
-	auto_deselect_dependencies_checkbox = CheckBox.new()
-	auto_deselect_dependencies_checkbox.text = "Auto-uncheck dependencies (shift)"
-	auto_deselect_dependencies_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
-	auto_deselect_dependencies_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	auto_deselect_dependencies_checkbox.size_flags_stretch_ratio = 0.0
-	options_vbox.add_child(auto_deselect_dependencies_checkbox)
-	force_reimport_models_checkbox = CheckBox.new()
-	force_reimport_models_checkbox.text = "Force reimport all models"
-	force_reimport_models_checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
-	force_reimport_models_checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	force_reimport_models_checkbox.size_flags_stretch_ratio = 0.0
-	options_vbox.add_child(force_reimport_models_checkbox)
 	hbox.size_flags_stretch_ratio = 1.0
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1071,7 +1097,7 @@ func start_godot_import(tw: Object):
 	tw.asset.log_debug("Wrote file " + tw.output_path + " asset modified:" + str(asset_modified) + " import modified:" + str(import_modified))
 
 	var force_reimport: bool = false
-	if asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL and force_reimport_models_checkbox.button_pressed:
+	if asset_adapter.get_asset_type(tw.asset) == asset_adapter.ASSET_TYPE_MODEL and not skip_reimport_models_checkbox.button_pressed:
 		force_reimport = true
 	if asset_database.get_meta_at_path(tw.asset.parsed_meta.path) == null:
 		tw.asset.log_debug("Asset " + str(tw.asset.parsed_meta.guid) + " does not yet exist in asset database. It must be new.")

@@ -440,7 +440,7 @@ class YamlHandler:
 			pkgasset.log_fail("Asset " + pkgasset.pathname + " guid " + pkgasset.parsed_meta.guid + " has no main object id!")
 		var new_pathname: String = pkgasset.pathname
 		if main_asset != null:
-			new_pathname = pkgasset.pathname.get_basename() + main_asset.get_godot_extension()  # ".mat.tres"
+			new_pathname = pkgasset.pathname.get_basename() + pkgasset.parsed_meta.fixup_godot_extension(main_asset.get_godot_extension())  # ".mat.tres"
 		return new_pathname
 
 	func get_asset_type(pkgasset: Object) -> int:
@@ -489,7 +489,7 @@ class YamlHandler:
 		if main_asset != null:
 			extra_resources = main_asset.get_extra_resources()
 		for extra_asset_fileid in extra_resources:
-			var file_ext: String = extra_resources.get(extra_asset_fileid)
+			var file_ext: String = pkgasset.parsed_meta.fixup_godot_extension(extra_resources.get(extra_asset_fileid))
 			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
 			pkgasset.log_debug("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(pkgasset.pathname.get_basename() + file_ext))
 			if created_res != null:
@@ -512,16 +512,18 @@ class YamlHandler:
 		if godot_resource != null:
 			# Save main resource at end, so that it can reference extra resources.
 			unidot_utils.save_resource(godot_resource, pkgasset.pathname)
-		if godot_resource == null or pkgasset.pathname.ends_with(DEBUG_RAW_PARSED_ASSET_TYPES):
-			var rpa = raw_parsed_asset.new()
-			rpa.path = pkgasset.pathname
-			rpa.guid = pkgasset.guid
-			rpa.meta = pkgasset.parsed_meta.duplicate()
-			for key in pkgasset.parsed_asset.assets:
-				var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
-				rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
-			rpa.resource_name + pkgasset.pathname.get_basename().get_file()
-			unidot_utils.save_resource(rpa, pkgasset.pathname + ".raw.tres")
+		if godot_resource == null:
+			if pkgasset.pathname.ends_with(DEBUG_RAW_PARSED_ASSET_TYPES):
+				var rpa = raw_parsed_asset.new()
+				rpa.path = pkgasset.pathname
+				rpa.guid = pkgasset.guid
+				rpa.meta = pkgasset.parsed_meta.duplicate()
+				for key in pkgasset.parsed_asset.assets:
+					var parsed_obj: RefCounted = pkgasset.parsed_asset.assets[key]
+					rpa.objects[str(key) + ":" + str(parsed_obj.type)] = pkgasset.parsed_asset.assets[key].keys
+				rpa.resource_name + pkgasset.pathname.get_basename().get_file()
+				unidot_utils.save_resource(rpa, pkgasset.pathname + ".raw.tres")
+			return false
 		return true
 
 
@@ -530,7 +532,7 @@ class SceneHandler:
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
-		var new_pathname: String = pkgasset.pathname.get_basename() + (".prefab.tscn" if is_prefab else ".tscn")
+		var new_pathname: String = pkgasset.pathname.get_basename() + pkgasset.parsed_meta.fixup_godot_extension(".prefab.tscn" if is_prefab else ".tscn")
 		return new_pathname
 
 	func write_godot_asset(pkgasset, temp_path) -> bool:
@@ -910,7 +912,7 @@ class FbxHandler:
 		needle_buf[6] = 0
 		var scale_factor_pos: int = find_in_buffer(fbx_file_binary, needle_buf)
 		if scale_factor_pos == -1:
-			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in Binary FBX.")
 			return fbx_file_binary
 
 		# TODO: If any Model has Visibility == 0.0, then the mesh gets lost in FBX2glTF

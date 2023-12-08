@@ -665,7 +665,7 @@ class UnityMesh:
 			return keys.get("m_VertexData", {})
 
 	func get_godot_extension() -> String:
-		return ".mesh.res"
+		return ".mesh"
 
 	func get_vertex_data() -> RefCounted:
 		return aligned_byte_buffer.new(keys.get("m_VertexData", ""))
@@ -2513,7 +2513,7 @@ class UnityAnimationClip:
 		if meta.importer_type != "NativeFormatImporter" and meta.importer_type != "DefaultImporter":
 			if meta.godot_resources.has(-fileID):
 				return meta.get_godot_resource([null, -fileID, null, 0])
-			var adapted_resource_path: String = clip.resource_path.get_basename().get_basename() + ".adaptedanim.tres"
+			var adapted_resource_path: String = clip.resource_path.get_basename().get_basename() + meta.fixup_godot_extension(".adaptedanim.tres")
 			clip = clip.duplicate()
 			clip.resource_path = adapted_resource_path
 			meta.insert_resource_path(-fileID, clip.resource_path)
@@ -3037,11 +3037,11 @@ class UnityAnimationClip:
 		if anim.resource_path == StringName():
 			var res_path = StringName()
 			if self.fileID == meta.main_object_id:
-				if not meta.path.ends_with(".tres"):
-					meta.rename(meta.path + ".tres")
+				#if not meta.path.ends_with(".tres"):
+				#	meta.rename(meta.path + ".tres")
 				res_path = meta.path
 			else:
-				res_path = meta.path.get_basename() + (".%d.tres" % [self.fileID])
+				res_path = meta.path.get_basename() + meta.fixup_godot_extension(".%d.tres" % [self.fileID])
 			res_path = "res://" + res_path
 			adapter.unidot_utils.save_resource(anim, res_path)
 			meta.insert_resource(self.fileID, anim)
@@ -3054,7 +3054,7 @@ class UnityTexture:
 	extends UnityObject
 
 	func get_godot_extension() -> String:
-		return ".tex.tres"
+		return ".tex.res"
 
 	func get_image_data() -> PackedByteArray:
 		# hex_decode
@@ -3216,6 +3216,9 @@ class UnityTexture:
 
 class UnityTexture2D:
 	extends UnityTexture
+
+	func get_godot_extension() -> String:
+		return ".tex" # TODO: These really should be getting exported as .png?
 
 	func get_godot_type() -> String:
 		return "Texture2D"
@@ -3491,9 +3494,9 @@ class UnityTerrainData:
 	func get_extra_resources() -> Dictionary:
 		var dict = (
 			{
-				self.fileID ^ 0x1234567: ".terrain.mat.tres",
-				self.fileID ^ 0xdeca604: ".terrain.mesh.res",
-				self.fileID ^ 0xc0111de4: ".terrain.collider.res",
+				self.fileID ^ 0x1234567: ".terrain.material",
+				self.fileID ^ 0xdeca604: ".terrain.mesh",
+				self.fileID ^ 0xc0111de4: ".terrain.shape",
 			}
 			. duplicate()
 		)

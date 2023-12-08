@@ -558,9 +558,12 @@ class ParseState:
 					if anim != null:
 						var respath: String
 						if source_file_path.get_basename() == godot_anim_name or anim_count <= 1:
-							respath = get_resource_path("animation", ".tres")
+							if asset_database.use_text_resources:
+								respath = get_resource_path("animation", ".tres")
+							else:
+								respath = get_resource_path("", "anim")
 						else:
-							respath = get_resource_path(godot_anim_name, ".tres")
+							respath = get_resource_path(godot_anim_name, ".tres" if asset_database.use_text_resources else ".anim")
 						unidot_utils.save_resource(anim, respath)
 						anim = load(respath)
 				if anim != null:

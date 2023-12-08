@@ -32,7 +32,7 @@ func save_resource(created_res: Resource, new_pathname: String):
 		var new_uid = ResourceUID.create_id()
 		ResourceUID.add_id(new_uid, new_pathname)
 	created_res.resource_path = new_pathname
-	ResourceSaver.save(created_res, new_pathname)
+	ResourceSaver.save(created_res, new_pathname, ResourceSaver.FLAG_COMPRESS)
 	# Needed to update the UID database so references can be made more reliably.
 	if not existed:
 		editor_filesystem.update_file(new_pathname)
