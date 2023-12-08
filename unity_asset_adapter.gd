@@ -1537,6 +1537,7 @@ class FbxHandler:
 					if unique_texture_map.has(img_name):
 						img_uri = unique_texture_map.get(img_name)
 						img_name = img_uri
+				img_uri = img_uri.get_basename() + "." + img_uri.get_extension().to_lower()
 				img["uri"] = img_uri
 				img["name"] = img_name.get_file().get_basename()
 		if json.has("materials"):

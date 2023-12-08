@@ -77,6 +77,8 @@ var status_bar : Label
 var options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
+var select_by_type_tree_item: TreeItem
+var select_by_type_items: Dictionary # String -> TreeItem
 
 var asset_work_waiting_write: Array = [].duplicate()
 var asset_work_waiting_scan: Array = [].duplicate()
@@ -160,6 +162,12 @@ func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bo
 	if visited_set.has(ti):
 		return 
 	visited_set[ti] = true
+	var other_item: TreeItem = ti.get_metadata(1) as TreeItem
+	if other_item != null:
+		_check_recursively(other_item, is_checked, false, visited_set, false)
+		#other_item.set_checked(0, is_checked)
+		#_set_indeterminate_up_recursively(other_item, is_checked)
+
 	if ti.is_selectable(0):
 		ti.set_indeterminate(0, false)
 		ti.set_checked(0, is_checked)
@@ -307,11 +315,11 @@ func _cell_selected() -> void:
 		return
 	var col: int = main_dialog_tree.get_selected_column()
 	ti.deselect(col)
-	if col == 0 or col == 1:
+	if (col == 0 or col == 1) and ti.get_cell_mode(0) == TreeItem.CELL_MODE_CHECK:
 		if ti != null:  # and col == 1:
 			var new_checked: bool = !ti.is_indeterminate(0) and !ti.is_checked(0)
 			var process_dependencies: bool = false
-			if new_checked and dont_auto_select_dependencies_checkbox.button_pressed:
+			if new_checked and not dont_auto_select_dependencies_checkbox.button_pressed:
 				process_dependencies = true
 			if not new_checked and not dont_auto_select_dependencies_checkbox.button_pressed:
 				process_dependencies = true
@@ -473,6 +481,55 @@ func _meta_completed(tw: Object):
 	var color = Color(0.3 + 0.4 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.3 + 0.4 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
 
+	var obj_type: String = tw.asset_main_object_type
+	if importer_type == "Default":
+		obj_type = "Scene"
+	elif importer_type == "Model":
+		obj_type = "Model"
+	elif importer_type == "Prefab":
+		obj_type = "Prefab"
+	elif pkgasset.parsed_meta.main_object_id != 0 and pkgasset.parsed_meta.main_object_id % 100000 == 0:
+		var clsid: int = pkgasset.parsed_meta.main_object_id / 100000
+		if object_adapter.utype_to_classname.has(clsid):
+			obj_type = object_adapter.utype_to_classname[clsid]
+	var select_by_type_item: TreeItem
+	var type_parent: TreeItem
+	var obj_type_desc = "." + pkgasset.orig_pathname.get_extension() + " " + obj_type
+	if select_by_type_items.has(obj_type_desc):
+		type_parent = select_by_type_items[obj_type_desc]
+		if type_parent.is_checked(0) and not ti.is_checked(0):
+			type_parent.set_indeterminate(0, true)
+		if not type_parent.is_checked(0) and ti.is_checked(0):
+			type_parent.set_indeterminate(0, true)
+	else:
+		var insert_idx: int = 0
+		for chld in select_by_type_tree_item.get_children():
+			if chld.get_text(0).casecmp_to(obj_type_desc) > 0:
+				break
+			insert_idx += 1
+		type_parent = select_by_type_tree_item.create_child(insert_idx)
+		type_parent.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
+		type_parent.set_icon(0, icon)
+		# We have the type in column 0, so copy it here.
+		type_parent.set_custom_color(0, ti.get_custom_color(1))
+		type_parent.set_text(0, obj_type_desc)
+		type_parent.set_collapsed_recursive(true)
+		type_parent.set_checked(0, ti.is_checked(0))
+		select_by_type_items[obj_type_desc] = type_parent
+	select_by_type_item = type_parent.create_child()
+	select_by_type_item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
+	select_by_type_item.set_checked(0, ti.is_checked(0))
+	select_by_type_item.set_text(0, ti.get_text(0))
+	select_by_type_item.set_icon(0, ti.get_icon(0))
+	select_by_type_item.set_tooltip_text(0, ti.get_tooltip_text(0))
+	select_by_type_item.set_cell_mode(1, TreeItem.CELL_MODE_STRING)
+	select_by_type_item.set_text(1, ti.get_text(1))
+	select_by_type_item.set_icon(1, ti.get_icon(1))
+	select_by_type_item.set_custom_color(1, ti.get_custom_color(1))
+	select_by_type_item.set_tooltip_text(1, ti.get_tooltip_text(1))
+	select_by_type_item.set_metadata(1, ti)
+	ti.set_metadata(1, select_by_type_item)
+
 
 func _prune_unselected_items(p_ti: TreeItem) -> bool:
 	# Directories might be unchecked but have children which are checked.
@@ -555,7 +612,12 @@ func _selected_package(p_path: String) -> void:
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
-	var hidden_root: TreeItem = main_dialog_tree.create_item()
+	main_dialog_tree.create_item()
+	var hidden_root: TreeItem = main_dialog_tree.get_root()
+
+	select_by_type_tree_item = hidden_root.create_child()
+	select_by_type_tree_item.set_text(0, "Select by Type")
+	select_by_type_tree_item.set_text(1, " ") # We check for " " later to remove the subtree.
 
 	var tree_names = []
 	var ti: TreeItem
@@ -928,6 +990,7 @@ func do_import_step():
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
 		on_import_fully_completed()
+		status_bar.text = "Import complete."
 		return
 
 	asset_database.log_debug([null, 0, "", 0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
@@ -939,6 +1002,7 @@ func do_import_step():
 			tree_dialog_state = STATE_TEXTURES
 			for tw in asset_textures:
 				asset_work_waiting_write.append(tw)
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " textures, animations and audio..."
 			asset_work_waiting_write.reverse()
 			asset_textures = [].duplicate()
 			if tree_dialog_state == STATE_TEXTURES and not asset_materials_and_other.is_empty():
@@ -948,6 +1012,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_MATERIALS_AND_ASSETS
 			for tw in asset_materials_and_other:
 				asset_work_waiting_write.append(tw)
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " materials..."
 			asset_work_waiting_write.reverse()
 			asset_materials_and_other = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MATERIALS_AND_ASSETS:
@@ -955,6 +1020,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_MODELS
 			for tw in asset_models:
 				asset_work_waiting_write.append(tw)
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " models..."
 			asset_work_waiting_write.reverse()
 			asset_models = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_MODELS:
@@ -962,6 +1028,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_YAML_POST_MODEL
 			for tw in asset_yaml_post_model:
 				asset_work_waiting_write.append(tw)
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " animation trees..."
 			asset_work_waiting_write.reverse()
 			asset_yaml_post_model = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_YAML_POST_MODEL:
@@ -985,16 +1052,19 @@ func do_import_step():
 				if guid_to_tw.has(meta.guid):
 					asset_work_waiting_write.append(guid_to_tw.get(meta.guid))
 			asset_work_waiting_write.reverse()
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " prefabs..."
 			asset_prefabs = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
 			progress_bar.value += 10
 			tree_dialog_state = STATE_IMPORTING_SCENES
 			for tw in asset_scenes:
 				asset_work_waiting_write.append(tw)
+			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " scenes..."
 			asset_work_waiting_write.reverse()
 			asset_scenes = [].duplicate()
 		elif tree_dialog_state == STATE_IMPORTING_SCENES:
 			progress_bar.value += 10
+			status_bar.text = "Completing import..."
 			tree_dialog_state = STATE_DONE_IMPORT
 			break
 		elif tree_dialog_state == STATE_DONE_IMPORT:
@@ -1052,6 +1122,7 @@ func do_import_step():
 
 	var completed_scan: Array = asset_work_currently_importing
 	asset_work_currently_importing = [].duplicate()
+
 	for tw in completed_scan:
 		tw.asset.log_debug("Asset " + tw.asset.pathname + "/" + tw.asset.guid + " completed import.")
 		var loaded_asset: Resource = ResourceLoader.load(tw.asset.pathname, "", ResourceLoader.CACHE_MODE_REPLACE)
@@ -1061,6 +1132,19 @@ func do_import_step():
 			tw.asset.parsed_meta.insert_resource_path(tw.asset.parsed_meta.main_object_id, tw.asset.pathname)
 		asset_adapter.finished_import(tw.asset, loaded_asset)
 		on_file_completed_godot_import(tw, loaded_asset != null)
+	if asset_work_waiting_write.is_empty():
+		if tree_dialog_state == STATE_PREPROCESSING:
+			status_bar.text = "Importing textures, animations and audio..."
+		elif tree_dialog_state == STATE_TEXTURES:
+			status_bar.text = "Importing materials..."
+		elif tree_dialog_state == STATE_IMPORTING_MATERIALS_AND_ASSETS:
+			status_bar.text = "Importing models..."
+		elif tree_dialog_state == STATE_IMPORTING_MODELS:
+			status_bar.text = "Importing animation trees..."
+		elif tree_dialog_state == STATE_IMPORTING_YAML_POST_MODEL:
+			status_bar.text = "Importing prefabs..."
+		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
+			status_bar.text = "Importing scenes..."
 
 	asset_database.log_debug([null, 0, "", 0], "Done Queueing work: state=" + str(tree_dialog_state))
 
@@ -1073,6 +1157,7 @@ func _done_preprocessing_assets():
 	import_worker2.start_threads(THREAD_COUNT)
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 
+	status_bar.text = "Converting textures to metal roughness..."
 	import_worker2.set_stage2(pkg.guid_to_pkgasset)
 	var visited = {}.duplicate()
 	var second_pass: Array = [].duplicate()
@@ -1080,6 +1165,7 @@ func _done_preprocessing_assets():
 
 
 func _done_preprocessing_assets_stage2():
+	status_bar.text = "Done preprocessing. Scanning filesystem..."
 	asset_database.log_debug([null, 0, "", 0], "Finished all preprocessing stage2!!")
 	self.import_worker2.stop_all_threads_and_wait()
 	asset_database.log_debug([null, 0, "", 0], "Joined 2.")
@@ -1180,9 +1266,11 @@ func _asset_processing_finished(tw: Object):
 	if _currently_preprocessing_assets == 0:
 		if not _preprocessing_second_pass.is_empty():
 			_preprocess_second_pass()
+			status_bar.text = "Preprocessing humanoid FBX2glTF... " + str(_currently_preprocessing_assets) + " remaining."
 			_preprocessing_second_pass = [].duplicate()
 		else:
 			_done_preprocessing_assets()
+	status_bar.text = status_bar.text.get_slice("...", 0) + "... " + str(_currently_preprocessing_assets) + " remaining."
 
 
 func _preprocess_second_pass():
@@ -1193,6 +1281,7 @@ func _preprocess_second_pass():
 		var path = ti2.get_tooltip_text(0)  # HACK! No data field in TreeItem?? Let's use the tooltip?!
 		var asset = pkg.path_to_pkgasset.get(path)
 		_currently_preprocessing_assets += 1
+		progress_bar.max_value += 1
 		asset.meta_dependencies = {}.duplicate()
 		for dep in asset.parsed_meta.meta_dependency_guids:
 			if pkg.guid_to_pkgasset.has(dep):
@@ -1389,6 +1478,7 @@ func _asset_tree_window_confirmed():
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass)
 	progress_bar.show_percentage = true
 	progress_bar.max_value = _currently_preprocessing_assets * 12 + 80
+	status_bar.text = "Preprocessing and converting FBX2glTF..."
 	_preprocessing_second_pass = second_pass
 	if _currently_preprocessing_assets == 0:
 		_preprocess_second_pass()
