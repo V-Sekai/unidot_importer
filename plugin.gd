@@ -70,8 +70,30 @@ func anim_import():
 
 func _enter_tree():
 	print("run enter tree")
-	add_tool_menu_item("Import .meta with Unidot...", self.show_importer)
-	add_tool_menu_item("Import .unitypackage with Unidot...", self.show_importer)
+	var es = get_editor_interface().get_editor_settings()
+	var ep = get_editor_interface().get_editor_paths()
+	var data_parent = ep.get_data_dir().get_base_dir()
+	if OS.get_name() == "macOS" and data_parent.get_base_dir().get_file().to_lower() == "library":
+		data_parent = data_parent.get_base_dir()
+	for f in DirAccess.get_directories_at(data_parent):
+		if f.to_lower().begins_with("uni"):
+			var subf_found = ""
+			for subf in DirAccess.get_directories_at(data_parent.path_join(f)):
+				if subf.to_lower().begins_with("asset store") and len(subf) > 11:
+					subf_found = subf
+			if not subf_found.is_empty():
+				data_parent = data_parent.path_join(f).path_join(subf_found)
+				break
+	var fav = es.get_favorites()
+	if fav.count(data_parent + "/") == 0:
+		fav.append(data_parent + "/")
+		es.set_favorites(fav)
+	fav = es.get_recent_dirs()
+	if fav.count(data_parent) == 0:
+		fav.append(data_parent)
+		es.set_recent_dirs(fav)
+
+	add_tool_menu_item("Import .unitypackage or dir with Unidot...", self.show_importer)
 	#add_tool_menu_item("Reimport previous files", self.do_reimport_previous_files)
 	add_tool_menu_item("Reimport extracted .unitypackage...", self.show_reimport)
 	add_tool_menu_item("Show last Unidot import logs", self.show_importer_logs)
@@ -84,9 +106,8 @@ func _exit_tree():
 	print("run exit tree")
 	#remove_tool_menu_item("Print scene nodes with owner...")
 	#remove_tool_menu_item("Reimport previous files")
-	remove_tool_menu_item("Import .meta with Unidot...")
-	remove_tool_menu_item("Import .unitypackage with Unidot...")
-	remove_tool_menu_item("Reimport extracted unitypackage...")
+	remove_tool_menu_item("Import .unitypackage or dir with Unidot...")
+	remove_tool_menu_item("Reimport extracted .unitypackage...")
 	remove_tool_menu_item("Show last Unidot import logs")
 	#remove_tool_menu_item("Debug Anim")
 	#remove_tool_menu_item("Queue Test...")

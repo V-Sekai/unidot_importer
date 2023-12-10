@@ -376,7 +376,10 @@ func _cell_selected() -> void:
 
 			var needs_sort: bool
 			for child_ti in child_list:
-				var tw: package_file.PkgAsset = child_ti.get_metadata(1)
+				var metadat: Object = child_ti.get_metadata(1)
+				if metadat is TreeItem:
+					continue
+				var tw: package_file.PkgAsset = metadat
 				var start_idx = len(filtered_msgs)
 				if tw != null:
 					if not filtered_msgs.is_empty():
@@ -616,6 +619,8 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 
 
 func _selected_package(p_path: String) -> void:
+	if p_path.to_lower().contains("technologies"):
+		OS.alert("Beware that this package may use a non-standard license.\nPlease take the time to double-check that you are\nin compliance with all licenses.")
 	_preprocessing_second_pass = [].duplicate()
 	asset_work_waiting_write = [].duplicate()
 	asset_work_waiting_scan = [].duplicate()
