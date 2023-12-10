@@ -47,7 +47,7 @@ func get_singleton() -> Object:
 
 
 func save():
-	ResourceSaver.save(self, ASSET_DATABASE_PATH)
+	ResourceSaver.save(self, ASSET_DATABASE_PATH, ResourceSaver.FLAG_COMPRESS)
 
 
 const ERROR_COLOR_TAG := "FAIL: "

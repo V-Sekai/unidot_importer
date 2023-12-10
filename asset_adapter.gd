@@ -1128,6 +1128,10 @@ class FbxHandler:
 
 	func _make_relative_to(filename: String, basedir: String):
 		var path_beginning: String = ""
+		if basedir.begins_with("res://"):
+			basedir = basedir.substr(6)
+		if filename.begins_with("res://"):
+			filename = filename.substr(6)
 		while not filename.begins_with(basedir + "/"):
 			path_beginning += "../"
 			basedir = basedir.get_base_dir()

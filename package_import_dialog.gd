@@ -1049,7 +1049,7 @@ func do_import_step():
 
 	asset_database.log_debug([null, 0, "", 0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_waiting_write) == 0:
-		asset_database.save()
+		#asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Trying to scan more things: state=" + str(tree_dialog_state))
 		if tree_dialog_state == STATE_PREPROCESSING:
 			update_progress_bar(10)
@@ -1207,7 +1207,6 @@ func _done_preprocessing_assets():
 	asset_database.log_debug([null, 0, "", 0], "Finished all preprocessing!!")
 	self.import_worker.stop_all_threads_and_wait()
 	asset_database.log_debug([null, 0, "", 0], "Joined.")
-	asset_database.save()
 	import_worker2.start_threads(THREAD_COUNT)
 	#asset_adapter.write_sentinel_png(generate_sentinel_png_filename())
 
@@ -1424,6 +1423,7 @@ func _do_import_step_tick():
 		asset_database.in_package_import = false
 		asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Saved database")
+		status_bar.text = "Import complete."
 		call_deferred(&"on_import_fully_completed")
 	asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
 	import_step_reentrant = false

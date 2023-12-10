@@ -938,8 +938,8 @@ func _post_import(p_scene: Node) -> Object:
 	metaobj.humanoid_skeleton_hip_position = ps.humanoid_skeleton_hip_position
 	metaobj.transform_fileid_to_scale_signs = ps.transform_fileid_to_scale_signs
 
-	if not asset_database.in_package_import:
-		asset_database.save()
+	#if not asset_database.in_package_import:
+	#	asset_database.save()
 	return p_scene
 
 
