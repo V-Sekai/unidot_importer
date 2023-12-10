@@ -844,6 +844,19 @@ static func silhouette_fix_gltf(json: Dictionary, bone_map: BoneMap, p_threshold
 			var quat := src_skeleton.get_bone_pose_rotation(src_idx)
 			# Update glTF JSON
 			json["nodes"][src_idx]["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+	# Now fix translation offsets:
+	var hips_src_idx: int = src_skeleton.find_bone("Hips")
+	if hips_src_idx != -1:
+		var hips_global_origin := src_skeleton.get_bone_global_rest(hips_src_idx).origin
+		var hips_parent_basis := Basis.IDENTITY
+		var src_idx := src_skeleton.get_bone_parent(hips_src_idx)
+		while src_idx != -1:
+			if json["nodes"][src_idx].has("translation"):
+				json["nodes"][src_idx].erase("translation")
+			hips_parent_basis = src_skeleton.get_bone_pose(src_idx).basis * hips_parent_basis
+			src_idx = src_skeleton.get_bone_parent(src_idx)
+		var new_hips_origin := hips_parent_basis.inverse() * Vector3(0, hips_global_origin.y, 0)
+		json["nodes"][hips_src_idx]["translation"] = [new_hips_origin.x, new_hips_origin.y, new_hips_origin.z]
 	# Never added into the tree, so free them.
 	src_skeleton.free()
 	prof_skeleton.free()

@@ -1390,7 +1390,7 @@ class FbxHandler:
 				bone_map_editor_plugin.gltf_matrix_to_trs(json_node)
 				var value_accessor: int = -1
 				if is_translation:
-					var json_pos: Array = json_node.get("translation", [0.0, 0.0, 0.0])
+					var json_pos: Array = json_node.get("translation", [0.0, 0.0, 0.0]).duplicate()
 					pkgasset.log_debug("Got " + str(node_name) + " translation: " + str(json_pos))
 					for flt in range(3):
 						spb.put_float(json_pos[flt])
@@ -1560,7 +1560,6 @@ class FbxHandler:
 		var humanoid_original_transforms: Dictionary = {} # name -> Transform3D
 		var original_rotations: Dictionary = {} # name -> Quaternion
 		var orig_hip_position: Vector3
-		var orig_root_position: Vector3
 		var human_skin_nodes: Array = []
 		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3
 		var bone_map_dict: Dictionary
@@ -1575,7 +1574,6 @@ class FbxHandler:
 					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
 					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
 					orig_hip_position = src_ava_meta.internal_data.get("hips_position", Vector3())
-					orig_root_position = src_ava_meta.internal_data.get("root_position", Vector3())
 					original_rotations = src_ava_meta.internal_data.get("original_rotations", {}).duplicate()
 					pkgasset.log_debug("Copying from avatar " + str(src_ava_meta.path) + " " + str(src_ava_meta.guid) + " orig transforms " + str(len(src_ava_meta.internal_data.get("humanoid_original_transforms", {}))))
 					copy_avatar = true
@@ -1662,7 +1660,13 @@ class FbxHandler:
 
 			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
 			if copy_avatar:
-				for node in json["nodes"]:
+				var node_parents: Dictionary
+				for x_node_idx in range(len(json["nodes"])):
+					for chld in json["nodes"][x_node_idx].get("children", []):
+						node_parents[chld] = x_node_idx
+				var hip_parent_node_idx = -1
+				for x_node_idx in range(len(json["nodes"])):
+					var node: Dictionary = json["nodes"][x_node_idx]
 					var node_name: String = node.get("name", "")
 					if original_rotations.has(node_name):
 						var quat: Quaternion = original_rotations[node_name]
@@ -1670,8 +1674,11 @@ class FbxHandler:
 						node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
 					if bone_map_dict.get(node_name, "") == "Hips":
 						node["translation"] = [orig_hip_position.x, orig_hip_position.y, orig_hip_position.z]
-					if bone_map_dict.get(node_name, "") == "Root":
-						node["translation"] = [orig_root_position.x, orig_root_position.y, orig_root_position.z]
+						hip_parent_node_idx = node_parents.get(x_node_idx, -1)
+				while hip_parent_node_idx != -1:
+					if json["nodes"][hip_parent_node_idx].has("translation"):
+						json["nodes"][hip_parent_node_idx].erase("translation")
+					hip_parent_node_idx = node_parents.get(hip_parent_node_idx, -1)
 			else:
 				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
 				for node in json["nodes"]:
@@ -1682,8 +1689,6 @@ class FbxHandler:
 					var trans: Array = node.get("translation", [0, 0, 0])
 					if bone_map_dict.get(node_name, "") == "Hips":
 						pkgasset.parsed_meta.internal_data["hips_position"] = Vector3(trans[0], trans[1], trans[2])
-					if bone_map_dict.get(node_name, "") == "Root":
-						pkgasset.parsed_meta.internal_data["root_position"] = Vector3(trans[0], trans[1], trans[2])
 
 			# Adding missing tracks just to the T-Pose animation after silhouette fix generates a T-Pose
 			add_empty_animation(json, "_T-Pose_")
