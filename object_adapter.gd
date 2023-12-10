@@ -220,7 +220,12 @@ class UnidotObject:
 	func configure_skeleton_bone(skel: Skeleton3D, bone_name: String):
 		configure_skeleton_bone_props(skel, bone_name, self.keys)
 
-	func configure_skeleton_bone_props(skel: Skeleton3D, bone_name: String, uprops: Dictionary):
+	func configure_skeleton_bone_props(skel: Node3D, bone_name: String, uprops: Dictionary):
+		if skel is BoneAttachment3D:
+			skel = skel.get_parent() # Should be the Skeleton3D
+		if not (skel is Skeleton3D):
+			log_fail("Unable to configure skeleton bone props on node " + str(skel) + " bone " + str(bone_name))
+			return
 		var props = self.convert_skeleton_properties(skel, bone_name, uprops)
 		var bone_idx: int = skel.find_bone(bone_name)
 		if props.has("quaternion"):
@@ -5539,6 +5544,9 @@ class UnidotSkinnedMeshRenderer:
 	func edit_skin(component_name: String, skin_ref: Array, gdskel: Skeleton3D) -> Skin:
 		var original_is_humanoid: bool = false
 		var skin: Skin = meta.get_godot_resource(skin_ref)
+		if skin == null:
+			log_fail("Unable to edit_skin null to skeleton " + str(gdskel), "skin", skin_ref)
+			return null
 		var skin_humanoid_rotation_delta: Dictionary
 		if skin.has_meta("humanoid_rotation_delta"):
 			skin_humanoid_rotation_delta = skin.get_meta("humanoid_rotation_delta")
@@ -6225,7 +6233,8 @@ class UnidotAnimator:
 		animplayer.root_node = NodePath("..")
 		if keys.get("m_ApplyRootMotion", 0) == 0:
 			if not state.active_avatars.is_empty():
-				animplayer.root_motion_track = NodePath("%GeneralSkeleton:Root")
+				# Godot 4.1 and earlier only support this on AnimationTree
+				animplayer.set("root_motion_track", NodePath("%GeneralSkeleton:Root"))
 
 		var animtree: AnimationTree = AnimationTree.new()
 		animtree.name = "AnimationTree"

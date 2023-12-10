@@ -959,8 +959,12 @@ func on_import_fully_completed():
 	print("Import is fully completed")
 	da.remove("res://_sentinel_file.png")
 	da.remove("res://_sentinel_file.png.import")
-	EditorPlugin.new().get_editor_interface().save_all_scenes()
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var ei = EditorPlugin.new().get_editor_interface()
+	if ei.has_method("save_all_scenes"):
+		ei.save_all_scenes()
+	else:
+		ei.save_scene()
+	var editor_filesystem: EditorFileSystem = ei.get_resource_filesystem()
 	editor_filesystem.scan()
 	import_finished = true
 	if not _keep_open_on_import:

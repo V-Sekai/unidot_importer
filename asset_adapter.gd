@@ -468,7 +468,7 @@ class YamlHandler:
 			if pkgasset.asset_tar_header.get_size() > 50000:
 				# Returning a file extension here short-circuits the early parse.
 				# So we will parse the big animation files in the main thread one-by-one.
-				return ".anim.tres"
+				return pkgasset.parsed_meta.fixup_godot_extension(".anim.tres")
 		return ""
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
