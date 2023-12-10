@@ -124,8 +124,8 @@ static func get_fileid(cls_namespace: String, cls_name: String):
 	return hash_result.to_int32_array()[0]
 
 
-static func convert_unityref_to_npidentifier(unityref: Array) -> NodePath:
-	assert(unityref[0] == null)
-	assert(unityref[2] != null)  # MonoScript can never be local references.
-	assert(unityref[3] == 3)
-	return NodePath(unityref[2] + "/" + str(unityref[1]))
+static func convert_unidot_ref_to_npidentifier(unidot_ref: Array) -> NodePath:
+	assert(unidot_ref[0] == null)
+	assert(unidot_ref[2] != null)  # MonoScript can never be local references.
+	assert(unidot_ref[3] == 3)
+	return NodePath(unidot_ref[2] + "/" + str(unidot_ref[1]))

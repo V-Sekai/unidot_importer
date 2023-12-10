@@ -228,7 +228,7 @@ const TraitMapping : Dictionary = {
 const IKPrefixNames : Array[String] = ["Root", "Motion", "LeftFoot", "RightFoot", "LeftHand", "RightHand"]
 const IKSuffixNames : Dictionary = {"T.x": 0, "T.y": 1, "T.z": 2, "Q.x": 0, "Q.y": 1, "Q.z": 2, "Q.w": 3}
 
-# Unity documentation only lists the following as having TDOF, but it seems that any bone can have it.
+# Documentation only lists the following as having TDOF, but it seems that any bone can have it.
 #const TDOFBoneNames : Array[String] = ["Spine", "Chest", "Neck", "LeftShoulder", "RightShoulder", "LeftUpperLeg", "RightUpperLeg"]
 
 const BoneCount := len(BoneName)

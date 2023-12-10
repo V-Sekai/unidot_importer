@@ -5,7 +5,7 @@
 extends "./thread_worker.gd"
 
 const tarfile: GDScript = preload("./tarfile.gd")
-const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
+const package_file: GDScript = preload("./package_file.gd")
 
 var stage2: bool = false
 var guid_to_pkgasset: Dictionary
@@ -19,7 +19,7 @@ func set_stage2(pkg_guid_to_pkgasset: Dictionary):
 
 
 class ThreadWork:
-	var asset: unitypackagefile.UnityPackageAsset
+	var asset: package_file.PkgAsset
 	var tmpdir: String
 	var output_path: String
 	var extra: Variant
@@ -27,8 +27,8 @@ class ThreadWork:
 	var is_loaded: bool
 
 
-# asset: unitypackagefile.UnityPackageAsset object
-func push_asset(asset: unitypackagefile.UnityPackageAsset, tmpdir: String, extra: Variant = null):
+# asset: package_file.PkgAsset object
+func push_asset(asset: package_file.PkgAsset, tmpdir: String, extra: Variant = null):
 	var tw = ThreadWork.new()
 	tw.asset = asset
 	tw.tmpdir = tmpdir

@@ -32,7 +32,7 @@ class ExtractedTarFile:
 const tarfile: GDScript = preload("./tarfile.gd")
 
 
-class UnityPackageAsset:
+class PkgAsset:
 	extends RefCounted
 	var asset_tar_header: RefCounted
 	var metadata_tar_header: RefCounted
@@ -42,7 +42,7 @@ class UnityPackageAsset:
 	var orig_pathname: String
 	var icon: Texture
 	var guid: String
-	var parsed_meta: Resource  # Type: asset_database.gd:AssetMeta / Assigned by unity_asset_adapter.preprocess_asset()
+	var parsed_meta: Resource  # Type: asset_database.gd:AssetMeta / Assigned by asset_adapter.preprocess_asset()
 	var parsed_asset: RefCounted
 	var parsed_resource: Resource  # For specific assets which do work in the thread.
 	var packagefile: Resource  # outer class
@@ -137,16 +137,19 @@ func external_tar_with_filename(source_file: String):
 			continue
 		if not guid_to_pkgasset.has(guid):
 			#print("Discovered Asset " + guid)
-			guid_to_pkgasset[guid] = UnityPackageAsset.new()
-		var pkgasset: UnityPackageAsset = guid_to_pkgasset[guid]
+			guid_to_pkgasset[guid] = PkgAsset.new()
+		var pkgasset: PkgAsset = guid_to_pkgasset[guid]
 		pkgasset.packagefile = self
 		pkgasset.guid = guid
 		var this_filename: String = full_tmpdir + "/" + str(guid) + "/" + str(type_part)
 		var header = ExtractedTarFile.new(this_filename)
 		if fnparts[1] == "pathname":
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
-			if not pkgasset.pathname.get_extension().is_empty():
-				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + pkgasset.pathname.get_extension().to_lower()
+			var ext = pkgasset.pathname.get_extension().to_lower()
+			if not ext.is_empty():
+				if ext.begins_with("uni") and len(ext) <= 6: # Unidot scenes
+					ext = "scene"
+				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + ext
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
 			var image = Image.new()
@@ -211,8 +214,8 @@ func init_with_filename(source_file: String):
 			continue
 		if not guid_to_pkgasset.has(fnparts[0]):
 			# print("Discovered Asset " + fnparts[0])
-			guid_to_pkgasset[fnparts[0]] = UnityPackageAsset.new()
-		var pkgasset: UnityPackageAsset = guid_to_pkgasset[fnparts[0]]
+			guid_to_pkgasset[fnparts[0]] = PkgAsset.new()
+		var pkgasset: PkgAsset = guid_to_pkgasset[fnparts[0]]
 		pkgasset.packagefile = self
 		pkgasset.guid = fnparts[0]
 		if len(fnparts) == 1 or fnparts[1] == "":
@@ -220,8 +223,11 @@ func init_with_filename(source_file: String):
 		if fnparts[1] == "pathname":
 			# Some pathnames have newline followed by "00". no idea why
 			pkgasset.pathname = header.get_data().get_string_from_utf8().split("\n")[0].strip_edges()
-			if not pkgasset.pathname.get_extension().is_empty():
-				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + pkgasset.pathname.get_extension().to_lower()
+			var ext = pkgasset.pathname.get_extension().to_lower()
+			if not ext.is_empty():
+				if ext.begins_with("uni") and len(ext) <= 6: # Unidot scenes
+					ext = "scene"
+				pkgasset.pathname = pkgasset.pathname.get_basename() + "." + ext
 			pkgasset.orig_pathname = pkgasset.pathname
 		if fnparts[1] == "preview.png":
 			var image = Image.new()
@@ -314,9 +320,12 @@ func init_with_asset_dir(source_file: String):
 	for fn in valid_filenames:
 		var meta_fn = fn + ".meta"
 		var relative_pathname: String = source_file.get_file().path_join(fn.substr(len(dirlist.get_current_dir())).lstrip("/\\"))
-		if not relative_pathname.get_extension().is_empty():
-			relative_pathname = relative_pathname.get_basename() + "." + relative_pathname.get_extension().to_lower()
-		var pkgasset := UnityPackageAsset.new()
+		var ext = relative_pathname.get_extension().to_lower()
+		if not ext.is_empty():
+			if ext.begins_with("uni") and len(ext) <= 6: # Unidot scenes
+				ext = "scene"
+			relative_pathname = relative_pathname.get_basename() + "." + ext
+		var pkgasset := PkgAsset.new()
 		pkgasset.metadata_tar_header = ExtractedTarFile.new(meta_fn)
 		var sf = pkgasset.metadata_tar_header.get_stringfile()
 		var guid: String = read_guid_from_meta_file(sf)

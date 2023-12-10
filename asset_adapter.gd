@@ -4,8 +4,8 @@
 @tool
 extends Resource
 
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
-const post_import_material_remap_script: GDScript = preload("./post_import_unity_model.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
+const post_import_material_remap_script: GDScript = preload("./post_import_model.gd")
 const convert_scene: GDScript = preload("./convert_scene.gd")
 const raw_parsed_asset: GDScript = preload("./raw_parsed_asset.gd")
 const bone_map_editor_plugin: GDScript = preload("./bone_map_editor_plugin.gd")
@@ -445,7 +445,7 @@ class YamlHandler:
 
 	func get_asset_type(pkgasset: Object) -> int:
 		var extn: String = pkgasset.orig_pathname.get_extension().to_lower()
-		if extn == "unity":
+		if extn == "scene":
 			return ASSET_TYPE_SCENE
 		if extn == "prefab":
 			return ASSET_TYPE_PREFAB
@@ -531,12 +531,12 @@ class SceneHandler:
 	extends YamlHandler
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
-		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
+		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "scene"
 		var new_pathname: String = pkgasset.pathname.get_basename() + pkgasset.parsed_meta.fixup_godot_extension(".prefab.tscn" if is_prefab else ".tscn")
 		return new_pathname
 
 	func write_godot_asset(pkgasset, temp_path) -> bool:
-		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "unity"
+		var is_prefab = pkgasset.orig_pathname.get_extension().to_lower() != "scene"
 		var packed_scene: PackedScene = convert_scene.new().pack_scene(pkgasset, is_prefab)
 		if packed_scene != null:
 			unidot_utils.save_resource(packed_scene, "res://" + pkgasset.pathname)
@@ -609,7 +609,7 @@ class BaseModelHandler:
 
 		cfile.set_value_compare("params", "animation/fps", pkgasset.parsed_meta.internal_data.get("anim_bake_fps", 30))
 		# fps should match the bake30 option passed to FBX2glTF, it may ignore the original framerate...
-		# Unity seems to operate in terms of frames but no indication of time here....
+		# The importer seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
 		# Humanoid animations in particular are sensititve to immutable tracks being shared across rigs.
 		cfile.set_value_compare("params", "animation/remove_immutable_tracks", false)
@@ -1496,7 +1496,7 @@ class FbxHandler:
 		### Remove RootNode and migrate root nodes into the scene.
 		var default_scene: Dictionary = json["scenes"][json.get("scene", 0)]
 		# Godot prepends the scene name to the name of meshes, for some reason...
-		# "Root Scene" is hardcoded in post_import_unity_model.gd so we use it here.
+		# "Root Scene" is hardcoded in post_import_model.gd so we use it here.
 		default_scene["name"] = "Root Scene"
 		# default_scene["name"] = pkgasset.pathname.get_file().get_basename()
 		if len(default_scene["nodes"]) == 1:  # Remove redundant "RootNode" node from FBX2glTF.
@@ -1739,9 +1739,9 @@ class FbxHandler:
 				# TODO: Should we prevent empty names?
 
 				var next_num: int = used_names.get(orig_name, 1)
-				# Ensure that objects have a unique name in compliance with Unity's uniqueness rules
+				# Ensure that objects have a unique name in compliance with their uniqueness rules
 				# Godot's rule is Gizmo, Gizmo2, Gizmo3.
-				# Unity's rule is Gizmo, Gizmo 1, Gizmo 2
+				# their rule is Gizmo, Gizmo 1, Gizmo 2
 				# While we ignore the extra space anyway, the off-by-one here is killer. :'-(
 				# So we must proactively rename nodes to avoid duplicates...
 				while used_names.has(try_name):
@@ -1904,7 +1904,7 @@ var file_handlers: Dictionary = {
 	# "aif": audio_handler, # Unsupported.
 	# "tif": image_handler, # Unsupported.
 	"asset": YamlHandler.new(),  # Generic file format
-	"unity": SceneHandler.new(),  # Unity Scenes
+	"scene": SceneHandler.new(),  # Unidot Scenes
 	"prefab": SceneHandler.new(),  # Prefabs (sub-scenes)
 	"mask": YamlHandler.new(),  # Avatar Mask for animations
 	"mesh": YamlHandler.new(),  # Mesh data, sometimes .asset
@@ -2063,7 +2063,7 @@ func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Di
 	return dependencies
 
 
-# pkgasset: unitypackagefile.UnityPackageAsset type
+# pkgasset: package_file.PkgAsset type
 func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 	var path = pkgasset.orig_pathname
 	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))

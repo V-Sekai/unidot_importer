@@ -5,19 +5,19 @@
 extends "./thread_worker.gd"
 
 const binary_parser: GDScript = preload("./deresuteme/decode.gd")
-const yaml_parser: GDScript = preload("./unity_object_parser.gd")
+const yaml_parser: GDScript = preload("./yaml_parser.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
-const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
+const package_file: GDScript = preload("./package_file.gd")
 
 
 class ThreadWork:
-	var asset: unitypackagefile.UnityPackageAsset
+	var asset: package_file.PkgAsset
 	var extra: Object
 	var asset_main_object_type: String
 
 
-# asset: unitypackagefile.UnityPackageAsset object
-func push_asset(asset: unitypackagefile.UnityPackageAsset, extra: Object):
+# asset: package_file.PkgAsset object
+func push_asset(asset: package_file.PkgAsset, extra: Object):
 	var tw = ThreadWork.new()
 	tw.asset = asset
 	tw.extra = extra
@@ -35,7 +35,7 @@ func _run_single_item(tw_: Object, thread_subdir: String):
 	var imp_type: String = tw.asset.parsed_meta.importer_type
 	tw.asset.parsed_meta.dependency_guids = {}
 	#print(path + ": " + imp_type)
-	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or (imp_type == "DefaultImporter" and path.to_lower().ends_with(".unity")):
+	if imp_type == "PrefabImporter" or imp_type == "NativeFormatImporter" or (imp_type == "DefaultImporter" and path.to_lower().ends_with(".scene")):
 		if tw.asset.asset_tar_header != null:
 			var buf: PackedByteArray = tw.asset.asset_tar_header.get_data()
 			if buf[8] == 0 and buf[9] == 0:

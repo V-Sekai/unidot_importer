@@ -5,7 +5,7 @@
 extends RefCounted
 
 const queue_lib: GDScript = preload("./queue_lib.gd")
-const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
+const asset_adapter_class: GDScript = preload("./asset_adapter.gd")
 
 var asset_adapter = asset_adapter_class.new()
 
@@ -61,7 +61,7 @@ func stop_all_threads_and_wait():
 	threads = [].duplicate()
 
 
-# asset: unitypackagefile.UnityPackageAsset object
+# asset: package_file.PkgAsset object
 func push_work_obj(tw: Object):
 	if disable_threads:
 		self.call_deferred("_run_single_item_delayed", tw)

@@ -6,14 +6,14 @@ extends RefCounted
 
 ############ FIXME: This should be Array(fileId, guid, utype)
 #### WE CANNOT STORE Resource AS INNER CLASS!!
-#class UnityRef extends Resource:
+#class UnidotRef extends Resource:
 #	var fileID: int = 0
 #	var guid: String = ""
 #	var utype: int = 0
 #	func to_string() -> String:
 #		return _to_string()
 #	func _to_string() -> String:
-#		var ret: String = "[UNITY REF {fileID: " + str(fileID)
+#		var ret: String = "[REF {fileID: " + str(fileID)
 #		if not guid.is_empty():
 #			ret += ", guid: " + str(guid)
 #		ret += "}]"
@@ -153,8 +153,8 @@ func parse_value(line: String, keyname: String, parent_key: String) -> Variant:
 		var is_vec3: bool = false
 		var is_rect: bool = false
 		var is_quat: bool = false
-		var value_ref: Array = []  # UnityRef
-		# UnityRef, Vector2, Vector3, Quaternion?
+		var value_ref: Array = []  # UnidotRef
+		# UnidotRef, Vector2, Vector3, Quaternion?
 		var offset = 1
 		while true:
 			var match_obj = search_obj_key_regex.search(line, offset)
@@ -246,8 +246,8 @@ func xprint(s: String):
 	pass
 
 
-func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_object: Callable) -> Resource:  # unity_object_adapter.UnityObject
-	var instantiate_unity_object = xinstantiate_unity_object
+func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unidot_object: Callable) -> Resource:  # object_adapter.UnidotObject
+	var instantiate_unidot_object = xinstantiate_unidot_object
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
 		meta.log_debug(current_obj_fileID, "guid " + str(meta.guid if meta != null else "null") + " line " + str(line_number))
@@ -300,7 +300,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 			current_obj_stripped = line.ends_with(" stripped")
 	elif line == "%YAML 1.1":
 		pass
-	elif line == "%TAG !u! tag:unity3d.com,2011:":
+	elif line.begins_with("%TAG !u! tag:"):
 		pass
 	elif is_meta and line.begins_with("fileFormatVersion:"):
 		# usually 2?
@@ -325,7 +325,7 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unity_o
 		if current_obj != null:
 			meta.log_fail(current_obj_fileID, "Creating toplevel object without header")
 		current_obj_type = line.split(":")[0]
-		current_obj = instantiate_unity_object.call(meta, current_obj_fileID, current_obj_utype, current_obj_type)
+		current_obj = instantiate_unidot_object.call(meta, current_obj_fileID, current_obj_utype, current_obj_type)
 		if current_obj_stripped:
 			current_obj.is_stripped = true
 	elif line == "" and has_single_quote_line:

@@ -4,7 +4,7 @@
 @tool
 extends Resource
 
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
 const scene_node_state_class: GDScript = preload("./scene_node_state.gd")
 
 
@@ -120,7 +120,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 
 	var ps: RefCounted = node_state.prefab_state
 	for asset in pkgasset.parsed_asset.assets.values():
-		var parent: RefCounted = null  # UnityTransform
+		var parent: RefCounted = null  # UnidotTransform
 		if asset.is_stripped:
 			pass  # Ignore stripped components.
 		elif asset.is_non_stripped_prefab_reference:
@@ -224,7 +224,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			else:
 				occlusion.occluder = SphereOccluder3D.new()  # wrong type
 		elif asset.type != "GameObject":
-			# alternatively, is it a subclass of UnityComponent?
+			# alternatively, is it a subclass of UnidotComponent?
 			parent = asset.gameObject
 			if parent != null and parent.is_prefab_reference:
 				var prefab_instance_id: int = parent.prefab_instance[1]
@@ -407,7 +407,7 @@ func process_lod_groups(scene_contents: Node, ps: RefCounted):
 		# Formula: 0.65 / screenRelativeHeight * m_Size = distance_in_meters
 		# For example, 0.65 / 0.8125 * 5 = 4.0
 		# or 0.65 / 0.216 * 1 = 3.0
-		# Unity's scale factor is confusingly aspect ratio dependent.
+		# LODGroup scale factor is confusingly aspect ratio dependent.
 		# We scale by another factor or 2 to account for 16:9 aspect ratio.
 		# It seems to make LOD switches less noticeable.
 		var size_m = lod_group.keys.get("m_Size", 1.0)

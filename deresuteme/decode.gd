@@ -18,7 +18,7 @@
 @tool
 extends RefCounted
 
-const object_adapter_class: GDScript = preload("../unity_object_adapter.gd")
+const object_adapter_class: GDScript = preload("../object_adapter.gd")
 
 var object_adapter = object_adapter_class.new()
 
@@ -412,10 +412,10 @@ var meta: RefCounted = null
 func _init(meta: RefCounted, file_contents: PackedByteArray, only_references: bool=false):
 	self.meta = meta
 	self.s = Stream.new(file_contents)
-	#t = self.s.read_str() # UnityRaw? or no?
+	#t = self.s.read_str() # UnidotRaw? or no?
 	#stream_ver = s.get_32()
-	#unity_version = self.s.read_str()
-	#unity_revision = self.s.read_str()
+	#unidot_version = self.s.read_str()
+	#unidot_revision = self.s.read_str()
 
 	#size = s.get_32()
 	#hdr_size = s.get_32()
@@ -629,7 +629,7 @@ func decode_data(obj_headers: Array) -> Array:
 		var is_stripped: bool = type_name == "EditorExtension"
 		if is_stripped:
 			type_name = object_adapter.to_classname(class_id)
-		var obj: RefCounted = object_adapter.instantiate_unity_object(meta, path_id, class_id, type_name)
+		var obj: RefCounted = object_adapter.instantiate_unidot_object(meta, path_id, class_id, type_name)
 		if obj == null:
 			continue
 		obj.is_stripped = is_stripped
@@ -737,7 +737,7 @@ func decode_attrtab() -> Def:
 	var level: int = 0
 	var name: String = ""
 	var type_name: String = ""
-	var unity4_nesting: Array[int] = [1]
+	var version4_nesting: Array[int] = [1]
 	var a4: int = 0
 	var a1: int = 0
 	var a2: int = 0
@@ -762,10 +762,10 @@ func decode_attrtab() -> Def:
 			type_name = lookup_string(stab, type_off)
 			# meta.log_debug(0, "code " + str(code) + " unk1/2" + str(unk) + "_" + str(unk2) + " ident " + str(guid) + " name " + str(name) + " type_name " + str(type_name) + " flags " + str(flags) + " idx " + str(idx) + " off "+ str(type_off) + " size " + str(size) + " idx " + str(idx) + " name_off " + str(name_off))
 		else:
-			while unity4_nesting[-1] == 0:
-				unity4_nesting.pop_back()
-			unity4_nesting[-1] -= 1
-			level = len(unity4_nesting) - 1
+			while version4_nesting[-1] == 0:
+				version4_nesting.pop_back()
+			version4_nesting[-1] -= 1
+			level = len(version4_nesting) - 1
 			type_name = attrs_spb.read_str()
 			name = attrs_spb.read_str()
 			size = attrs_spb.get_u32()
@@ -775,7 +775,7 @@ func decode_attrtab() -> Def:
 			flags = attrs_spb.get_u32()
 			var nested_count: int = attrs_spb.get_u32()
 			if nested_count != 0:
-				unity4_nesting.push_back(nested_count)
+				version4_nesting.push_back(nested_count)
 				attr_cnt += nested_count
 		if size == 0xffffffff:
 			size = -1

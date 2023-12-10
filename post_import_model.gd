@@ -6,7 +6,7 @@ extends EditorScenePostImport
 
 const asset_database_class: GDScript = preload("./asset_database.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const unity_object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
 const unidot_utils_class = preload("./unidot_utils.gd")
 
 # Use this as an example script for writing your own custom post-import scripts. The function requires you pass a table
@@ -20,7 +20,7 @@ const unidot_utils_class = preload("./unidot_utils.gd")
 #   - '#BAKERY{"meshName":["Mesh1","Mesh2","Mesh3","Mesh4","Mesh5","Mesh6","Mesh7","Mesh8","Mesh9","Mesh10"],
 #              "padding":[239,59,202,202,202,202,94,94,94,94],"unwrapper":[0,0,0,0,0,0,0,0,0,0]}'
 
-var object_adapter = unity_object_adapter_class.new()
+var object_adapter = object_adapter_class.new()
 var unidot_utils = unidot_utils_class.new()
 var default_material: Material = null
 
@@ -45,8 +45,8 @@ class ParseState:
 	var skinned_parent_to_node: Dictionary = {}.duplicate()
 	var godot_sanitized_to_orig_remap: Dictionary = {}.duplicate()
 	var bone_map_dict: Dictionary
-	var external_objects_by_id: Dictionary = {}.duplicate()  # fileId -> UnityRef Array
-	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnityRef Array
+	var external_objects_by_id: Dictionary = {}.duplicate()  # fileId -> UnidotRef Array
+	var external_objects_by_type_name: Dictionary = {}.duplicate()  # type -> name -> UnidotRef Array
 	var material_to_texture_name: Dictionary = {}.duplicate()  # for Extract Legacy Materials / By Base Texture Name
 	var animation_to_take_name: Dictionary = {}.duplicate()
 
@@ -122,9 +122,9 @@ class ParseState:
 		if new_name_dupe_map.has(name_key):
 			old_style_name = old_style_name + " " + str(new_name_dupe_map[name_key])
 		new_name_dupe_map[name_key] = new_name_dupe_map.get(name_key, 0) + 1
-		if objtype_to_name_to_id.get(type, {}).has(old_style_name): # Pre-Unity 2019
+		if objtype_to_name_to_id.get(type, {}).has(old_style_name): # Pre-version 2019
 			return objtype_to_name_to_id.get(type, {}).get(old_style_name, 0)
-		elif use_new_names: # Post Unity 2019
+		elif use_new_names: # Post version 2019
 			var pathstr = name
 			if len(path) > 0:
 				pathstr = ""
@@ -133,7 +133,7 @@ class ParseState:
 						pathstr += "/"
 					pathstr += path[i]
 			return generate_object_hash(new_name_dupe_map, type, pathstr)
-		else: # Pre Unity 2019, not in map
+		else: # Pre version 2019, not in map
 			if type == "Animator":
 				return 9500000
 			var next_obj_id: int = objtype_to_next_id.get(type, object_adapter.to_utype(type) * 100000)
@@ -608,7 +608,7 @@ class ParseState:
 				if mat_name == "DefaultMaterial":
 					mat_name = "No Name"
 				if is_obj:
-					mat_name = default_obj_mesh_name + "Mat"  # unity seems to use this rule
+					mat_name = default_obj_mesh_name + "Mat"  # obj files seem to use this rule
 				if saved_materials_by_name.has(godot_mat_name):
 					mat = saved_materials_by_name.get(godot_mat_name)
 					if mat != null:
@@ -857,11 +857,11 @@ func _post_import(p_scene: Node) -> Object:
 			var obj_name: String = og_obj_name
 			var type: String = str(object_adapter.to_classname(fileId / 100000))
 			if obj_name.begins_with("//"):
-				# Not sure why, but Unity uses //RootNode
+				# Not sure why, but the root object always begin with //RootNode
 				# Maybe it indicates that the node will be hidden???
 				obj_name = ""
 			elif ps.is_obj:
-				obj_name = ps.default_obj_mesh_name  # Technically wrong in Unity 2019+. Should read the last "g objName" line before "f"
+				obj_name = ps.default_obj_mesh_name  # Technically wrong in version 2019+. Should read the last "g objName" line before "f"
 			if not ps.objtype_to_name_to_id.has(type):
 				ps.objtype_to_name_to_id[type] = {}.duplicate()
 				used_names_by_type[type] = {}.duplicate()
@@ -889,8 +889,8 @@ func _post_import(p_scene: Node) -> Object:
 	p_scene.name = source_file_path.get_file().get_basename()
 
 	if ps.is_dae:
-		# Basically, Godot implements up_axis by transforming mesh data. Unity implements it by transforming the root node.
-		# We are trying to mimick Unity, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
+		# Basically, Godot implements up_axis by transforming mesh data. However, assets expect only the root node
+		# to be transformed, so we rewrote the up_axis in the .dae in BaseModelHandler, and here we re-apply
 		# the up-axis to the root node. This workflow will break if user wishes to change this in Blender after import.
 		var up_axis: String = metaobj.internal_data.get("up_axis", "Y_UP")
 		# * ps.toplevel_node.transform)
@@ -904,7 +904,7 @@ func _post_import(p_scene: Node) -> Object:
 	var did_fold_root_transforms: bool = false
 	var tmp_old_toplevel: Node3D = ps.toplevel_node
 	if not ps.preserve_hierarchy and skinned_parents.get("", {}).is_empty():
-		# I determined this is done before hash calculation in Unity 2019+
+		# I determined this is done before hash calculation in version 2019+
 		# I did not test this on older versions, so I'm keeping the old order for those.
 		did_fold_root_transforms = ps.fold_root_transforms_into_only_child()
 	if not did_fold_root_transforms:

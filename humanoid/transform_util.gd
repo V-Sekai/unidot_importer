@@ -100,7 +100,7 @@ static func getMassT(humanPositions: Array[Vector3], humanRotations: Array[Quate
 		var axisLength := human_trait.bone_lengths[i] # m_AxesArray.m_Length
 		if m_HumanBoneMass:
 			#var centerT := Vector3(axisLength/2, 0, 0) # GUESS: mass-center at half bone length
-			#centerT = postQ_inverse.inverse() * centerT # Bring centerT from Unity coords to Godot coords
+			#centerT = postQ_inverse.inverse() * centerT # Bring centerT from source coords to Godot coords
 			var centerT := Vector3(0, axisLength/2, 0)
 			centerT = humanPositions[i] + humanRotations[i] * centerT
 			out += centerT * m_HumanBoneMass

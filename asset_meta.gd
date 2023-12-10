@@ -4,8 +4,8 @@
 @tool
 extends Resource
 
-const yaml_parser_class: GDScript = preload("./unity_object_parser.gd")
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const yaml_parser_class: GDScript = preload("./yaml_parser.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
 const bin_parser_class: GDScript = preload("./deresuteme/decode.gd")
 const unidot_utils_class: GDScript = preload("./unidot_utils.gd")
 var unidot_utils := unidot_utils_class.new()
@@ -49,7 +49,7 @@ var orig_path_short: String
 @export var guid: String = ""
 @export var importer_keys: Dictionary = {}
 @export var importer_type: String = ""
-var importer  # unity_object_adapter.UnityAssetImporter subclass
+var importer  # object_adapter.UnidotAssetImporter subclass
 # for .fbx, must use fileIDToRecycleName in meta.
 @export var internal_data: Dictionary = {}
 
@@ -107,7 +107,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 class ParsedAsset:
 	extends RefCounted
 	var local_id_alias: Dictionary = {}  # type*100000 + file_index*2 -> real fileId
-	var assets: Dictionary = {}  # int fileID -> unity_object_adapter.UnityObject
+	var assets: Dictionary = {}  # int fileID -> object_adapter.UnidotObject
 
 
 var parsed: ParsedAsset = null
@@ -461,9 +461,9 @@ func initialize(database: Resource):
 	self.prefab_fileid_to_utype = {}
 	self.prefab_type_to_fileids = {}
 	if self.importer_type == "":
-		self.importer = object_adapter.instantiate_unity_object(self, 0, 0, "AssetImporter")
+		self.importer = object_adapter.instantiate_unidot_object(self, 0, 0, "AssetImporter")
 	else:
-		self.importer = object_adapter.instantiate_unity_object(self, 0, 0, self.importer_type)
+		self.importer = object_adapter.instantiate_unidot_object(self, 0, 0, self.importer_type)
 	self.importer.keys = importer_keys
 
 
@@ -484,51 +484,51 @@ func lookup_meta_by_guid(target_guid: String) -> Resource:  # returns asset_meta
 	return found_meta
 
 
-func lookup_meta(unityref: Array) -> Resource:  # returns asset_meta type
-	if unityref.is_empty() or len(unityref) != 4:
-		log_fail(0, "UnityRef in wrong format: " + str(unityref), "ref", unityref)
+func lookup_meta(unidot_ref: Array) -> Resource:  # returns asset_meta type
+	if unidot_ref.is_empty() or len(unidot_ref) != 4:
+		log_fail(0, "UnidotRef in wrong format: " + str(unidot_ref), "ref", unidot_ref)
 		return null
-	# log_debug(0, "LOOKING UP: " + str(unityref) + " FROM " + guid + "/" + path)
-	var local_id: int = unityref[1]
+	# log_debug(0, "LOOKING UP: " + str(unidot_ref) + " FROM " + guid + "/" + path)
+	var local_id: int = unidot_ref[1]
 	if local_id == 0:
 		return null
 	var found_meta: Resource = self
-	if typeof(unityref[2]) != TYPE_NIL and unityref[2] != self.guid:
-		var target_guid: String = unityref[2]
+	if typeof(unidot_ref[2]) != TYPE_NIL and unidot_ref[2] != self.guid:
+		var target_guid: String = unidot_ref[2]
 		found_meta = lookup_meta_by_guid(target_guid)
 	return found_meta
 
 
-func lookup(unityref: Array, silent: bool = false) -> RefCounted:
-	var found_meta: Resource = lookup_meta(unityref)
+func lookup(unidot_ref: Array, silent: bool = false) -> RefCounted:
+	var found_meta: Resource = lookup_meta(unidot_ref)
 	if found_meta == null:
 		return null
-	var local_id: int = unityref[1]
+	var local_id: int = unidot_ref[1]
 	# Not implemented:
-	#var local_id: int = found_meta.local_id_alias.get(unityref.fileID, unityref.fileID)
+	#var local_id: int = found_meta.local_id_alias.get(unidot_ref.fileID, unidot_ref.fileID)
 	if found_meta.parsed == null:
 		if not silent:
-			log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")", "ref", unityref)
+			log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " was not yet parsed! from " + path + " (" + guid + ")", "ref", unidot_ref)
 		return null
 	var ret: RefCounted = found_meta.parsed.assets.get(local_id)
 	if ret == null:
 		if not silent:
-			log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")", "ref", unityref)
+			log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " is null! from " + path + " (" + guid + ")", "ref", unidot_ref)
 		return null
 	ret.meta = found_meta
 	return ret
 
 
-func lookup_or_instantiate(unityref: Array, type: String) -> RefCounted:
-	var found_object: RefCounted = lookup(unityref, true)
+func lookup_or_instantiate(unidot_ref: Array, type: String) -> RefCounted:
+	var found_object: RefCounted = lookup(unidot_ref, true)
 	if found_object != null:
 		#if found_object.type != type: # Too hard to verify because it could be a subclass.
-		#	log_warn(0, "lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type), "ref", unityref)
+		#	log_warn(0, "lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type), "ref", unidot_ref)
 		return found_object
-	var found_meta: Resource = lookup_meta(unityref)
+	var found_meta: Resource = lookup_meta(unidot_ref)
 	if found_meta == null:
 		return null
-	return object_adapter.instantiate_unity_object(found_meta, unityref[1], 0, type)
+	return object_adapter.instantiate_unidot_object(found_meta, unidot_ref[1], 0, type)
 
 
 func set_owner_rec(node: Node, owner: Node):
@@ -537,8 +537,8 @@ func set_owner_rec(node: Node, owner: Node):
 		set_owner_rec(n, owner)
 
 
-func get_godot_node(unityref: Array) -> Node:
-	var found_meta: Resource = lookup_meta(unityref)
+func get_godot_node(unidot_ref: Array) -> Node:
+	var found_meta: Resource = lookup_meta(unidot_ref)
 	if found_meta == null:
 		return null
 	var ps: Resource = load("res://" + found_meta.path)
@@ -547,17 +547,17 @@ func get_godot_node(unityref: Array) -> Node:
 	if ps is PackedScene:
 		var root_node: Node = ps.instantiate()
 		var node: Node = root_node
-		var local_id: int = unityref[1]
+		var local_id: int = unidot_ref[1]
 		if local_id == 100100000:
-			log_warn(0, "Looking up prefab " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
+			log_warn(0, "Looking up prefab " + str(unidot_ref) + " in loaded scene " + ps.resource_name, "ref", unidot_ref)
 			return node
 		var np: NodePath = found_meta.fileid_to_nodepath.get(local_id, found_meta.prefab_fileid_to_nodepath.get(local_id, NodePath()))
 		if np == NodePath():
-			log_fail(0, "Could not find node " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
+			log_fail(0, "Could not find node " + str(unidot_ref) + " in loaded scene " + ps.resource_name, "ref", unidot_ref)
 			return null
 		node = node.get_node(np)
 		if node == null:
-			log_fail(0, "Path " + str(np) + " was missing in " + str(unityref) + " in loaded scene " + ps.resource_name, "ref", unityref)
+			log_fail(0, "Path " + str(np) + " was missing in " + str(unidot_ref) + " in loaded scene " + ps.resource_name, "ref", unidot_ref)
 			return null
 		if node is Skeleton3D:
 			var bone_to_reroot: String = found_meta.fileid_to_skeleton_bone.get(local_id, found_meta.prefab_fileid_to_skeleton_bone.get(local_id, ""))
@@ -601,16 +601,16 @@ func get_godot_node(unityref: Array) -> Node:
 	return null
 
 
-func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
-	var found_meta: Resource = lookup_meta(unityref)
+func get_godot_resource(unidot_ref: Array, silent: bool = false) -> Resource:
+	var found_meta: Resource = lookup_meta(unidot_ref)
 	if found_meta == null:
-		if len(unityref) == 4 and unityref[1] != 0:
-			var found_path: String = get_database().guid_to_path.get(unityref[2], "")
+		if len(unidot_ref) == 4 and unidot_ref[1] != 0:
+			var found_path: String = get_database().guid_to_path.get(unidot_ref[2], "")
 			if not silent:
-				log_warn(0, "Resource with no meta. Try blindly loading it: " + str(unityref) + "/" + found_path, "ref", unityref)
+				log_warn(0, "Resource with no meta. Try blindly loading it: " + str(unidot_ref) + "/" + found_path, "ref", unidot_ref)
 			return load("res://" + found_path)
 		return null
-	var local_id: int = unityref[1]
+	var local_id: int = unidot_ref[1]
 	# log_debug(0, "guid:" + str(found_meta.guid) +" path:" + str(found_meta.path) + " main_obj:" + str(found_meta.main_object_id) + " local_id:" + str(local_id))
 	if found_meta.fileid_to_nodepath.has(local_id) or found_meta.prefab_fileid_to_nodepath.has(local_id):
 		local_id = found_meta.main_object_id
@@ -624,7 +624,7 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 			return ret
 	if found_meta.parsed == null:
 		if not silent:
-			log_fail(0, "Failed to find Resource at " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + "! from " + path + " (" + guid + ")", "ref", unityref)
+			log_fail(0, "Failed to find Resource at " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + "! from " + path + " (" + guid + ")", "ref", unidot_ref)
 		return null
 	if found_meta.parsed != null and found_meta.parsed.assets.get(local_id) != null:
 		godot_resources[local_id] = null # prevent infinite recursion
@@ -647,7 +647,7 @@ func get_godot_resource(unityref: Array, silent: bool = false) -> Resource:
 			godot_resources[local_id] = res_path
 			return res
 	if not silent:
-		log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")", "ref", unityref)
+		log_fail(0, "Target ref " + found_meta.path + ":" + str(local_id) + " (" + found_meta.guid + ")" + " would need to dynamically create a godot resource! from " + path + " (" + guid + ")", "ref", unidot_ref)
 	#var res: Resource = found_meta.parsed.assets[local_id].create_godot_resource()
 	#found_meta.godot_resources[local_id] = res
 	#return res
@@ -779,7 +779,7 @@ func parse_asset(file: Object) -> ParsedAsset:
 	while true:
 		i += 1
 		var lin = file.get_line()
-		var output_obj = yaml_parser.parse_line(lin, self, false, object_adapter.instantiate_unity_object)
+		var output_obj = yaml_parser.parse_line(lin, self, false, object_adapter.instantiate_unidot_object)
 		if output_obj != null:
 			if not BLACKLISTED_OBJECT_TYPES.has(output_obj.type) and self.main_object_id == 0 and output_obj.fileID > 0 and (output_obj.keys.get("m_ObjectHideFlags", 0) & 1) == 0 and (output_obj.fileID % 100000 == 0 or output_obj.fileID < 1000000):
 				log_warn(output_obj.fileID, "We have no main_object_id but found a nice round number " + str(output_obj.fileID))
@@ -824,10 +824,10 @@ func override_instantiate_object(meta: Object, fileID: int, utype: int, type: St
 	if path.get_extension().to_lower() == "prefab":
 		type = "PrefabImporter"
 		utype = 0
-	if path.get_extension().to_lower() == "unity":
+	if path.get_extension().to_lower() == "scene":
 		type = "DefaultImporter"
 		utype = 0
-	return object_adapter.instantiate_unity_object(meta, fileID, utype, type)
+	return object_adapter.instantiate_unidot_object(meta, fileID, utype, type)
 
 
 func init_with_file(file: Object, path: String):
@@ -852,7 +852,7 @@ func init_with_file(file: Object, path: String):
 		i += 1
 		var lin = file.get_line()
 		var output_obj: RefCounted = yaml_parser.parse_line(lin, self, true, self.override_instantiate_object)
-		# unity_object_adapter.UnityObject
+		# object_adapter.UnidotObject
 		if output_obj != null:
 			log_debug(output_obj.fileID, "Finished parsing output_obj: " + str(output_obj) + "/" + str(output_obj.type))
 			self.importer_keys = output_obj.keys

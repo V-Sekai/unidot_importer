@@ -4,13 +4,13 @@
 @tool
 extends RefCounted
 
-const unitypackagefile: GDScript = preload("./unitypackagefile.gd")
+const package_file: GDScript = preload("./package_file.gd")
 const tarfile: GDScript = preload("./tarfile.gd")
 const import_worker_class: GDScript = preload("./import_worker.gd")
 const meta_worker_class: GDScript = preload("./meta_worker.gd")
-const asset_adapter_class: GDScript = preload("./unity_asset_adapter.gd")
+const asset_adapter_class: GDScript = preload("./asset_adapter.gd")
 const asset_database_class: GDScript = preload("./asset_database.gd")
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
@@ -96,7 +96,7 @@ var asset_scenes: Array = [].duplicate()
 
 var result_log_lineedit: TextEdit 
 
-var pkg: Object = null  # Type unitypackagefile, set in _selected_package
+var pkg: Object = null  # Type package_file, set in _selected_package
 
 func _resource_reimported(resources: PackedStringArray):
 	if import_finished or tree_dialog_state == STATE_DIALOG_SHOWING or tree_dialog_state == STATE_DONE_IMPORT:
@@ -376,7 +376,7 @@ func _cell_selected() -> void:
 
 			var needs_sort: bool
 			for child_ti in child_list:
-				var tw: unitypackagefile.UnityPackageAsset = child_ti.get_metadata(1)
+				var tw: package_file.PkgAsset = child_ti.get_metadata(1)
 				var start_idx = len(filtered_msgs)
 				if tw != null:
 					if not filtered_msgs.is_empty():
@@ -476,24 +476,24 @@ func _meta_completed(tw: Object):
 			if not dependency_guids_to_guid.has(guid):
 				dependency_guids_to_guid[guid] = {}
 			dependency_guids_to_guid[guid][pkgasset.guid] = dep_guids[guid]
-	ti.set_text(1, "Scene" if pkgasset.orig_pathname.to_lower().ends_with(".unity") else importer_type)
+	ti.set_text(1, "Scene" if pkgasset.orig_pathname.to_lower().ends_with(".scene") else importer_type)
 	var cls: String
 	if importer_type.begins_with("["):
 		cls = importer_type.substr(1, len(importer_type) - 2)
-		var tmp_instance = object_adapter.instantiate_unity_object(pkgasset.parsed_meta, 0, 0, cls)
+		var tmp_instance = object_adapter.instantiate_unidot_object(pkgasset.parsed_meta, 0, 0, cls)
 		cls = tmp_instance.get_godot_type()
 	else:
 		var tmp_importer = null
 		if pkgasset.parsed_meta != null:
 			tmp_importer = pkgasset.parsed_meta.importer
 		if tmp_importer == null:
-			tmp_importer = object_adapter.instantiate_unity_object(pkgasset.parsed_meta, 0, 0, importer_type + "Importer")
+			tmp_importer = object_adapter.instantiate_unidot_object(pkgasset.parsed_meta, 0, 0, importer_type + "Importer")
 		var main_object_id: int = tmp_importer.get_main_object_id()
 		if main_object_id == 1 or main_object_id == 100100000:
 			cls = "PackedScene"
 		else:
 			var utype: int = main_object_id / 100000
-			var tmp_instance = object_adapter.instantiate_unity_object_from_utype(pkgasset.parsed_meta, 0, utype)
+			var tmp_instance = object_adapter.instantiate_unidot_object_from_utype(pkgasset.parsed_meta, 0, utype)
 			cls = tmp_instance.get_godot_type()
 	var tooltip_cls: String = cls
 	if cls.begins_with("AnimationNode"):
@@ -516,7 +516,7 @@ func _meta_completed(tw: Object):
 	ti.set_custom_color(1, color)
 
 	var obj_type: String = tw.asset_main_object_type
-	if pkgasset.orig_pathname.to_lower().ends_with(".unity"):
+	if pkgasset.orig_pathname.to_lower().ends_with(".scene"):
 		obj_type = "Scene"
 	elif importer_type == "Model":
 		obj_type = "Model"
@@ -630,15 +630,15 @@ func _selected_package(p_path: String) -> void:
 	asset_database = asset_database_class.new().get_singleton()
 	print("Got here " + str(p_path))
 	if p_path.to_lower().ends_with(".unitypackage"):
-		pkg = unitypackagefile.new().init_with_filename(p_path)
+		pkg = package_file.new().init_with_filename(p_path)
 	elif p_path.to_lower().ends_with(".meta"):
 		if DirAccess.dir_exists_absolute(p_path.substr(0, len(p_path) - 5)):
-			pkg = unitypackagefile.new().init_with_asset_dir(p_path.substr(0, len(p_path) - 5))
+			pkg = package_file.new().init_with_asset_dir(p_path.substr(0, len(p_path) - 5))
 		else:
-			pkg = unitypackagefile.new().init_with_asset_dir(p_path.get_base_dir())
+			pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())
 	elif DirAccess.dir_exists_absolute(p_path):
 		print("It's a dir!! " + str(p_path))
-		pkg = unitypackagefile.new().init_with_asset_dir(p_path)
+		pkg = package_file.new().init_with_asset_dir(p_path)
 	#pkg.parse_all_meta(asset_database)
 	meta_worker.asset_database = asset_database
 	asset_database.clear_logs()
@@ -943,7 +943,7 @@ func _notification(what):
 
 
 func generate_sentinel_png_filename():
-	return "_unityimp_temp" + str(tree_dialog_state) + ("_retry" if retry_tex else "") + ".png"
+	return "_unidotimp_temp" + str(tree_dialog_state) + ("_retry" if retry_tex else "") + ".png"
 
 
 var _delay_tick: int = 0

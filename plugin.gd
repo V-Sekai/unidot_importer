@@ -48,7 +48,7 @@ func recursive_print_scene():
 
 
 func anim_import():
-	const uoa = preload("./unity_object_adapter.gd")
+	const uoa = preload("./object_adapter.gd")
 	for anim_tres in get_editor_interface().get_selected_paths():
 		var nod = get_editor_interface().get_selection().get_selected_nodes()[0] # as AnimationMixer
 		var anim_raw = ResourceLoader.load(anim_tres)
@@ -57,11 +57,11 @@ func anim_import():
 			if obj.ends_with(":AnimationClip"):
 				if nod != null:
 					nod.get_animation_library("").remove_animation(anim_raw.objects[obj]["m_Name"])
-				var ac = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, obj.split(":")[0].to_int(), 74)
+				var ac = uoa.new().instantiate_unidot_object_from_utype(anim_raw.meta, obj.split(":")[0].to_int(), 74)
 				ac.keys = anim_raw.objects[obj]
-				var animator = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 95)
-				#var animgo = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 1)
-				#var animtr = uoa.new().instantiate_unity_object_from_utype(anim_raw.meta, 1234, 4)
+				var animator = uoa.new().instantiate_unidot_object_from_utype(anim_raw.meta, 1234, 95)
+				#var animgo = uoa.new().instantiate_unidot_object_from_utype(anim_raw.meta, 1234, 1)
+				#var animtr = uoa.new().instantiate_unidot_object_from_utype(anim_raw.meta, 1234, 4)
 				var anim = ac.create_animation_clip_at_node(animator, null)
 				anim.take_over_path(anim_raw.meta.path)
 				ResourceSaver.save(anim, anim_raw.meta.path)

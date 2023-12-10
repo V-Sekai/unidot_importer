@@ -5,9 +5,9 @@
 extends Resource
 
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const object_adapter_class: GDScript = preload("./unity_object_adapter.gd")
+const object_adapter_class: GDScript = preload("./object_adapter.gd")
 
-const ASSET_DATABASE_PATH: String = "res://unity_asset_database.tres"
+const ASSET_DATABASE_PATH: String = "res://unidot_asset_database.res"
 
 var object_adapter = object_adapter_class.new()
 var in_package_import: bool = false
@@ -200,53 +200,53 @@ func preload_builtin_assets():
 	default_material_reference = StandardMaterial3D.new()
 	default_material_reference.resource_name = "Default-Material"
 
-	var unity_builtin = asset_meta_class.new()
-	unity_builtin.init_with_file(null, "Library/unity default resources")
-	unity_builtin.initialize(self)
-	unity_builtin.resource_name = unity_builtin.path
-	unity_builtin.guid = "0000000000000000e000000000000000"
-	guid_to_path[unity_builtin.guid] = unity_builtin.path
-	path_to_meta[unity_builtin.path] = unity_builtin
+	var unidot_builtin = asset_meta_class.new()
+	unidot_builtin.init_with_file(null, "Library/default resources")
+	unidot_builtin.initialize(self)
+	unidot_builtin.resource_name = unidot_builtin.path
+	unidot_builtin.guid = "0000000000000000e000000000000000"
+	guid_to_path[unidot_builtin.guid] = unidot_builtin.path
+	path_to_meta[unidot_builtin.path] = unidot_builtin
 
 	var stub = Resource.new()
-	unity_builtin.override_resource(10001, "SpotCookie", stub)  # Spot lights default attenuation
-	unity_builtin.override_resource(10100, "Font Material", StandardMaterial3D.new())  # GUI/Text Shader
-	unity_builtin.override_resource(10102, "Arial", stub)  # Arial (font)
+	unidot_builtin.override_resource(10001, "SpotCookie", stub)  # Spot lights default attenuation
+	unidot_builtin.override_resource(10100, "Font Material", StandardMaterial3D.new())  # GUI/Text Shader
+	unidot_builtin.override_resource(10102, "Arial", stub)  # Arial (font)
 	var cube: BoxMesh = BoxMesh.new()
 	cube.size = Vector3(1.0, 1.0, 1.0)
-	unity_builtin.override_resource(10202, "Cube", cube)
+	unidot_builtin.override_resource(10202, "Cube", cube)
 	var cylinder: CylinderMesh = CylinderMesh.new()
 	cylinder.top_radius = 0.5
 	cylinder.bottom_radius = 0.5
 	cylinder.height = 2.0
-	unity_builtin.override_resource(10206, "Cylinder", cylinder)
+	unidot_builtin.override_resource(10206, "Cylinder", cylinder)
 	var sphere: SphereMesh = SphereMesh.new()
 	sphere.radius = 0.5
 	sphere.height = 2.0 * sphere.radius
-	unity_builtin.override_resource(10207, "Sphere", sphere)
+	unidot_builtin.override_resource(10207, "Sphere", sphere)
 	var capsule: CapsuleMesh = CapsuleMesh.new()
 	capsule.radius = 0.5
-	unity_builtin.override_resource(10208, "Capsule", capsule)
+	unidot_builtin.override_resource(10208, "Capsule", capsule)
 	var plane: PlaneMesh = PlaneMesh.new()
 	plane.subdivide_depth = 10
 	plane.subdivide_width = 10
 	plane.size = Vector2(10.0, 10.0)
 	#mesh = ArrayMesh.new()
 	#mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, plane.surface_get_arrays(0), [], {})
-	unity_builtin.override_resource(10209, "Plane", plane)
+	unidot_builtin.override_resource(10209, "Plane", plane)
 	var quad_mesh: QuadMesh = QuadMesh.new()
 	quad_mesh.orientation = PlaneMesh.FACE_Z
 	quad_mesh.flip_faces = true
 	quad_mesh.size = Vector2(1.0, 1.0)
-	unity_builtin.override_resource(10210, "Quad", quad_mesh)
+	unidot_builtin.override_resource(10210, "Quad", quad_mesh)
 
-	var unity_extra = asset_meta_class.new()
-	unity_extra.init_with_file(null, "Resources/unity_builtin_extra")
-	unity_extra.initialize(self)
-	unity_extra.resource_name = unity_extra.path
-	unity_extra.guid = "0000000000000000f000000000000000"
-	guid_to_path[unity_extra.guid] = unity_extra.path
-	path_to_meta[unity_extra.path] = unity_extra
+	var unidot_extra = asset_meta_class.new()
+	unidot_extra.init_with_file(null, "Resources/builtin_extra")
+	unidot_extra.initialize(self)
+	unidot_extra.resource_name = unidot_extra.path
+	unidot_extra.guid = "0000000000000000f000000000000000"
+	guid_to_path[unidot_extra.guid] = unidot_extra.path
+	path_to_meta[unidot_extra.path] = unidot_extra
 
 	var default_skybox: ProceduralSkyMaterial = ProceduralSkyMaterial.new()
 	default_skybox.sky_top_color = Color(0.454902, 0.678431, 0.87451, 1)
@@ -255,11 +255,11 @@ func preload_builtin_assets():
 	default_skybox.ground_bottom_color = Color(0.454902, 0.470588, 0.490196, 1)
 	default_skybox.ground_horizon_color = Color(1, 1, 1, 1)
 
-	unity_extra.override_resource(10905, "UISprite", stub)
-	unity_extra.override_resource(10302, "Default-Diffuse", default_material_reference)  # Legacy Shaders/Diffuse
-	unity_extra.override_resource(10303, "Default-Material", default_material_reference)  # Standard
-	unity_extra.override_resource(10304, "Default-Skybox", default_skybox)  # Skybox/Procedural
-	unity_extra.override_resource(10306, "Default-Line", default_material_reference)  # Particles/Alpha Blended
-	unity_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new())  # Particles/Standard Unlit
-	unity_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new())  # Sprites/Default
-	unity_extra.override_resource(10758, "Sprites-Mask", StandardMaterial3D.new())  # Sprites/Mask
+	unidot_extra.override_resource(10905, "UISprite", stub)
+	unidot_extra.override_resource(10302, "Default-Diffuse", default_material_reference)  # Legacy Shaders/Diffuse
+	unidot_extra.override_resource(10303, "Default-Material", default_material_reference)  # Standard
+	unidot_extra.override_resource(10304, "Default-Skybox", default_skybox)  # Skybox/Procedural
+	unidot_extra.override_resource(10306, "Default-Line", default_material_reference)  # Particles/Alpha Blended
+	unidot_extra.override_resource(10308, "Default-ParticleSystem", StandardMaterial3D.new())  # Particles/Standard Unlit
+	unidot_extra.override_resource(10754, "Sprites-Default", StandardMaterial3D.new())  # Sprites/Default
+	unidot_extra.override_resource(10758, "Sprites-Mask", StandardMaterial3D.new())  # Sprites/Mask
