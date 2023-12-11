@@ -1436,6 +1436,9 @@ class FbxHandler:
 				if channel.get("target", {}).get("node", -1) > node_idx:
 					channel["target"]["node"] -= 1
 
+	func encode_uri_components(path: String):
+		return path.replace("%", "%25").replace("+", "%2B")
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		var user_path_base: String = OS.get_user_data_dir()
 		pkgasset.log_debug("I am an FBX " + str(path))
@@ -1527,7 +1530,7 @@ class FbxHandler:
 		if SHOULD_CONVERT_TO_GLB:
 			json["buffers"][0].erase("uri")
 		else:
-			json["buffers"][0]["uri"] = bin_output_path.get_file()
+			json["buffers"][0]["uri"] = encode_uri_components(bin_output_path.get_file())
 		if json.has("images"):
 			for img in json["images"]:
 				var img_name: String = img.get("name")
@@ -1542,7 +1545,7 @@ class FbxHandler:
 						img_uri = unique_texture_map.get(img_name)
 						img_name = img_uri
 				img_uri = img_uri.get_basename() + "." + img_uri.get_extension().to_lower()
-				img["uri"] = img_uri
+				img["uri"] = encode_uri_components(img_uri)
 				img["name"] = img_name.get_file().get_basename()
 		if json.has("materials"):
 			var material_to_texture_name = {}.duplicate()
