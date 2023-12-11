@@ -36,6 +36,7 @@ var object_adapter = object_adapter_class.new()
 var main_dialog: AcceptDialog = null
 var file_dialog: EditorFileDialog = null
 var main_dialog_tree: Tree = null
+var hide_button: Button
 
 var base_control: Control
 var spinner_icon: AnimatedTexture = null
@@ -81,6 +82,7 @@ var global_logs_tree_item: TreeItem
 var select_by_type_tree_item: TreeItem
 var select_by_type_items: Dictionary # String -> TreeItem
 
+var asset_work_written_last_stage: int = 0
 var asset_work_waiting_write: Array = [].duplicate()
 var asset_work_waiting_scan: Array = [].duplicate()
 var asset_work_currently_importing: Array = [].duplicate()
@@ -844,7 +846,7 @@ func _show_importer_common() -> void:
 	main_dialog.ok_button_text = "        Start Import        "
 	main_dialog.confirmed.connect(self._asset_tree_window_confirmed)
 	# "cancelled" ????
-	var hide_button: Button = main_dialog.add_cancel_button("            Hide            ")
+	hide_button = main_dialog.add_cancel_button("          Cancel          ")
 	auto_hide_checkbox = CheckBox.new()
 	auto_hide_checkbox.text = "Hide when complete"
 	auto_hide_checkbox.button_pressed = true
@@ -965,11 +967,14 @@ func on_import_fully_completed():
 	else:
 		ei.save_scene()
 	var editor_filesystem: EditorFileSystem = ei.get_resource_filesystem()
+	hide_button.text = "            Close            "
+	auto_hide_checkbox.hide()
 	editor_filesystem.scan()
 	import_finished = true
 	if not _keep_open_on_import:
 		if main_dialog:
 			main_dialog.hide()
+	ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
 
 
 func update_task_color(tw: RefCounted):
@@ -1049,13 +1054,16 @@ func do_import_step():
 
 	asset_database.log_debug([null, 0, "", 0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
 	while len(asset_work_waiting_scan) == 0 and len(asset_work_waiting_write) == 0:
-		#asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Trying to scan more things: state=" + str(tree_dialog_state))
+		if asset_work_written_last_stage > 10:
+			asset_database.save()
+		asset_work_written_last_stage = 0
 		if tree_dialog_state == STATE_PREPROCESSING:
 			update_progress_bar(10)
 			tree_dialog_state = STATE_TEXTURES
 			for tw in asset_textures:
 				asset_work_waiting_write.append(tw)
+			asset_work_written_last_stage = len(asset_work_waiting_write)
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " textures, animations and audio..."
 			asset_work_waiting_write.reverse()
 			asset_textures = [].duplicate()
@@ -1066,6 +1074,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_MATERIALS_AND_ASSETS
 			for tw in asset_materials_and_other:
 				asset_work_waiting_write.append(tw)
+			asset_work_written_last_stage = len(asset_work_waiting_write)
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " materials..."
 			asset_work_waiting_write.reverse()
 			asset_materials_and_other = [].duplicate()
@@ -1074,6 +1083,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_MODELS
 			for tw in asset_models:
 				asset_work_waiting_write.append(tw)
+			asset_work_written_last_stage = len(asset_work_waiting_write)
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " models..."
 			asset_work_waiting_write.reverse()
 			asset_models = [].duplicate()
@@ -1105,6 +1115,7 @@ func do_import_step():
 			for meta in toposorted:
 				if guid_to_tw.has(meta.guid):
 					asset_work_waiting_write.append(guid_to_tw.get(meta.guid))
+			asset_work_written_last_stage = len(asset_work_waiting_write)
 			asset_work_waiting_write.reverse()
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " prefabs..."
 			asset_prefabs = [].duplicate()
@@ -1113,6 +1124,7 @@ func do_import_step():
 			tree_dialog_state = STATE_IMPORTING_SCENES
 			for tw in asset_scenes:
 				asset_work_waiting_write.append(tw)
+			asset_work_written_last_stage = len(asset_work_waiting_write)
 			status_bar.text = "Importing " + str(len(asset_work_waiting_write)) + " scenes..."
 			asset_work_waiting_write.reverse()
 			asset_scenes = [].duplicate()
@@ -1484,6 +1496,11 @@ func _preprocess_wait_tick():
 
 
 func _asset_tree_window_confirmed():
+	hide_button.text = "            Hide            "
+	if ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb") != 1022:
+		asset_database.orig_max_size_mb = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
+		if asset_database.orig_max_size_mb < 1022:
+			ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", 1022)
 	main_dialog_tree.columns = 5
 	#main_dialog_tree.set_column_title(2, "\u26a0") # Warning emoji
 	#main_dialog_tree.set_column_title(3, "\u26d4") # Error emoji

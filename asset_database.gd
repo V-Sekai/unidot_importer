@@ -29,6 +29,7 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var truncated_material_reference: Material = null
 @export var null_material_reference: Material = null
 @export var default_material_reference: Material = null
+var orig_max_size_mb: int = 1022
 
 
 const ENABLE_CONSOLE_DEBUGGING : bool = false
