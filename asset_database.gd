@@ -241,7 +241,12 @@ func preload_builtin_assets():
 	quad_mesh.orientation = PlaneMesh.FACE_Z
 	quad_mesh.flip_faces = true
 	quad_mesh.size = Vector2(1.0, 1.0)
-	unidot_builtin.override_resource(10210, "Quad", quad_mesh)
+	var quad_arrays: Array = quad_mesh.surface_get_arrays(0)
+	for i in range(len(quad_arrays[Mesh.ARRAY_TEX_UV])):
+		quad_arrays[Mesh.ARRAY_TEX_UV][i].x = 1 - quad_arrays[Mesh.ARRAY_TEX_UV][i].x
+	var quad_final: ArrayMesh = ArrayMesh.new()
+	quad_final.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad_arrays, [], {})
+	unidot_builtin.override_resource(10210, "Quad", quad_final)
 
 	var unidot_extra = asset_meta_class.new()
 	unidot_extra.init_with_file(null, "Resources/builtin_extra")
