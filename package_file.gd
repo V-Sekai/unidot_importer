@@ -306,6 +306,9 @@ func read_guid_from_meta_file(sf: Object) -> String:# e.g. stringfile
 
 func init_with_asset_dir(source_file: String):
 	var dirlist: DirAccess = DirAccess.open(source_file)
+	var common_parent_dir := dirlist.get_current_dir().replace("\\", "/")
+	if common_parent_dir.contains("/Assets/"):
+		common_parent_dir = common_parent_dir.get_slice("/Assets/", 0)
 	var meta_filenames: Array[String]
 	get_all_files(source_file, "meta", meta_filenames)
 	var valid_filenames: Array[String] = []
@@ -319,7 +322,7 @@ func init_with_asset_dir(source_file: String):
 	var guids_to_remove = [].duplicate()
 	for fn in valid_filenames:
 		var meta_fn = fn + ".meta"
-		var relative_pathname: String = source_file.get_file().path_join(fn.substr(len(dirlist.get_current_dir())).lstrip("/\\"))
+		var relative_pathname: String = fn.substr(len(common_parent_dir)).lstrip("/\\")
 		var ext = relative_pathname.get_extension().to_lower()
 		if not ext.is_empty():
 			if ext.begins_with("uni") and len(ext) <= 6: # Unidot scenes
