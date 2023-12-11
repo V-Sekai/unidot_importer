@@ -229,6 +229,10 @@ func fixup_godot_extension(godot_extn: String) -> String:
 	return godot_extn
 
 
+func is_silhouette_fix_disabled() -> bool:
+	return log_database_holder.database.debug_disable_silhouette_fix
+
+
 func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 	for target_guid in meta.prefab_dependency_guids:
 		if not tt.visited.has(target_guid):

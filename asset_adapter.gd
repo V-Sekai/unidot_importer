@@ -1682,7 +1682,7 @@ class FbxHandler:
 					if json["nodes"][hip_parent_node_idx].has("translation"):
 						json["nodes"][hip_parent_node_idx].erase("translation")
 					hip_parent_node_idx = node_parents.get(hip_parent_node_idx, -1)
-			else:
+			elif not pkgasset.parsed_meta.is_silhouette_fix_disabled():
 				bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
 				for node in json["nodes"]:
 					var node_name: String = node.get("name", "")

@@ -76,6 +76,7 @@ var save_text_scenes: CheckBox
 var skip_reimport_models_checkbox: CheckBox = null
 var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
+var debug_disable_silhouette_fix_checkbox: CheckBox
 
 var progress_bar : ProgressBar
 var status_bar : Label
@@ -665,6 +666,8 @@ func _selected_package(p_path: String) -> void:
 	enable_unidot_keys_checkbox.toggled.connect(self._enable_unidot_keys_changed)
 	add_unsupported_components_checkbox = _add_checkbox_option(options_vbox, "Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
 	add_unsupported_components_checkbox.toggled.connect(self._add_unsupported_components_changed)
+	debug_disable_silhouette_fix_checkbox = _add_checkbox_option(options_vbox, "Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
+	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
@@ -847,6 +850,9 @@ func _enable_unidot_keys_changed(val: bool):
 
 func _add_unsupported_components_changed(val: bool):
 	asset_database.add_unsupported_components = val
+
+func _debug_disable_silhouette_fix_changed(val: bool):
+	asset_database.debug_disable_silhouette_fix = val
 
 
 func _show_importer_common() -> void:

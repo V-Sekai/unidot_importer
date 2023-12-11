@@ -756,6 +756,24 @@ static func silhouette_fix_gltf(json: Dictionary, bone_map: BoneMap, p_threshold
 		gltf_matrix_to_trs(json["nodes"][node_idx]) # Convert glTF matrix format to TRS.
 		gltf_to_skel_bone(json["nodes"][node_idx], src_skeleton, node_idx)
 
+	# Now fix translation offsets:
+	var hips_src_idx: int = src_skeleton.find_bone("Hips")
+	if hips_src_idx != -1:
+		var hips_global_origin := src_skeleton.get_bone_global_rest(hips_src_idx).origin
+		var hips_parent_basis := Basis.IDENTITY
+		var src_idx := src_skeleton.get_bone_parent(hips_src_idx)
+		while src_idx != -1:
+			if json["nodes"][src_idx].has("translation"):
+				json["nodes"][src_idx].erase("translation")
+			hips_parent_basis = src_skeleton.get_bone_pose(src_idx).basis * hips_parent_basis
+			src_skeleton.set_bone_pose_position(src_idx, Vector3.ZERO)
+			src_skeleton.set_bone_rest(src_idx, src_skeleton.get_bone_pose(src_idx))
+			src_idx = src_skeleton.get_bone_parent(src_idx)
+		var new_hips_origin := hips_parent_basis.inverse() * Vector3(0, hips_global_origin.y, 0)
+		json["nodes"][hips_src_idx]["translation"] = [new_hips_origin.x, new_hips_origin.y, new_hips_origin.z]
+		src_skeleton.set_bone_pose_position(hips_src_idx, new_hips_origin)
+		src_skeleton.set_bone_rest(hips_src_idx, src_skeleton.get_bone_pose(hips_src_idx))
+
 	var bones_to_process: PackedInt32Array
 	bones_to_process.append_array(prof_skeleton.get_parentless_bones())
 	process_i = 0
@@ -844,19 +862,6 @@ static func silhouette_fix_gltf(json: Dictionary, bone_map: BoneMap, p_threshold
 			var quat := src_skeleton.get_bone_pose_rotation(src_idx)
 			# Update glTF JSON
 			json["nodes"][src_idx]["rotation"] = [quat.x, quat.y, quat.z, quat.w]
-	# Now fix translation offsets:
-	var hips_src_idx: int = src_skeleton.find_bone("Hips")
-	if hips_src_idx != -1:
-		var hips_global_origin := src_skeleton.get_bone_global_rest(hips_src_idx).origin
-		var hips_parent_basis := Basis.IDENTITY
-		var src_idx := src_skeleton.get_bone_parent(hips_src_idx)
-		while src_idx != -1:
-			if json["nodes"][src_idx].has("translation"):
-				json["nodes"][src_idx].erase("translation")
-			hips_parent_basis = src_skeleton.get_bone_pose(src_idx).basis * hips_parent_basis
-			src_idx = src_skeleton.get_bone_parent(src_idx)
-		var new_hips_origin := hips_parent_basis.inverse() * Vector3(0, hips_global_origin.y, 0)
-		json["nodes"][hips_src_idx]["translation"] = [new_hips_origin.x, new_hips_origin.y, new_hips_origin.z]
 	# Never added into the tree, so free them.
 	src_skeleton.free()
 	prof_skeleton.free()
