@@ -68,11 +68,15 @@ var _currently_preprocessing_assets: int = 0
 var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
+
 var auto_hide_checkbox: CheckBox
 var dont_auto_select_dependencies_checkbox: CheckBox
 var save_text_resources: CheckBox
 var save_text_scenes: CheckBox
 var skip_reimport_models_checkbox: CheckBox = null
+var enable_unidot_keys_checkbox: CheckBox
+var add_unsupported_components_checkbox: CheckBox
+
 var progress_bar : ProgressBar
 var status_bar : Label
 var options_vbox : VBoxContainer
@@ -639,10 +643,7 @@ func _selected_package(p_path: String) -> void:
 	if p_path.to_lower().ends_with(".unitypackage"):
 		pkg = package_file.new().init_with_filename(p_path)
 	elif p_path.to_lower().ends_with(".meta"):
-		if DirAccess.dir_exists_absolute(p_path.substr(0, len(p_path) - 5)):
-			pkg = package_file.new().init_with_asset_dir(p_path.substr(0, len(p_path) - 5))
-		else:
-			pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())
+		pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())
 	elif DirAccess.dir_exists_absolute(p_path):
 		print("It's a dir!! " + str(p_path))
 		pkg = package_file.new().init_with_asset_dir(p_path)
@@ -660,6 +661,10 @@ func _selected_package(p_path: String) -> void:
 	save_text_scenes.toggled.connect(self._save_text_scenes_changed)
 	skip_reimport_models_checkbox = _add_checkbox_option(options_vbox, "Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
 	skip_reimport_models_checkbox.toggled.connect(self._skip_reimport_models_checkbox_changed)
+	enable_unidot_keys_checkbox = _add_checkbox_option(options_vbox, "Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
+	enable_unidot_keys_checkbox.toggled.connect(self._enable_unidot_keys_changed)
+	add_unsupported_components_checkbox = _add_checkbox_option(options_vbox, "Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
+	add_unsupported_components_checkbox.toggled.connect(self._add_unsupported_components_changed)
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
@@ -836,6 +841,12 @@ func _dont_auto_select_dependencies_checkbox_changed(val: bool):
 
 func _skip_reimport_models_checkbox_changed(val: bool):
 	asset_database.skip_reimport_models = val
+
+func _enable_unidot_keys_changed(val: bool):
+	asset_database.enable_unidot_keys = val
+
+func _add_unsupported_components_changed(val: bool):
+	asset_database.add_unsupported_components = val
 
 
 func _show_importer_common() -> void:

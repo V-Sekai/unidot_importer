@@ -18,6 +18,8 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var use_text_scenes: bool = false
 @export var auto_select_dependencies: bool = false
 @export var skip_reimport_models: bool = true
+@export var enable_unidot_keys: bool = false
+@export var add_unsupported_components: bool = false
 
 @export var global_log_count: int = 0
 

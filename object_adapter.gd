@@ -215,7 +215,8 @@ class UnidotObject:
 
 	func assign_object_meta(ret: Object) -> void:
 		if ret != null:
-			ret.set_meta("unidot_keys", self.keys)
+			if meta.get_database().enable_unidot_keys:
+				ret.set_meta("unidot_keys", self.keys)
 
 	func configure_skeleton_bone(skel: Skeleton3D, bone_name: String):
 		configure_skeleton_bone_props(skel, bone_name, self.keys)
@@ -4779,11 +4780,14 @@ class UnidotComponent:
 		return "Node"
 
 	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		if not meta.get_database().add_unsupported_components:
+			return null
 		var new_node: Node = Node.new()
 		new_node.name = type
 		state.add_child(new_node, new_parent, self)
 		assign_object_meta(new_node)
-		new_node.editor_description = str(self)
+		if meta.get_database().enable_unidot_keys:
+			new_node.editor_description = str(self)
 		return new_node
 
 	func get_gameObject() -> UnidotGameObject:
@@ -5447,7 +5451,8 @@ class UnidotMeshRenderer:
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, self)
 		assign_object_meta(new_node)
-		new_node.editor_description = str(self)
+		if meta.get_database().enable_unidot_keys:
+			new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(self.get_mesh())
 
 		if is_stripped or gameObject.is_stripped:
@@ -5645,7 +5650,8 @@ class UnidotCloth:
 		new_node.name = component_name
 		state.add_child(new_node, new_parent, smr)
 		state.add_fileID(new_node, self)
-		new_node.editor_description = str(self)
+		if meta.get_database().enable_unidot_keys:
+			new_node.editor_description = str(self)
 		new_node.mesh = meta.get_godot_resource(mesh)
 		new_node.ray_pickable = false
 		new_node.linear_stiffness = self.linear_stiffness
