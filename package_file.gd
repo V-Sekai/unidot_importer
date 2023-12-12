@@ -302,10 +302,10 @@ func read_guid_from_meta_file(sf: Object) -> String:# e.g. stringfile
 func init_with_asset_dir(source_file: String):
 	var dirlist: DirAccess = DirAccess.open(source_file)
 	var common_parent_dir := dirlist.get_current_dir().replace("\\", "/")
-	if common_parent_dir.ends_with("/Assets"):
-		common_parent_dir = common_parent_dir.substr(0, len(common_parent_dir) - 7)
 	if common_parent_dir.contains("/Assets/"):
 		common_parent_dir = common_parent_dir.get_slice("/Assets/", 0)
+	else:
+		common_parent_dir = common_parent_dir.get_base_dir()
 	var meta_filenames: Array[String]
 	get_all_files(source_file, "meta", meta_filenames)
 	var valid_filenames: Array[String] = []
