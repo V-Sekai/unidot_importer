@@ -77,6 +77,7 @@ var skip_reimport_models_checkbox: CheckBox = null
 var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
+var force_humanoid_checkbox: CheckBox
 
 var progress_bar : ProgressBar
 var status_bar : Label
@@ -668,6 +669,8 @@ func _selected_package(p_path: String) -> void:
 	add_unsupported_components_checkbox.toggled.connect(self._add_unsupported_components_changed)
 	debug_disable_silhouette_fix_checkbox = _add_checkbox_option(options_vbox, "Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
 	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
+	force_humanoid_checkbox = _add_checkbox_option(options_vbox, "Force humanoid import of all FBX", true if asset_database.force_humanoid else false)
+	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
@@ -853,6 +856,9 @@ func _add_unsupported_components_changed(val: bool):
 
 func _debug_disable_silhouette_fix_changed(val: bool):
 	asset_database.debug_disable_silhouette_fix = val
+
+func _force_humanoid_changed(val: bool):
+	asset_database.force_humanoid = val
 
 
 func _show_importer_common() -> void:

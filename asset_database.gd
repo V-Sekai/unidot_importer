@@ -21,6 +21,7 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var enable_unidot_keys: bool = false
 @export var add_unsupported_components: bool = false
 @export var debug_disable_silhouette_fix: bool = false
+@export var force_humanoid: bool = false
 
 @export var global_log_count: int = 0
 

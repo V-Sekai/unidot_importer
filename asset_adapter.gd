@@ -617,7 +617,8 @@ class BaseModelHandler:
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
 		cfile.set_value_compare("params", "meshes/light_baking", importer.meshes_light_baking)
-		cfile.set_value_compare("params", "meshes/ensure_tangents", importer.ensure_tangents)
+		# A bug exists in Godot 4.2 stable if meshes with blendshapes are imported without tangents. We should always generate them.
+		cfile.set_value_compare("params", "meshes/ensure_tangents", 1) # importer.ensure_tangents)
 		cfile.set_value_compare("params", "meshes/create_shadow_meshes", false)  # Until visual artifacts with shadow meshes get fixed
 		cfile.set_value_compare("params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value_compare("params", "nodes/apply_root_scale", true)
@@ -1564,10 +1565,10 @@ class FbxHandler:
 		var original_rotations: Dictionary = {} # name -> Quaternion
 		var orig_hip_position: Vector3
 		var human_skin_nodes: Array = []
-		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3
+		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid()
 		var bone_map_dict: Dictionary
 		var copy_avatar: bool = false
-		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
+		if is_humanoid and json.has("nodes") and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
 			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
 				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
 				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
