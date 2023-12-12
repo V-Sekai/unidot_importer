@@ -6,7 +6,7 @@
 [subrepo]
 	remote = https://github.com/V-Sekai/unidot_importer
 	branch = main
-	commit = 3bf51edb7a5fb6d39f74c6b1f5debb0dfce2a419
-	parent = 01ffaa98acb6ba61555bc09773188c0e6047af91
+	commit = 0b86d38e8d666d264adcdbb68cf24e04cb9b5205
+	parent = 2c73fc7b1094c17a198b367d6d506fd952ba8032
 	method = merge
 	cmdver = 0.4.6
