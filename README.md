@@ -42,6 +42,8 @@ Due to pre-caching of assets in memory, it is okay if some data is swapped to di
 4. To add TIFF / .tif and PSD / .psd support, install [ImageMagick](https://imagemagick.org/) or [GraphicsMagick](http://www.graphicsmagick.org/) into your system path or copy convert.exe into this addon directory.
 5. Access the importer through `Project -> Tools -> Import .unitypackage...` and select a package or an asset folder
 
+![Screenshot showing FBX2glTF in Editor Settings, and enabling the plugin in Project Settings](./unidot_instructions.png)
+
 Read more at our [documentation site](https://docs.unidotengine.org).
 
 ## Features
@@ -151,3 +153,5 @@ Special Thanks to
 * And quite a number of others who provided test assets or testing.
 * The [V-Sekai community](https://github.com/V-Sekai) for all your support.
 * The [V-Sekai team](https://v-sekai.org) for contributions and inspiration.
+
+![Screenshot showing an import dialog open with a scene underneath](./unidot_example.jpg)
