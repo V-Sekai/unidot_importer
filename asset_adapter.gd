@@ -183,12 +183,15 @@ class ImageHandler:
 			outfile = null
 			var stdout: Array = [].duplicate()
 			var d = DirAccess.open("res://")
-			var addon_path: String = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
-			if addon_path.begins_with("res://"):
-				if not d.file_exists(addon_path):
-					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
-					return ""
-				addon_path = addon_path.substr(6)
+			var addon_path: String = "convert" # ImageMagick installed system-wide.
+			if OS.get_name() == "Windows":
+				addon_path = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
+				if addon_path.begins_with("res://"):
+					if not d.file_exists(addon_path):
+						pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
+						return ""
+					if OS.get_name() == "Windows":
+						addon_path = "convert.exe"
 			var ret = OS.execute(addon_path, [temp_output_path.get_basename() + ext, temp_output_path], stdout)
 			d.remove(temp_output_path.get_basename() + ext)
 			var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
