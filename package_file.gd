@@ -114,7 +114,7 @@ func external_tar_with_filename(source_file: String):
 		out_lines = stdout[0].split("\n")
 	var guids_to_remove = [].duplicate()
 	for line in out_lines:
-		var fnparts: Array = line.trim_prefix("x").strip_edges().split("/")
+		var fnparts: Array = line.trim_prefix("x").strip_edges().trim_prefix("./").split("/")
 		# x ./1234abcd0000ffff/
 		# x ./1234abcd0000ffff/preview.png
 		# x ./1234abcd0000ffff/asset
@@ -124,11 +124,6 @@ func external_tar_with_filename(source_file: String):
 			continue
 		var guid: String = fnparts[0]
 		var type_part: String = fnparts[1]
-		if fnparts[0] == ".":
-			if len(fnparts) < 3:
-				continue
-			guid = fnparts[1]
-			type_part = fnparts[2]
 		if len(guid) != 32:
 			push_error("Invalid member of .unitypackage: " + str(fnparts))
 			continue
