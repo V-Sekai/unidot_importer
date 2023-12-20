@@ -1664,7 +1664,7 @@ class UnidotAnimatorController:
 		var trans = AnimationNodeStateMachineTransition.new()
 		# During 4.0 beta, xfade_time > 0 sometimes causes hung machines
 		# TODO: We need to check if this is still true?
-		trans.xfade_time = transition_obj.keys["m_TransitionDuration"]
+		trans.xfade_time = float(transition_obj.keys.get("m_TransitionDuration", 0))
 		# Godot does not currently support exit time. transition_obj.keys["m_ExitTime"]
 		if transition_obj.keys["m_HasExitTime"] and transition_obj.keys["m_ExitTime"] > 0.0001:
 			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
@@ -6372,7 +6372,7 @@ class UnidotAssetImporter:
 			var type_key: String = type_str.split(":")[-1]
 			var key: Variant = srcAssetIdent.get("first", {}).get("name", "")  # FIXME: Returns null sometimes????
 			var val: Array = srcAssetIdent.get("second", [null, 0, "", null])  # UnidotRef
-			if typeof(key) != TYPE_NIL and not key.is_empty() and type_str.begins_with("UnidotEngine"):
+			if typeof(key) != TYPE_NIL and not key.is_empty():
 				if not eo.has(type_key):
 					eo[type_key] = {}.duplicate()
 				eo[type_key][key] = val
