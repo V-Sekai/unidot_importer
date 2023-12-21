@@ -1000,7 +1000,7 @@ class UnidotMaterial:
 					log_debug("Already existing roughness " + str(roughness_filename))
 				var col: Color
 				for x in range(image.get_width()):
-					for y in range(image.get_width()):
+					for y in range(image.get_height()):
 						col = image.get_pixel(x, y)
 						col.a = 1.0 - glossiness_value * col.a
 						image.set_pixel(x, y, col)
@@ -6075,7 +6075,7 @@ class UnidotReflectionProbe:
 			outdict["position"] = uprops.get("m_BoxOffset")
 			outdict["origin_offset"] = -uprops.get("m_BoxOffset")
 		if uprops.has("m_BoxSize"):
-			outdict["extents"] = uprops.get("m_BoxSize")
+			outdict["size"] = uprops.get("m_BoxSize")
 		if uprops.has("m_CullingMask"):
 			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
 		elif uprops.has("m_CullingMask.m_Bits"):
