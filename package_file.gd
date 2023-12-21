@@ -262,6 +262,7 @@ func init_with_filename(source_file: String):
 func get_all_files(path: String, file_ext: String, files: Array[String]):
 	# Based on https://gist.github.com/hiulit/772b8784436898fd7f942750ad99e33e by hiulit
 	var dir = DirAccess.open(path)
+	dir.include_hidden = true
 	if dir != null:
 		dir.list_dir_begin()
 		var file_name = dir.get_next()

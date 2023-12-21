@@ -790,6 +790,7 @@ func show_reimport() -> void:
 func show_importer() -> void:
 	file_dialog = EditorFileDialog.new()
 	file_dialog.add_filter("*.unitypackage, *.meta", "Asset packages or file")
+	file_dialog.show_hidden_files = true
 	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_ANY
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
