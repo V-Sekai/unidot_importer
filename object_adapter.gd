@@ -2903,7 +2903,7 @@ class UnidotAnimationClip:
 						anim.position_track_insert_key(gd_track_root_pos, ts, root_pos_offset)
 					anim.position_track_insert_key(gd_track_pos, ts, hips_pos - root_pos_offset)
 					last_ts = ts
-		for track in keys["m_PositionCurves"]:
+		for track in keys.get("m_PositionCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2928,7 +2928,7 @@ class UnidotAnimationClip:
 					log_debug("Spine " + str(ts) + " value " + str(value) + " -> " + str(Vector3(-1, 1, 1) * value))
 				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
 
-		for track in keys["m_EulerCurves"]:
+		for track in keys.get("m_EulerCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2968,7 +2968,7 @@ class UnidotAnimationClip:
 				# The keys need to be baked out and sampled using this mode.
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis.from_euler(value * PI / 180.0, godot_euler_mode) * Basis.FLIP_X)
 
-		for track in keys["m_RotationCurves"]:
+		for track in keys.get("m_RotationCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2991,7 +2991,7 @@ class UnidotAnimationClip:
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis(value) * Basis.FLIP_X)
 
-		for track in keys["m_ScaleCurves"]:
+		for track in keys.get("m_ScaleCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -3014,7 +3014,7 @@ class UnidotAnimationClip:
 				var ts: float = key_iter.timestamp
 				anim.scale_track_insert_key(scaletrack, ts, value)
 
-		for track in keys["m_PPtrCurves"]:
+		for track in keys.get("m_PPtrCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
