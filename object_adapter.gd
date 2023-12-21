@@ -5826,8 +5826,8 @@ class UnidotLight:
 		if lightmapBakeType == 1:
 			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # INDIRECT??
 		elif lightmapBakeType == 2:
-			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # BAKE_ALL???
-			light.editor_only = true
+			light.light_bake_mode = Light3D.BAKE_STATIC  # BAKE_ALL???
+			# light.editor_only = true
 		else:
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		return light
@@ -5880,8 +5880,8 @@ class UnidotLight:
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
 		elif uprops.has("m_CullingMask.m_Bits"):
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
-		if uprops.has("m_TagString"):
-			outdict["editor_only"] = uprops["m_TagString"] == "EditorOnly"
+		#if uprops.has("m_TagString"):
+		#	outdict["editor_only"] = uprops["m_TagString"] == "EditorOnly"
 		return outdict
 
 
@@ -6018,6 +6018,8 @@ class UnidotCamera:
 			outdict["near"] = uprops.get("near clip plane")
 		if uprops.has("field of view"):
 			outdict["fov"] = uprops.get("field of view")
+		if uprops.has("m_TagString"):
+			outdict["current"] = uprops["m_TagString"] == "MainCamera"
 		if uprops.has("orthographic"):
 			outdict["projection"] = Camera3D.PROJECTION_ORTHOGONAL if uprops.get("orthographic") else Camera3D.PROJECTION_PERSPECTIVE
 		if uprops.has("orthographic size"):
