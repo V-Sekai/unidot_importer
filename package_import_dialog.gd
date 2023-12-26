@@ -642,7 +642,9 @@ func _selected_package(p_path: String) -> void:
 	asset_scenes = [].duplicate()
 	asset_database = asset_database_class.new().get_singleton()
 	print("Got here " + str(p_path))
-	if p_path.to_lower().ends_with(".unitypackage"):
+	if p_path.is_empty():
+		pkg = package_file.new().external_tar_with_filename("")
+	elif p_path.to_lower().ends_with(".unitypackage"):
 		pkg = package_file.new().init_with_filename(p_path)
 	elif p_path.to_lower().ends_with(".meta"):
 		pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())

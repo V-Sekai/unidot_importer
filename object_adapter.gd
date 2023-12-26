@@ -865,6 +865,8 @@ class UnidotMaterial:
 			ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		if kws.get("_GLOSSYREFLECTIONS_OFF", false):
 			pass
+		if kws.get("_DOUBLESIDED_ON", false): # HDRP-compatible materials should set this.
+			ret.cull_mode = BaseMaterial3D.CULL_DISABLED
 		var occlusion = get_texture(texProperties, "_OcclusionMap")
 		if occlusion != null:
 			ret.ao_enabled = true
@@ -3440,9 +3442,13 @@ class UnidotTerrainData:
 				if meshinst.material_override != null:
 					material_overrides.append(meshinst.material_override)
 				elif meshinst.get_surface_override_material_count() >= 1 and meshinst.get_surface_override_material(0) != null:
-					if meshinst.get_surface_override_material_count() > 1:
-						log_fail("Godot Multimesh does not implement per-surface override materials! Will look wrong.")
-					material_overrides.append(meshinst.get_surface_override_material(0))
+					if meshinst.get_surface_override_material_count() == 1:
+						material_overrides.append(meshinst.get_surface_override_material(0))
+					else:
+						log_warn("Godot Multimesh does not implement per-surface override materials! Attempt to overwrite the mesh materials directly.")
+						for idx in range(meshinst.get_surface_override_material_count()):
+							mesh.surface_set_material(idx, meshinst.get_surface_override_material(idx))
+						material_overrides.append(null)
 				else:
 					material_overrides.append(null)
 				var xform: Transform3D = meshinst.transform
