@@ -18,6 +18,7 @@ const FORMAT_UINT32: int = 10
 const FORMAT_SINT32: int = 11
 
 var _buffer_words: int = 0
+var _buffer_bytes: int = 0
 var _buffer: PackedByteArray = PackedByteArray()
 
 var _float32_buf: Array  # PackedFloat32Array # FIXME: Cast to Array as a GDScript bug workaround
@@ -54,15 +55,21 @@ func clear_views():
 
 func set_buffer(source_buffer: PackedByteArray):
 	clear_views()
-	_buffer_words = len(source_buffer) / 4
+	_buffer_bytes = len(source_buffer)
+	_buffer_words = (len(source_buffer) + 3) / 4
 	_buffer = FLOAT_PREFIX.duplicate()
 	_buffer.append_array(source_buffer)
+	var larger_sz = len(_buffer) + 12 + 3
+	_buffer.resize(larger_sz - (larger_sz & 3))
+	#print("set buf " + str(_buffer_words) + " | pfx:" + str(len(FLOAT_PREFIX)) + " | final:" + str(len(_buffer)) + " | orig:" + str(len(source_buffer)))
 
 
 func set_buffer_from_hex(source_buffer: String):
 	clear_views()
-	_buffer_words = len(source_buffer) / 8
+	_buffer_bytes = len(source_buffer) / 2
+	_buffer_words = (len(source_buffer) + 6) / 8
 	_buffer = hex_decode(source_buffer, FLOAT_PREFIX)
+	#print("set buf " + str(_buffer_words) + " | pfx:" + str(len(FLOAT_PREFIX)) + " | final:" + str(len(_buffer)) + " | orig:" + str(len(source_buffer)/2))
 
 
 func _init(source_buffer: Variant = PackedByteArray()):
@@ -110,7 +117,7 @@ func _validate_word_alignment(offset, stride) -> bool:
 
 
 func uint8_subarray(offset_arg: int, length_arg: int, stride: int = 4, cluster: int = 1) -> PackedInt32Array:
-	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset_arg) * cluster / stride)
+	var length: int = min(length_arg, (_buffer_bytes + stride - 4 - offset_arg) * cluster / stride)
 	var offset: int = offset_arg + len(FLOAT_PREFIX)
 	if length <= 0 or _buffer.is_empty():
 		return PackedInt32Array()
@@ -131,7 +138,7 @@ func norm8_subarray(is_signed: bool, offset_arg: int, length_arg: int, stride: i
 	var sign_mul: int = 2 if is_signed else 0
 	var divisor: float = 127.0 if is_signed else 255.0
 	var offset: int = offset_arg + len(FLOAT_PREFIX)
-	var length: int = min(length_arg, (_buffer_words * 4 + stride - 4 - offset_arg) * cluster / stride)
+	var length: int = min(length_arg, (_buffer_bytes + stride - 4 - offset_arg) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
 	assert(_validate_word_alignment(offset_arg, stride))
@@ -170,7 +177,7 @@ func _initialize_uint16_array():
 
 
 func uint16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedInt32Array:
-	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
+	var length: int = min(length_arg, (_buffer_bytes + stride - 2 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedInt32Array()
 	assert(_validate_word_alignment(offset * 2, stride * 2))
@@ -190,7 +197,7 @@ func uint16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: int
 func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedFloat32Array:
 	var sign_mul: int = 2 if is_signed else 0
 	var divisor: float = 32767.0 if is_signed else 65535.0
-	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
+	var length: int = min(length_arg, (_buffer_bytes + stride - 2 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
 	assert(_validate_word_alignment(offset * 2, stride * 2))
@@ -213,7 +220,7 @@ func norm16_subarray(is_signed: bool, offset: int, length_arg: int, stride: int 
 
 
 func float16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: int = 1) -> PackedFloat32Array:
-	var length: int = min(length_arg, (_buffer_words * 4 + stride - 2 - offset) * cluster / stride)
+	var length: int = min(length_arg, (_buffer_bytes + stride - 2 - offset) * cluster / stride)
 	if length <= 0 or _buffer.is_empty():
 		return PackedFloat32Array()
 	assert(_validate_word_alignment(offset * 2, stride * 2))
@@ -223,7 +230,7 @@ func float16_subarray(offset: int, length_arg: int, stride: int = 2, cluster: in
 		_initialize_uint16_array()
 		var tmp16buf: PackedByteArray = FLOAT_PREFIX.duplicate()
 		var tmpoffs: int = len(tmp16buf)
-		tmp16buf.resize(len(tmp16buf) + _buffer_words * 4)
+		tmp16buf.resize(len(tmp16buf) + _buffer_bytes)
 		# _float16_buf
 		i = 0
 		iend = (len(_int16_buf))

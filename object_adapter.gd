@@ -457,13 +457,13 @@ class UnidotMesh:
 		match submesh.get("topology", 0):
 			0:
 				return Mesh.PRIMITIVE_TRIANGLES
-			1:
-				return Mesh.PRIMITIVE_TRIANGLES  # quad meshes handled specially later
 			2:
-				return Mesh.PRIMITIVE_LINES
+				return Mesh.PRIMITIVE_TRIANGLES  # quad meshes handled specially later
 			3:
-				return Mesh.PRIMITIVE_LINE_STRIP
+				return Mesh.PRIMITIVE_LINES
 			4:
+				return Mesh.PRIMITIVE_LINE_STRIP
+			5:
 				return Mesh.PRIMITIVE_POINTS
 			_:
 				log_fail(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
@@ -535,7 +535,7 @@ class UnidotMesh:
 				surface_index_buf = index_buf.uint16_subarray(submesh.get("firstByte", 0), submesh.get("indexCount", -1))
 			else:
 				surface_index_buf = index_buf.uint32_subarray(submesh.get("firstByte", 0), submesh.get("indexCount", -1))
-			if submesh.get("topology", 0) == 1:
+			if submesh.get("topology", 0) == 2:
 				# convert quad mesh to tris
 				var new_buf: PackedInt32Array = PackedInt32Array()
 				new_buf.resize(len(surface_index_buf) / 4 * 6)
@@ -548,6 +548,7 @@ class UnidotMesh:
 						new_buf[i * 6 + el] = surface_index_buf[i * 4 + quad_idx[el]]
 					i += 1
 				surface_index_buf = new_buf
+			log_debug("Index count " + str(len(surface_index_buf)) + " from byte " + str(submesh.get("firstByte", 0)) + " count " + str(submesh.get("indexCount", -1)))
 			var deltaVertex: int = submesh.get("firstVertex", 0)
 			var baseFirstVertex: int = submesh.get("baseVertex", 0) + deltaVertex
 			var vertexCount: int = submesh.get("vertexCount", 0)
