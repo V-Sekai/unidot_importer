@@ -58,6 +58,7 @@ var single_quote_line: String = ""
 var has_brace_line: bool = false
 var has_double_quote_line: bool = false
 var has_single_quote_line: bool = false
+var prev_key_simple: String = ""
 var prev_key: String = ""
 var prev_complex_key: String = ""
 var current_obj_tree: Array = []
@@ -261,9 +262,11 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unidot_
 	var obj_key_match: RegExMatch = arr_obj_key_regex.search(line_plain)
 	var value_start: int = 2
 	var this_key: String = ""
+	var this_prev_key_simple: String = prev_key_simple
 	if obj_key_match != null:
 		value_start = 0 + obj_key_match.get_end()
 		this_key = obj_key_match.get_string(1)
+		prev_key_simple = this_key
 	var missing_brace: bool = false
 	var missing_single_quote: bool = false
 	var missing_double_quote: bool = false
@@ -357,6 +360,12 @@ func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unidot_
 	elif has_brace_line and new_indentation_level > continuation_line_indentation_level and not line_plain.ends_with("}"):
 		brace_line += " " + line_plain
 		meta.log_fail(current_obj_fileID, "Missing brace mid: " + brace_line)  # Never seen structs big enough to wrap twice.
+	elif not current_obj_tree.is_empty() and obj_key_match == null and not has_brace_line and not has_single_quote_line and not has_double_quote_line and typeof(current_obj_tree.back()) == TYPE_DICTIONARY and typeof(current_obj_tree.back().get(this_prev_key_simple, null)) == TYPE_STRING and new_indentation_level > indentation_level:
+		#print("Found an indented line " + str(line_plain))
+		current_obj_tree.back()[this_prev_key_simple] += " " + line_plain
+	elif not current_obj_tree.is_empty() and not line_plain.begins_with("-") and not has_brace_line and not has_single_quote_line and not has_double_quote_line and typeof(current_obj_tree.back()) == TYPE_ARRAY and typeof(current_obj_tree.back()[-1]) == TYPE_STRING and new_indentation_level > indentation_level:
+		#print("Found an indented arr line " + str(line_plain))
+		current_obj_tree.back()[-1] += " " + line_plain
 	else:
 		if new_indentation_level > continuation_line_indentation_level or end_single_multiline:
 			var endcontinuation: bool = false
