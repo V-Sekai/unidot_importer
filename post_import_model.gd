@@ -177,18 +177,20 @@ class ParseState:
 		var retlist: Array = []
 		var basedir: String = source_file_path.get_base_dir()
 		while basedir != "res://" and basedir != "/" and not basedir.is_empty() and basedir != ".":
-			retlist.append(get_materials_path_base(material_name, basedir))
+			retlist.append(get_materials_path_base(material_name, basedir, ".mat.tres"))
+			retlist.append(get_materials_path_base(material_name, basedir, ".material"))
 			basedir = basedir.get_base_dir()
-		retlist.append(get_materials_path_base(material_name, "res://"))
+		retlist.append(get_materials_path_base(material_name, "res://", ".mat.tres"))
+		retlist.append(get_materials_path_base(material_name, "res://", ".material"))
 		metaobj.log_debug(0, "Looking in directories " + str(retlist))
 		return retlist
 
-	func get_materials_path_base(material_name: String, base_dir: String) -> String:
+	func get_materials_path_base(material_name: String, base_dir: String, ext: String) -> String:
 		# return source_file_path.get_basename() + "." + str(fileId) + extension
-		return base_dir + "/Materials/" + str(material_name) + ".mat.tres"
+		return base_dir + "/Materials/" + str(material_name) + ext
 
-	func get_materials_path(material_name: String) -> String:
-		return get_materials_path_base(material_name, source_file_path.get_base_dir())
+	func get_materials_path(material_name: String, ext: String=".material") -> String:
+		return get_materials_path_base(material_name, source_file_path.get_base_dir(), ext)
 
 	func sanitize_filename(sanitized_name: String) -> String:
 		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
@@ -616,34 +618,39 @@ class ParseState:
 					continue
 				saved_materials_by_name[godot_mat_name] = null
 				var fileId = get_obj_id("Material", PackedStringArray(), mat_name)
-				metaobj.log_debug(0, "Material " + str(mat_name) + " (" + str(godot_mat_name) + ") import " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
-				if not importMaterials:
-					mat = default_material
-				elif not extractLegacyMaterials and fileId == 0 and not use_new_names:
+				metaobj.log_debug(fileId, "Material " + str(mat_name) + " (" + str(godot_mat_name) + ") import " + str(importMaterials) + " legacy " + str(extractLegacyMaterials) + " fileId " + str(fileId))
+				if importMaterials and not extractLegacyMaterials and fileId == 0 and not use_new_names:
 					metaobj.log_fail(0, "Missing fileId for Material " + str(mat_name))
 				else:
 					var new_mat: Material = null
-					if external_objects_by_id.has(fileId):
+					if not importMaterials:
+						godot_mat_name = "default"
+						mat = default_material
+					elif external_objects_by_id.has(fileId):
 						new_mat = metaobj.get_godot_resource(external_objects_by_id.get(fileId))
 					elif external_objects_by_type_name.get("Material", {}).has(mat_name):
 						new_mat = metaobj.get_godot_resource(external_objects_by_type_name.get("Material").get(mat_name))
 					if new_mat != null:
 						mat = new_mat
-						metaobj.log_debug(0, "External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
-					elif extractLegacyMaterials:
+						metaobj.log_debug(fileId, "External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
+					elif importMaterials and extractLegacyMaterials:
 						var legacy_material_name: String = godot_mat_name
 						if legacy_material_name_setting == 0:
 							legacy_material_name = material_to_texture_name.get(godot_mat_name, godot_mat_name)
 						if legacy_material_name_setting == 2:
 							legacy_material_name = source_file_path.get_file().get_basename() + "-" + godot_mat_name
 
-						metaobj.log_debug(0, "Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
+						metaobj.log_debug(fileId, "Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
 						var d = DirAccess.open("res://")
 						mat = null
 						if materialSearch == 0:
 							# only current dir
-							legacy_material_name = get_materials_path(legacy_material_name)
-							mat = load(legacy_material_name)
+							legacy_material_name = get_materials_path(legacy_material_name, ".material")
+							if d.file_exists(legacy_material_name):
+								mat = load(legacy_material_name)
+							else:
+								legacy_material_name = get_materials_path(legacy_material_name, ".mat.tres")
+								mat = load(legacy_material_name)
 						elif materialSearch >= 1:
 							# same dir and parents
 							var mat_paths: Array = get_parent_materials_paths(legacy_material_name)
@@ -660,28 +667,32 @@ class ParseState:
 										legacy_material_name = pathname
 										mat = load(pathname)
 										break
-						if mat == null:
-							metaobj.log_debug(0, "Material " + str(legacy_material_name) + " was not found. using default")
-							mat = default_material
-					else:
+						if mat != null:
+							new_mat = mat
+						else:
+							metaobj.log_fail(fileId, "Material " + str(legacy_material_name) + " was not found. using default")
+					if new_mat == null:
 						var respath: String = get_resource_path(godot_mat_name, ".material")
-						metaobj.log_debug(0, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
+						metaobj.log_debug(fileId, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
 						if mat.albedo_texture != null:
-							metaobj.log_debug(0, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
+							metaobj.log_debug(fileId, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
-							metaobj.log_debug(0, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
+							metaobj.log_debug(fileId, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
 						unidot_utils.save_resource(mat, respath)
 						mat = load(respath)
-						metaobj.log_debug(0, "Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
+						metaobj.log_debug(fileId, "Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))
 						if mat.albedo_texture != null:
-							metaobj.log_debug(0, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
+							metaobj.log_debug(fileId, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
-							metaobj.log_debug(0, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
-					metaobj.log_debug(0, "Mat for " + str(i) + " is " + str(mat))
+							metaobj.log_debug(fileId, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
+					metaobj.log_debug(fileId, "Mat for " + str(i) + " is " + str(mat))
 					if mat != null:
 						mesh.surface_set_material(i, mat)
 						saved_materials_by_name[godot_mat_name] = mat
-						metaobj.imported_material_paths[godot_mat_name] = str(mat.resource_path)
+						if mat != default_material:
+							if mat.resource_path.is_empty():
+								metaobj.log_fail(fileId, "Unable to asssign material path for " + str(godot_mat_name) + " due to empty resource_path")
+							metaobj.imported_material_paths[godot_mat_name] = str(mat.resource_path)
 						register_resource(mat, mat_name, "Material", fileId)
 				# metaobj.log_debug(0, "MeshInstance " + str(scene.get_path_to(node)) + " / Mesh " + str(mesh.resource_name if mesh != null else "NULL")+ " Material " + str(i) + " name " + str(mat.resource_name if mat != null else "NULL"))
 			# metaobj.log_debug(0, "Looking up " + str(mesh_name) + " in " + str(objtype_to_name_to_id.get("Mesh", {})))
