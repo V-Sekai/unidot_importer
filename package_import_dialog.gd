@@ -78,6 +78,7 @@ var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
 var force_humanoid_checkbox: CheckBox
+var enable_verbose_log_checkbox: CheckBox
 
 var progress_bar : ProgressBar
 var status_bar : Label
@@ -675,6 +676,8 @@ func _selected_package(p_path: String) -> void:
 	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
 	force_humanoid_checkbox = _add_checkbox_option(options_vbox, "Force humanoid import of all FBX", true if asset_database.force_humanoid else false)
 	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
+	enable_verbose_log_checkbox = _add_checkbox_option(options_vbox, "Enable verbose logs", true if asset_database.enable_verbose_logs else false)
+	enable_verbose_log_checkbox.toggled.connect(self._enable_verbose_log_changed)
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
@@ -864,6 +867,9 @@ func _debug_disable_silhouette_fix_changed(val: bool):
 
 func _force_humanoid_changed(val: bool):
 	asset_database.force_humanoid = val
+
+func _enable_verbose_log_changed(val: bool):
+	asset_database.enable_verbose_logs = val
 
 
 func _show_importer_common() -> void:
@@ -1568,7 +1574,7 @@ func _asset_tree_window_confirmed():
 	global_logs_tree_item.set_text(0, "Global Logs")
 	global_logs_tree_item.set_text(1, " ")
 	global_logs_tree_item.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
-	global_logs_tree_item.set_checked(2, true)
+	global_logs_tree_item.set_checked(2, false)
 	global_logs_tree_item.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
 	global_logs_tree_item.set_text(2, "Logs")
 	global_logs_tree_item.set_selectable(2, true)
@@ -1588,6 +1594,14 @@ func _asset_tree_window_confirmed():
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass)
 	progress_bar.show_percentage = true
 	progress_bar.max_value = _currently_preprocessing_assets * 12 + 80
+	if _currently_preprocessing_assets > 2000:
+		asset_database.log_limit_per_guid = 5000
+	elif _currently_preprocessing_assets > 1000:
+		asset_database.log_limit_per_guid = 10000
+	elif _currently_preprocessing_assets > 500:
+		asset_database.log_limit_per_guid = 20000
+	else:
+		asset_database.log_limit_per_guid = 100000
 	status_bar.text = "Preprocessing and converting FBX2glTF..."
 	_preprocessing_second_pass = second_pass
 	if _currently_preprocessing_assets == 0:
