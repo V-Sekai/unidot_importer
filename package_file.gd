@@ -78,22 +78,24 @@ var path_to_pkgasset: Dictionary = {}.duplicate()
 var guid_to_pkgasset: Dictionary = {}.duplicate()
 
 
-func external_tar_with_filename(source_file: String):
+func external_tar_with_filename(source_file: String, full_tmpdir: String=""):
 	var stdout = [].duplicate()
 	var tmpdir = ".godot"
 	var d: DirAccess = DirAccess.open("res://" + tmpdir)
 	d.make_dir("unidot_extracted_tar")
-	var full_tmpdir: String = tmpdir + "/unidot_extracted_tar"
-	var tar_args: Array = ["-C", full_tmpdir, "-zxvf", source_file.replace("res://", "")]
+	if full_tmpdir.is_empty():
+		full_tmpdir = d.get_current_dir() + "/unidot_extracted_tar"
+	var tar_args: Array = ["-C", full_tmpdir.replace("res://", ""), "-zxvf", source_file.replace("res://", "")]
 	#if str(OS.get_name()) == "Windows" or str(OS.get_name()) == "UWP":
-	print("Running tar with " + str(tar_args))
 	var out_lines: Array = [].duplicate()
 	if source_file.is_empty():
+		print("Looking for extracted package files in " + full_tmpdir)
 		# Re-import the previously imported/extracted tar packages.
-		var dirlist: DirAccess = DirAccess.open("res://" + full_tmpdir)
+		var dirlist: DirAccess = DirAccess.open(full_tmpdir)
 		dirlist.list_dir_begin()
 		while true:
 			var fn: String = dirlist.get_next()
+			print(fn)
 			if fn.is_empty():
 				break
 			#print(fn)
@@ -104,6 +106,7 @@ func external_tar_with_filename(source_file: String):
 					if dirlist.file_exists("./" + fn + fnpiece):
 						out_lines.append(fn + fnpiece)
 	else:
+		print("Running tar with " + str(tar_args))
 		OS.execute("tar", tar_args, stdout, true)
 		if stdout[0].find("resolve failed") != -1:
 			print("Rerunning with --force-local")

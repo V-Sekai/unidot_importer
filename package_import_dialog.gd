@@ -646,6 +646,8 @@ func _selected_package(p_path: String) -> void:
 		pkg = package_file.new().external_tar_with_filename("")
 	elif p_path.to_lower().ends_with(".unitypackage"):
 		pkg = package_file.new().init_with_filename(p_path)
+	elif p_path.to_lower().ends_with("/asset.meta"):
+		pkg = package_file.new().external_tar_with_filename("", p_path.get_base_dir().get_base_dir())
 	elif p_path.to_lower().ends_with(".meta"):
 		pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())
 	elif DirAccess.dir_exists_absolute(p_path):
