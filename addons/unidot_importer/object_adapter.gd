@@ -457,13 +457,13 @@ class UnidotMesh:
 		match submesh.get("topology", 0):
 			0:
 				return Mesh.PRIMITIVE_TRIANGLES
-			1:
-				return Mesh.PRIMITIVE_TRIANGLES  # quad meshes handled specially later
 			2:
-				return Mesh.PRIMITIVE_LINES
+				return Mesh.PRIMITIVE_TRIANGLES  # quad meshes handled specially later
 			3:
-				return Mesh.PRIMITIVE_LINE_STRIP
+				return Mesh.PRIMITIVE_LINES
 			4:
+				return Mesh.PRIMITIVE_LINE_STRIP
+			5:
 				return Mesh.PRIMITIVE_POINTS
 			_:
 				log_fail(str(self) + ": Unknown primitive format " + str(submesh.get("topology", 0)))
@@ -535,7 +535,7 @@ class UnidotMesh:
 				surface_index_buf = index_buf.uint16_subarray(submesh.get("firstByte", 0), submesh.get("indexCount", -1))
 			else:
 				surface_index_buf = index_buf.uint32_subarray(submesh.get("firstByte", 0), submesh.get("indexCount", -1))
-			if submesh.get("topology", 0) == 1:
+			if submesh.get("topology", 0) == 2:
 				# convert quad mesh to tris
 				var new_buf: PackedInt32Array = PackedInt32Array()
 				new_buf.resize(len(surface_index_buf) / 4 * 6)
@@ -548,6 +548,7 @@ class UnidotMesh:
 						new_buf[i * 6 + el] = surface_index_buf[i * 4 + quad_idx[el]]
 					i += 1
 				surface_index_buf = new_buf
+			log_debug("Index count " + str(len(surface_index_buf)) + " from byte " + str(submesh.get("firstByte", 0)) + " count " + str(submesh.get("indexCount", -1)))
 			var deltaVertex: int = submesh.get("firstVertex", 0)
 			var baseFirstVertex: int = submesh.get("baseVertex", 0) + deltaVertex
 			var vertexCount: int = submesh.get("vertexCount", 0)
@@ -864,6 +865,8 @@ class UnidotMaterial:
 			ret.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		if kws.get("_GLOSSYREFLECTIONS_OFF", false):
 			pass
+		if kws.get("_DOUBLESIDED_ON", false): # HDRP-compatible materials should set this.
+			ret.cull_mode = BaseMaterial3D.CULL_DISABLED
 		var occlusion = get_texture(texProperties, "_OcclusionMap")
 		if occlusion != null:
 			ret.ao_enabled = true
@@ -1000,7 +1003,7 @@ class UnidotMaterial:
 					log_debug("Already existing roughness " + str(roughness_filename))
 				var col: Color
 				for x in range(image.get_width()):
-					for y in range(image.get_width()):
+					for y in range(image.get_height()):
 						col = image.get_pixel(x, y)
 						col.a = 1.0 - glossiness_value * col.a
 						image.set_pixel(x, y, col)
@@ -1664,7 +1667,7 @@ class UnidotAnimatorController:
 		var trans = AnimationNodeStateMachineTransition.new()
 		# During 4.0 beta, xfade_time > 0 sometimes causes hung machines
 		# TODO: We need to check if this is still true?
-		trans.xfade_time = transition_obj.keys["m_TransitionDuration"]
+		trans.xfade_time = float(transition_obj.keys.get("m_TransitionDuration", 0))
 		# Godot does not currently support exit time. transition_obj.keys["m_ExitTime"]
 		if transition_obj.keys["m_HasExitTime"] and transition_obj.keys["m_ExitTime"] > 0.0001:
 			trans.switch_mode = AnimationNodeStateMachineTransition.SWITCH_MODE_AT_END
@@ -2903,7 +2906,7 @@ class UnidotAnimationClip:
 						anim.position_track_insert_key(gd_track_root_pos, ts, root_pos_offset)
 					anim.position_track_insert_key(gd_track_pos, ts, hips_pos - root_pos_offset)
 					last_ts = ts
-		for track in keys["m_PositionCurves"]:
+		for track in keys.get("m_PositionCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2928,7 +2931,7 @@ class UnidotAnimationClip:
 					log_debug("Spine " + str(ts) + " value " + str(value) + " -> " + str(Vector3(-1, 1, 1) * value))
 				anim.position_track_insert_key(postrack, ts, Vector3(-1, 1, 1) * value)
 
-		for track in keys["m_EulerCurves"]:
+		for track in keys.get("m_EulerCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2968,7 +2971,7 @@ class UnidotAnimationClip:
 				# The keys need to be baked out and sampled using this mode.
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis.from_euler(value * PI / 180.0, godot_euler_mode) * Basis.FLIP_X)
 
-		for track in keys["m_RotationCurves"]:
+		for track in keys.get("m_RotationCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -2991,7 +2994,7 @@ class UnidotAnimationClip:
 				var ts: float = key_iter.timestamp
 				anim.rotation_track_insert_key(rottrack, ts, Basis.FLIP_X.inverse() * Basis(value) * Basis.FLIP_X)
 
-		for track in keys["m_ScaleCurves"]:
+		for track in keys.get("m_ScaleCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -3014,7 +3017,7 @@ class UnidotAnimationClip:
 				var ts: float = key_iter.timestamp
 				anim.scale_track_insert_key(scaletrack, ts, value)
 
-		for track in keys["m_PPtrCurves"]:
+		for track in keys.get("m_PPtrCurves", []):
 			var path: String = track.get("path", "")
 			var classID: int = 4
 			var track_curve = track["curve"]
@@ -3439,9 +3442,13 @@ class UnidotTerrainData:
 				if meshinst.material_override != null:
 					material_overrides.append(meshinst.material_override)
 				elif meshinst.get_surface_override_material_count() >= 1 and meshinst.get_surface_override_material(0) != null:
-					if meshinst.get_surface_override_material_count() > 1:
-						log_fail("Godot Multimesh does not implement per-surface override materials! Will look wrong.")
-					material_overrides.append(meshinst.get_surface_override_material(0))
+					if meshinst.get_surface_override_material_count() == 1:
+						material_overrides.append(meshinst.get_surface_override_material(0))
+					else:
+						log_warn("Godot Multimesh does not implement per-surface override materials! Attempt to overwrite the mesh materials directly.")
+						for idx in range(meshinst.get_surface_override_material_count()):
+							mesh.surface_set_material(idx, meshinst.get_surface_override_material(idx))
+						material_overrides.append(null)
 				else:
 					material_overrides.append(null)
 				var xform: Transform3D = meshinst.transform
@@ -5826,8 +5833,8 @@ class UnidotLight:
 		if lightmapBakeType == 1:
 			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # INDIRECT??
 		elif lightmapBakeType == 2:
-			light.light_bake_mode = Light3D.BAKE_DYNAMIC  # BAKE_ALL???
-			light.editor_only = true
+			light.light_bake_mode = Light3D.BAKE_STATIC  # BAKE_ALL???
+			# light.editor_only = true
 		else:
 			light.light_bake_mode = Light3D.BAKE_DISABLED
 		return light
@@ -5880,8 +5887,8 @@ class UnidotLight:
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
 		elif uprops.has("m_CullingMask.m_Bits"):
 			outdict["light_cull_mask"] = uprops.get("m_CullingMask.m_Bits")
-		if uprops.has("m_TagString"):
-			outdict["editor_only"] = uprops["m_TagString"] == "EditorOnly"
+		#if uprops.has("m_TagString"):
+		#	outdict["editor_only"] = uprops["m_TagString"] == "EditorOnly"
 		return outdict
 
 
@@ -6018,6 +6025,8 @@ class UnidotCamera:
 			outdict["near"] = uprops.get("near clip plane")
 		if uprops.has("field of view"):
 			outdict["fov"] = uprops.get("field of view")
+		if uprops.has("m_TagString"):
+			outdict["current"] = uprops["m_TagString"] == "MainCamera"
 		if uprops.has("orthographic"):
 			outdict["projection"] = Camera3D.PROJECTION_ORTHOGONAL if uprops.get("orthographic") else Camera3D.PROJECTION_PERSPECTIVE
 		if uprops.has("orthographic size"):
@@ -6075,7 +6084,7 @@ class UnidotReflectionProbe:
 			outdict["position"] = uprops.get("m_BoxOffset")
 			outdict["origin_offset"] = -uprops.get("m_BoxOffset")
 		if uprops.has("m_BoxSize"):
-			outdict["extents"] = uprops.get("m_BoxSize")
+			outdict["size"] = uprops.get("m_BoxSize")
 		if uprops.has("m_CullingMask"):
 			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
 		elif uprops.has("m_CullingMask.m_Bits"):
@@ -6372,7 +6381,7 @@ class UnidotAssetImporter:
 			var type_key: String = type_str.split(":")[-1]
 			var key: Variant = srcAssetIdent.get("first", {}).get("name", "")  # FIXME: Returns null sometimes????
 			var val: Array = srcAssetIdent.get("second", [null, 0, "", null])  # UnidotRef
-			if typeof(key) != TYPE_NIL and not key.is_empty() and type_str.begins_with("UnidotEngine"):
+			if typeof(key) != TYPE_NIL and not key.is_empty():
 				if not eo.has(type_key):
 					eo[type_key] = {}.duplicate()
 				eo[type_key][key] = val

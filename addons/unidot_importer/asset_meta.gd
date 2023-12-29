@@ -146,6 +146,8 @@ const WARNING_COLOR_TAG := "warn: "
 func log_debug(fileid: int, msg: String):
 	if log_message_holder == null or log_database_holder == null:
 		return # We had a use-after-free crash here on one import run
+	if not log_database_holder.database.enable_verbose_logs:
+		return
 	var fileidstr = ""
 	if fileid != 0:
 		fileidstr = " @" + str(fileid)
@@ -153,9 +155,9 @@ func log_debug(fileid: int, msg: String):
 	log_database_holder.database.global_log_count += 1
 	var log_str: String = seq_str + orig_path_short + ": " + msg + fileidstr
 	var len_diff = len(log_message_holder.all_logs) - len(log_message_holder.warnings_fails)
-	if len_diff == 100000:
+	if len_diff == log_database_holder.database.log_limit_per_guid:
 		log_str = seq_str + "Dropping all future debug logs from this file!"
-	if len_diff <= 100000:
+	if len_diff <= log_database_holder.database.log_limit_per_guid:
 		log_message_holder.all_logs.append(log_str)
 	log_database_holder.database.log_debug([null, fileid, self.guid, 0], msg)
 

@@ -33,10 +33,13 @@ var meta_worker = meta_worker_class.new()
 var asset_adapter = asset_adapter_class.new()
 var object_adapter = object_adapter_class.new()
 
+var editor_plugin: EditorPlugin = null
 var main_dialog: AcceptDialog = null
 var file_dialog: EditorFileDialog = null
 var main_dialog_tree: Tree = null
 var hide_button: Button
+var pause_button: Button
+var abort_button: Button
 
 var base_control: Control
 var spinner_icon: AnimatedTexture = null
@@ -58,6 +61,7 @@ var checkbox_on_unicode: String = "\u2611"
 var tmpdir: String = ""
 var asset_database: asset_database_class = null
 
+var current_selected_package: String
 var tree_dialog_state: int = 0
 var path_to_tree_item: Dictionary
 var guid_to_dependency_guids: Dictionary
@@ -68,6 +72,9 @@ var _currently_preprocessing_assets: int = 0
 var _preprocessing_second_pass: Array = []
 var retry_tex: bool = false
 var _keep_open_on_import: bool = false
+var paused: bool = false
+var auto_import: bool = false
+var _meta_work_count: int = 0
 
 var auto_hide_checkbox: CheckBox
 var dont_auto_select_dependencies_checkbox: CheckBox
@@ -78,6 +85,13 @@ var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
 var force_humanoid_checkbox: CheckBox
+var enable_verbose_log_checkbox: CheckBox
+
+var batch_import_list_widget: ItemList
+var batch_import_add_button: Button
+
+var batch_import_file_list: PackedStringArray
+var batch_import_types: Dictionary
 
 var progress_bar : ProgressBar
 var status_bar : Label
@@ -85,6 +99,7 @@ var options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
 var global_logs_tree_item: TreeItem
+var global_logs_last_count: int = 0
 var select_by_type_tree_item: TreeItem
 var select_by_type_items: Dictionary # String -> TreeItem
 
@@ -152,17 +167,23 @@ func _set_indeterminate_up_recursively(ti: TreeItem, is_checked: bool):
 			ti.set_indeterminate(0, false)
 			ti.set_checked(0, true)
 			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+			if ti == select_by_type_items.get(ti.get_text(0)):
+				batch_import_types[ti.get_text(0)] = true
 	elif is_all_unchecked:
 		if ti.is_indeterminate(0) or ti.is_checked(0):
 			ti.set_indeterminate(0, false)
 			ti.set_checked(0, false)
 			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+			if ti == select_by_type_items.get(ti.get_text(0)):
+				batch_import_types[ti.get_text(0)] = true
 	else:
 		if not ti.is_indeterminate(0):
 			ti.set_checked(0, false)
 			ti.set_indeterminate(0, true)
 			ti.set_checked(0, false)
 			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
+			if ti == select_by_type_items.get(ti.get_text(0)):
+				batch_import_types[ti.get_text(0)] = false
 
 
 func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bool, visited_set: Dictionary={}, is_recursive_file: bool=false) -> void:
@@ -171,6 +192,8 @@ func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bo
 	if visited_set.has(ti):
 		return 
 	visited_set[ti] = true
+	if ti == select_by_type_items.get(ti.get_text(0)):
+		batch_import_types[ti.get_text(0)] = is_checked
 	var other_item: TreeItem = ti.get_metadata(1) as TreeItem
 	if other_item != null:
 		_check_recursively(other_item, is_checked, false, visited_set, false)
@@ -218,6 +241,10 @@ func _check_recursively(ti: TreeItem, is_checked: bool, process_dependencies: bo
 func update_progress_bar(amt: int):
 	progress_bar.value += amt
 
+func update_global_logs():
+	if len(asset_database.log_message_holder.all_logs) == global_logs_last_count:
+		return
+	global_logs_last_count = len(asset_database.log_message_holder.all_logs)
 	var filtered_msgs: PackedStringArray
 	var col: int = -1
 	if global_logs_tree_item.is_checked(2):
@@ -225,7 +252,7 @@ func update_progress_bar(amt: int):
 		filtered_msgs = asset_database.log_message_holder.all_logs
 	elif global_logs_tree_item.is_checked(3):
 		col = 3
-		filtered_msgs = asset_database.log_message_holder.warnings_fails
+		filtered_msgs = asset_database.log_message_holder.all_logs
 	elif global_logs_tree_item.is_checked(4):
 		col = 4
 		filtered_msgs = asset_database.log_message_holder.fails
@@ -404,7 +431,7 @@ func _cell_selected() -> void:
 				if col == 2:
 					filtered_msgs.append_array(asset_database.log_message_holder.all_logs)
 				elif col == 3:
-					filtered_msgs.append_array(asset_database.log_message_holder.warnings_fails)
+					filtered_msgs.append_array(asset_database.log_message_holder.all_logs)
 				elif col == 4:
 					filtered_msgs.append_array(asset_database.log_message_holder.fails)
 			if needs_sort:
@@ -450,6 +477,7 @@ func human_readable_fileid_heuristic(fileID: int) -> String:
 	return str(fileID)
 
 func _meta_completed(tw: Object):
+	_meta_work_count -= 1
 	var pkgasset = tw.asset
 	var ti = tw.extra as TreeItem
 	var importer_type: String = ""
@@ -463,14 +491,17 @@ func _meta_completed(tw: Object):
 					importer_type = "[" + object_adapter.utype_to_classname[clsid] + "]"
 		var dep_guids: Dictionary = pkgasset.parsed_meta.meta_dependency_guids.duplicate()
 		if importer_type == "[LightingDataAsset]":
-			ignore_dependencies[pkgasset.guid] = true
-			_check_recursively(ti, false, false)
+			if batch_import_types.get(".asset LightingDataAsset", false) == false:
+				ignore_dependencies[pkgasset.guid] = true
+				_check_recursively(ti, false, false)
 		if importer_type == "[MonoScript]" or importer_type == "Mono" or importer_type == "":
-			ignore_dependencies[pkgasset.guid] = true
-			_check_recursively(ti, false, false)
+			if batch_import_types.get(".cs Script", false) == false:
+				ignore_dependencies[pkgasset.guid] = true
+				_check_recursively(ti, false, false)
 		if importer_type == "[Shader]" or importer_type == "Shader":
-			ignore_dependencies[pkgasset.guid] = true
-			_check_recursively(ti, false, false)
+			if batch_import_types.get(".shader Shader", false) == false:
+				ignore_dependencies[pkgasset.guid] = true
+				_check_recursively(ti, false, false)
 		for guid in pkgasset.parsed_meta.dependency_guids:
 			dep_guids[guid] = pkgasset.parsed_meta.dependency_guids[guid]
 		var da := DirAccess.open("res://")
@@ -537,15 +568,29 @@ func _meta_completed(tw: Object):
 		var clsid: int = pkgasset.parsed_meta.main_object_id / 100000
 		if object_adapter.utype_to_classname.has(clsid):
 			obj_type = object_adapter.utype_to_classname[clsid]
+	if pkgasset.orig_pathname.to_lower().ends_with(".cs"):
+		obj_type = "Script"
+	if pkgasset.orig_pathname.to_lower().ends_with(".shader"):
+		obj_type = "Shader"
 	var select_by_type_item: TreeItem
 	var type_parent: TreeItem
 	var obj_type_desc = "." + pkgasset.orig_pathname.get_extension() + " " + obj_type
+	if auto_import:
+		if batch_import_types.get(obj_type_desc, true) == false:
+			ignore_dependencies[pkgasset.guid] = true
+			_check_recursively(ti, false, false)
+	if pkgasset.orig_pathname.to_lower().ends_with(".dll") or pkgasset.orig_pathname.to_lower().ends_with(".dylib") or pkgasset.orig_pathname.to_lower().ends_with(".so"):
+		ignore_dependencies[pkgasset.guid] = true
+		_check_recursively(ti, false, false)
+
 	if select_by_type_items.has(obj_type_desc):
 		type_parent = select_by_type_items[obj_type_desc]
 		if type_parent.is_checked(0) and not ti.is_checked(0):
 			type_parent.set_indeterminate(0, true)
+			batch_import_types[obj_type_desc] = true
 		if not type_parent.is_checked(0) and ti.is_checked(0):
 			type_parent.set_indeterminate(0, true)
+			batch_import_types[obj_type_desc] = true
 	else:
 		var insert_idx: int = 0
 		for chld in select_by_type_tree_item.get_children():
@@ -561,6 +606,7 @@ func _meta_completed(tw: Object):
 		type_parent.set_collapsed_recursive(true)
 		type_parent.set_checked(0, ti.is_checked(0))
 		select_by_type_items[obj_type_desc] = type_parent
+		batch_import_types[obj_type_desc] = ti.is_checked(0)
 	select_by_type_item = type_parent.create_child()
 	select_by_type_item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 	select_by_type_item.set_checked(0, ti.is_checked(0))
@@ -574,6 +620,10 @@ func _meta_completed(tw: Object):
 	select_by_type_item.set_tooltip_text(1, ti.get_tooltip_text(1))
 	select_by_type_item.set_metadata(1, ti)
 	ti.set_metadata(1, select_by_type_item)
+
+	if _meta_work_count <= 0:
+		if auto_import:
+			_asset_tree_window_confirmed()
 
 
 func _prune_unselected_items(p_ti: TreeItem) -> bool:
@@ -618,15 +668,23 @@ func _prune_unselected_items(p_ti: TreeItem) -> bool:
 	else:
 		p_ti.set_icon(0, folder_icon)
 	#p_ti.set_expand_right(0, true)
-	p_ti.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
-	p_ti.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
-	p_ti.set_text(2, "Logs")
-	p_ti.set_selectable(2, true)
-	p_ti.set_icon(2, log_icon)
+	if asset_database.enable_verbose_logs:
+		p_ti.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
+		p_ti.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
+		p_ti.set_text(2, "Logs")
+		p_ti.set_selectable(2, true)
+		p_ti.set_icon(2, log_icon)
 	return true
 
 
 func _selected_package(p_path: String) -> void:
+	current_selected_package = p_path
+	main_dialog.title = "Select Assets to import from " + current_selected_package.get_file()
+	print(editor_plugin)
+	if editor_plugin != null:
+		editor_plugin.last_selected_dir = file_dialog.current_dir
+		editor_plugin.file_dialog_mode = file_dialog.display_mode
+		print("CURRENT DIR " + file_dialog.current_dir)
 	if p_path.to_lower().contains("technologies"):
 		OS.alert("Beware that this package may use a non-standard license.\nPlease take the time to double-check that you are\nin compliance with all licenses.")
 	_preprocessing_second_pass = [].duplicate()
@@ -642,8 +700,12 @@ func _selected_package(p_path: String) -> void:
 	asset_scenes = [].duplicate()
 	asset_database = asset_database_class.new().get_singleton()
 	print("Got here " + str(p_path))
-	if p_path.to_lower().ends_with(".unitypackage"):
+	if p_path.is_empty():
+		pkg = package_file.new().external_tar_with_filename("")
+	elif p_path.to_lower().ends_with(".unitypackage"):
 		pkg = package_file.new().init_with_filename(p_path)
+	elif p_path.to_lower().ends_with("/asset.meta"):
+		pkg = package_file.new().external_tar_with_filename("", p_path.get_base_dir().get_base_dir())
 	elif p_path.to_lower().ends_with(".meta"):
 		pkg = package_file.new().init_with_asset_dir(p_path.get_base_dir())
 	elif DirAccess.dir_exists_absolute(p_path):
@@ -671,6 +733,22 @@ func _selected_package(p_path: String) -> void:
 	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
 	force_humanoid_checkbox = _add_checkbox_option(options_vbox, "Force humanoid import of all FBX", true if asset_database.force_humanoid else false)
 	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
+	enable_verbose_log_checkbox = _add_checkbox_option(options_vbox, "Enable verbose logs", true if asset_database.enable_verbose_logs else false)
+	enable_verbose_log_checkbox.toggled.connect(self._enable_verbose_log_changed)
+
+	batch_import_list_widget = ItemList.new()
+	batch_import_list_widget.item_activated.connect(self._batch_import_list_widget_activated)
+	options_vbox.add_child(batch_import_list_widget)
+	batch_import_add_button = Button.new()
+	batch_import_add_button.text = "Add extra packages to batch"
+	batch_import_add_button.pressed.connect(self._add_batch_import)
+	batch_import_add_button.tooltip_text = """
+	Batch import additional .unitypackage archives.
+	Double-click a package to remove it from the list.
+
+	The file type checkboxes to the right will determine which files are imported from the batch.
+	"""
+	options_vbox.add_child(batch_import_add_button)
 
 	meta_worker.start_threads(THREAD_COUNT)  # Don't DISABLE_THREADING
 	main_dialog_tree.hide_root = true
@@ -732,6 +810,7 @@ func _selected_package(p_path: String) -> void:
 				ti.set_icon(0, icon)
 			if i == len(path_names) - 1:
 				meta_worker.push_asset(pkgasset, ti)
+				_meta_work_count += 1
 				ti.set_text(1, "")
 			else:
 				ti.set_text(1, "Directory")
@@ -781,22 +860,28 @@ func do_reimport_previous_files() -> void:
 	main_dialog.show()
 
 
-func show_reimport() -> void:
+func show_reimport(ep: EditorPlugin) -> void:
+	editor_plugin = ep
 	file_dialog = null
 	_show_importer_common()
 	self._selected_package("")
 
 
-func show_importer() -> void:
+func show_importer(ep: EditorPlugin) -> void:
 	file_dialog = EditorFileDialog.new()
 	file_dialog.add_filter("*.unitypackage, *.meta", "Asset packages or file")
+	file_dialog.show_hidden_files = true
+	editor_plugin = ep
 	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_ANY
 	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
 	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
 	file_dialog.set_title("Import .unitypackage archive, or Select Assets folder...")
 	file_dialog.file_selected.connect(self._selected_package)
 	file_dialog.dir_selected.connect(self._selected_package)
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
+	ep.get_editor_interface().get_base_control().add_child(file_dialog, true)
+	if ep.get("last_selected_dir"):
+		file_dialog.current_dir = ep.last_selected_dir
+		file_dialog.display_mode = ep.file_dialog_mode
 	_show_importer_common()
 	check_fbx2gltf()
 
@@ -860,6 +945,61 @@ func _debug_disable_silhouette_fix_changed(val: bool):
 func _force_humanoid_changed(val: bool):
 	asset_database.force_humanoid = val
 
+func _enable_verbose_log_changed(val: bool):
+	asset_database.enable_verbose_logs = val
+
+func _add_batch_import():
+	if file_dialog:
+		file_dialog.queue_free()
+		file_dialog = null
+	file_dialog = EditorFileDialog.new()
+	file_dialog.add_filter("*.unitypackage", "Only asset packages supported")
+	file_dialog.show_hidden_files = true
+	file_dialog.file_mode = EditorFileDialog.FILE_MODE_OPEN_FILES
+	# FILE_MODE_OPEN_FILE = 0  –  The dialog allows selecting one, and only one file.
+	file_dialog.access = EditorFileDialog.ACCESS_FILESYSTEM
+	file_dialog.set_title("Batch import additional .unitypackage archives...")
+	file_dialog.file_selected.connect(self._selected_batch_import_file)
+	file_dialog.files_selected.connect(self._selected_batch_import_files)
+	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
+	if editor_plugin != null:
+		file_dialog.current_dir = editor_plugin.last_selected_dir
+		file_dialog.display_mode = editor_plugin.file_dialog_mode
+	if file_dialog != null:
+		file_dialog.popup_centered_ratio()
+
+func _selected_batch_import_file(path: String):
+	_selected_batch_import_files(PackedStringArray([path]))
+
+func _selected_batch_import_files(paths: PackedStringArray):
+	if editor_plugin != null:
+		editor_plugin.last_selected_dir = file_dialog.current_dir
+		editor_plugin.file_dialog_mode = file_dialog.display_mode
+	var cur_files: Dictionary
+	cur_files[current_selected_package] = true
+	for path in batch_import_file_list:
+		cur_files[path] = true
+	for path in paths:
+		batch_import_list_widget.custom_minimum_size = Vector2(100, 100)
+		if not cur_files.has(path):
+			batch_import_list_widget.add_item(path.get_file())
+			batch_import_list_widget.set_item_tooltip(batch_import_list_widget.item_count - 1, path)
+			batch_import_file_list.append(path)
+
+func _batch_import_list_widget_activated(idx: int):
+	batch_import_list_widget.remove_item(idx)
+	batch_import_file_list.remove_at(idx)
+
+
+func _pause_toggled(val: bool):
+	paused = val
+	if not paused:
+		abort_button.visible = false
+
+func _abort_clicked():
+	tree_dialog_state = STATE_DONE_IMPORT
+	status_bar.text = "Import aborted during [" + status_bar.text + "]"
+
 
 func _show_importer_common() -> void:
 	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
@@ -876,7 +1016,6 @@ func _show_importer_common() -> void:
 	auto_hide_checkbox.toggled.connect(self._auto_hide_toggled)
 	main_dialog.get_ok_button().visible = true
 	hide_button.add_sibling(auto_hide_checkbox)
-	# main_dialog.add_button("Import and show result", false, "show_result")
 	main_dialog.custom_action.connect(self._asset_tree_window_confirmed_custom)
 	var n: Label = main_dialog.get_label()
 	var vbox := VBoxContainer.new()
@@ -992,12 +1131,33 @@ func on_import_fully_completed():
 	var editor_filesystem: EditorFileSystem = ei.get_resource_filesystem()
 	hide_button.text = "            Close            "
 	auto_hide_checkbox.hide()
+	pause_button.visible = false
+	abort_button.visible = false
+	paused = false
 	editor_filesystem.scan()
 	import_finished = true
 	if not _keep_open_on_import:
 		if main_dialog:
 			main_dialog.hide()
 	ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
+
+	if not batch_import_file_list.is_empty():
+		var rc = RefCounted.new()
+		rc.set_script(get_script())
+		rc._show_importer_common()
+		rc.batch_import_file_list = batch_import_file_list.slice(1)
+		rc.batch_import_types = batch_import_types
+		rc.auto_import = true
+		rc._keep_open_on_import = _keep_open_on_import
+		rc._selected_package(batch_import_file_list[0])
+		rc.batch_import_file_list = batch_import_file_list.slice(1)
+		rc.batch_import_types = batch_import_types
+		rc.auto_import = true
+		rc._keep_open_on_import = _keep_open_on_import
+		if rc.batch_import_list_widget != null:
+			for f in rc.batch_import_file_list:
+				rc.batch_import_list_widget.add_item(f)
+		rc.main_dialog.title = "Batch importing " + batch_import_file_list[0] + "..."
 
 
 func update_task_color(tw: RefCounted):
@@ -1072,7 +1232,11 @@ func do_import_step():
 	if tree_dialog_state >= STATE_DONE_IMPORT:
 		asset_database.save()
 		on_import_fully_completed()
-		status_bar.text = "Import complete."
+		if not paused:
+			status_bar.text = "Import complete."
+		return
+	if paused:
+		abort_button.visible = true
 		return
 
 	asset_database.log_debug([null, 0, "", 0], "Scanning percentage: " + str(editor_filesystem.get_scanning_progress()))
@@ -1162,17 +1326,26 @@ func do_import_step():
 			asset_database.log_fail([null, 0, "", 0], "Invalid state: " + str(tree_dialog_state))
 			break
 
+	asset_database.log_debug([null, 0, "", 0], "Writing non-imported assets: state=" + str(tree_dialog_state))
 	var files_to_reimport: PackedStringArray = PackedStringArray().duplicate()
 	var start_ts = Time.get_ticks_msec()
+	var wrote_header := false
 	while not asset_work_waiting_write.is_empty():
 		var tw: Object = asset_work_waiting_write.pop_back()
 		update_progress_bar(3)
+		asset_database.log_debug([null, 0, "", 0], "Writing " + str(tw.asset.pathname))
 		start_godot_import(tw)
 		if not asset_adapter.uses_godot_importer(tw.asset):
+			if not wrote_header:
+				wrote_header = true
+				asset_database.log_debug([null, 0, "", 0], "RESOURCES WRITTEN ============")
+			asset_database.log_debug([null, 0, "", 0], tw.asset.pathname)
 			update_progress_bar(7)
 			var ticks_ts = Time.get_ticks_msec()
 			if ticks_ts > start_ts + 300:
 				break
+	if wrote_header:
+		asset_database.log_debug([null, 0, "", 0], "=================================")
 
 	var asset_work = asset_work_waiting_scan
 	asset_database.log_debug([null, 0, "", 0], "Queueing work: state=" + str(tree_dialog_state))
@@ -1182,6 +1355,7 @@ func do_import_step():
 		asset_work_currently_importing.push_back(tw)
 		if asset_adapter.uses_godot_importer(tw.asset):
 			tw.asset.log_debug("asset " + str(tw.asset) + " uses godot import")
+			asset_database.log_debug([null, 0, "", 0], "Importing " + str(tw.asset.pathname) + " with the godot importer...")
 			files_to_reimport.append("res://" + tw.asset.pathname)
 		var ti: TreeItem = tw.extra
 		if ti.get_button_count(0) <= 0:
@@ -1206,6 +1380,7 @@ func do_import_step():
 	#files_to_reimport.append("res://" + generate_sentinel_png_filename())
 	#asset_database.log_debug([null,0,"",0], "Writing " + str(generate_sentinel_png_filename()))
 	if not files_to_reimport.is_empty():
+		update_global_logs()
 		editor_filesystem.reimport_files(files_to_reimport)
 		update_progress_bar(len(files_to_reimport) * 7)
 
@@ -1234,6 +1409,7 @@ func do_import_step():
 			status_bar.text = "Importing prefabs..."
 		elif tree_dialog_state == STATE_IMPORTING_PREFABS:
 			status_bar.text = "Importing scenes..."
+		asset_database.log_debug([null, 0, "", 0], "============= " + status_bar.text)
 
 	asset_database.log_debug([null, 0, "", 0], "Done Queueing work: state=" + str(tree_dialog_state))
 
@@ -1426,9 +1602,7 @@ func _preprocess_recursively(ti: TreeItem, visited: Dictionary, second_pass: Arr
 
 
 func _asset_tree_window_confirmed_custom(action_name):
-	assert(action_name == "show_result")
-	self._keep_open_on_import = true
-	_asset_tree_window_confirmed()
+	pass #assert(action_name == "pause_import")
 
 
 var import_step_timer: Timer = null
@@ -1447,7 +1621,7 @@ func _do_import_step_tick():
 		return
 	import_step_reentrant = true
 	import_step_tick_count += 1
-	asset_database.log_debug([null, 0, "", 0], "TICK ======= " + str(import_step_tick_count))
+	#asset_database.log_debug([null, 0, "", 0], "TICK ======= " + str(import_step_tick_count))
 	OS.close_midi_inputs()  # Place to set C++ breakpoint to check for reentrancy
 	do_import_step()
 	if tree_dialog_state >= STATE_DONE_IMPORT:
@@ -1458,9 +1632,11 @@ func _do_import_step_tick():
 		asset_database.in_package_import = false
 		asset_database.save()
 		asset_database.log_debug([null, 0, "", 0], "Saved database")
-		status_bar.text = "Import complete."
+		if not paused:
+			status_bar.text = "Import complete."
 		call_deferred(&"on_import_fully_completed")
-	asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
+	#asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
+	update_global_logs()
 	import_step_reentrant = false
 
 
@@ -1501,6 +1677,7 @@ func _scan_sources_complete(useless: Variant = null):
 
 
 func _preprocess_wait_tick():
+	update_global_logs()
 	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
 		update_progress_bar(5)
@@ -1520,6 +1697,14 @@ func _preprocess_wait_tick():
 
 func _asset_tree_window_confirmed():
 	hide_button.text = "            Hide            "
+	pause_button = main_dialog.add_button("        Pause        ", false, "pause_import")
+	pause_button.toggle_mode = true
+	pause_button.toggled.connect(self._pause_toggled)
+	abort_button = Button.new()
+	abort_button.text = "        Abort        "
+	abort_button.pressed.connect(self._abort_clicked)
+	abort_button.visible = false
+	pause_button.add_sibling(abort_button)
 	if ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb") != 1022:
 		asset_database.orig_max_size_mb = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
 		if asset_database.orig_max_size_mb < 1022:
@@ -1527,17 +1712,18 @@ func _asset_tree_window_confirmed():
 	main_dialog_tree.columns = 5
 	#main_dialog_tree.set_column_title(2, "\u26a0") # Warning emoji
 	#main_dialog_tree.set_column_title(3, "\u26d4") # Error emoji
-	main_dialog_tree.set_column_title(2, "Logs")
+	if asset_database.enable_verbose_logs:
+		main_dialog_tree.set_column_title(2, "Logs")
+		main_dialog_tree.set_column_custom_minimum_width(2, 64)
 	main_dialog_tree.set_column_clip_content(2, true)
+	main_dialog_tree.set_column_expand(2, false)
+	main_dialog_tree.set_column_expand_ratio(2, 0.1)
 	main_dialog_tree.set_column_clip_content(3, true)
 	main_dialog_tree.set_column_clip_content(4, true)
-	main_dialog_tree.set_column_custom_minimum_width(2, 64)
 	main_dialog_tree.set_column_custom_minimum_width(3, 64)
 	main_dialog_tree.set_column_custom_minimum_width(4, 64)
-	main_dialog_tree.set_column_expand(2, false)
 	main_dialog_tree.set_column_expand(3, false)
 	main_dialog_tree.set_column_expand(4, false)
-	main_dialog_tree.set_column_expand_ratio(2, 0.1)
 	main_dialog_tree.set_column_expand_ratio(3, 0.1)
 	main_dialog_tree.set_column_expand_ratio(4, 0.1)
 
@@ -1562,12 +1748,15 @@ func _asset_tree_window_confirmed():
 	global_logs_tree_item = root_item.create_child(0)
 	global_logs_tree_item.set_text(0, "Global Logs")
 	global_logs_tree_item.set_text(1, " ")
-	global_logs_tree_item.set_cell_mode(2, TreeItem.CELL_MODE_CHECK)
-	global_logs_tree_item.set_checked(2, true)
-	global_logs_tree_item.set_text_alignment(2, HORIZONTAL_ALIGNMENT_RIGHT)
-	global_logs_tree_item.set_text(2, "Logs")
-	global_logs_tree_item.set_selectable(2, true)
-	global_logs_tree_item.set_icon(2, log_icon)
+	var log_column = 2
+	if not asset_database.enable_verbose_logs:
+		log_column = 3
+	global_logs_tree_item.set_cell_mode(log_column, TreeItem.CELL_MODE_CHECK)
+	global_logs_tree_item.set_checked(log_column, true)
+	global_logs_tree_item.set_text_alignment(log_column, HORIZONTAL_ALIGNMENT_RIGHT)
+	global_logs_tree_item.set_text(log_column, "Logs")
+	global_logs_tree_item.set_selectable(log_column, true)
+	global_logs_tree_item.set_icon(log_column, log_icon)
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
@@ -1583,6 +1772,14 @@ func _asset_tree_window_confirmed():
 	var num_processing = _preprocess_recursively(main_dialog_tree.get_root(), visited, second_pass)
 	progress_bar.show_percentage = true
 	progress_bar.max_value = _currently_preprocessing_assets * 12 + 80
+	if _currently_preprocessing_assets > 2000:
+		asset_database.log_limit_per_guid = 5000
+	elif _currently_preprocessing_assets > 1000:
+		asset_database.log_limit_per_guid = 10000
+	elif _currently_preprocessing_assets > 500:
+		asset_database.log_limit_per_guid = 20000
+	else:
+		asset_database.log_limit_per_guid = 100000
 	status_bar.text = "Preprocessing and converting FBX2glTF..."
 	_preprocessing_second_pass = second_pass
 	if _currently_preprocessing_assets == 0:

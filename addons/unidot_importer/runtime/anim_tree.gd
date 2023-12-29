@@ -159,6 +159,10 @@ func _set(prop: StringName, value):
 		if value != null:
 			for param in value.get_meta_list():
 				self.set_meta(StringName(param), value.get_meta(param))
+			if active:
+				for prop_data in get_property_list():
+					if prop_data["name"].begins_with("parameters/"):
+						_setup_blend_to_meta(prop_data["name"])
 		return false
 	if prop == &"active" and value != self.active:
 		for param in meta_to_blend_parameters:
@@ -173,6 +177,10 @@ func _set(prop: StringName, value):
 		if value:
 			for param in self.tree_root.get_meta_list():
 				self.set_meta(StringName(param), self.tree_root.get_meta(param))
+			if self.tree_root != null:
+				for prop_data in get_property_list():
+					if prop_data["name"].begins_with("parameters/"):
+						_setup_blend_to_meta(prop_data["name"])
 		return false
 	if str(prop).begins_with("parameters/"):
 		var meta_parameter = blend_to_meta_parameter.get(prop)
@@ -216,6 +224,12 @@ func _set(prop: StringName, value):
 		_current_meta = &""
 		return false
 	return false
+
+func _ready():
+	if active and tree_root != null:
+		for prop_data in get_property_list():
+			if prop_data["name"].begins_with("parameters/"):
+				_setup_blend_to_meta(prop_data["name"])
 
 func _process(_delta: float):
 	for prop in seek_requests:

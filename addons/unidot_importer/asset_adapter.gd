@@ -1894,6 +1894,7 @@ var file_handlers: Dictionary = {
 	"fbx": FbxHandler.new(),
 	"obj": BaseModelHandler.new(),
 	"dae": BaseModelHandler.new(),
+	"blend": BaseModelHandler.new(),
 	#"obj": DisabledHandler.new(), # .obj is broken due to multithreaded importer
 	#"dae": DisabledHandler.new(), # .dae is broken due to multithreaded importer
 	"glb": FbxHandler.new(),

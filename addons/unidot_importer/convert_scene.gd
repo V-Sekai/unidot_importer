@@ -166,7 +166,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				scene_contents.remove_child(dirlight)
 				dirlight = null
 			var sky_material: Variant = pkgasset.parsed_meta.get_godot_resource(asset.keys.get("m_SkyboxMaterial"))
-			if sky_material == null:
+			if sky_material == null and asset.keys.get("m_SkyboxMaterial")[1] != 0:
 				# Just use a default skybox for now...
 				sky_material = ProceduralSkyMaterial.new()
 				sky_material.sky_top_color = Color(0.454902, 0.678431, 0.87451, 1)
