@@ -27,11 +27,17 @@ func queue_test():
 
 
 func show_reimport():
+	if package_import_dialog != null and package_import_dialog.paused:
+		package_import_dialog.show_importer_logs()
+		return
 	package_import_dialog = package_import_dialog_class.new()
 	package_import_dialog.show_reimport()
 
 
 func show_importer():
+	if package_import_dialog != null and package_import_dialog.paused:
+		package_import_dialog.show_importer_logs()
+		return
 	package_import_dialog = package_import_dialog_class.new()
 	package_import_dialog.show_importer()
 
