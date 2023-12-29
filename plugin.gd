@@ -9,6 +9,8 @@ const tarfile = preload("./tarfile.gd")
 const package_import_dialog_class: GDScript = preload("./package_import_dialog.gd")
 
 var package_import_dialog: RefCounted = null
+var last_selected_dir: String = ""
+var file_dialog_mode := EditorFileDialog.DISPLAY_LIST
 
 
 func recursive_print(node: Node, indent: String = ""):
@@ -31,7 +33,7 @@ func show_reimport():
 		package_import_dialog.show_importer_logs()
 		return
 	package_import_dialog = package_import_dialog_class.new()
-	package_import_dialog.show_reimport()
+	package_import_dialog.show_reimport(self)
 
 
 func show_importer():
@@ -39,7 +41,7 @@ func show_importer():
 		package_import_dialog.show_importer_logs()
 		return
 	package_import_dialog = package_import_dialog_class.new()
-	package_import_dialog.show_importer()
+	package_import_dialog.show_importer(self)
 
 func show_importer_logs():
 	if package_import_dialog != null:
