@@ -681,7 +681,7 @@ func _selected_package(p_path: String) -> void:
 	current_selected_package = p_path
 	main_dialog.title = "Select Assets to import from " + current_selected_package.get_file()
 	print(editor_plugin)
-	if editor_plugin != null:
+	if editor_plugin != null and file_dialog != null:
 		editor_plugin.last_selected_dir = file_dialog.current_dir
 		editor_plugin.file_dialog_mode = file_dialog.display_mode
 		print("CURRENT DIR " + file_dialog.current_dir)
@@ -962,17 +962,17 @@ func _add_batch_import():
 	file_dialog.file_selected.connect(self._selected_batch_import_file)
 	file_dialog.files_selected.connect(self._selected_batch_import_files)
 	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
-	if editor_plugin != null:
-		file_dialog.current_dir = editor_plugin.last_selected_dir
-		file_dialog.display_mode = editor_plugin.file_dialog_mode
 	if file_dialog != null:
+		if editor_plugin != null:
+			file_dialog.current_dir = editor_plugin.last_selected_dir
+			file_dialog.display_mode = editor_plugin.file_dialog_mode
 		file_dialog.popup_centered_ratio()
 
 func _selected_batch_import_file(path: String):
 	_selected_batch_import_files(PackedStringArray([path]))
 
 func _selected_batch_import_files(paths: PackedStringArray):
-	if editor_plugin != null:
+	if editor_plugin != null and file_dialog != null:
 		editor_plugin.last_selected_dir = file_dialog.current_dir
 		editor_plugin.file_dialog_mode = file_dialog.display_mode
 	var cur_files: Dictionary
@@ -1002,6 +1002,8 @@ func _abort_clicked():
 
 
 func _show_importer_common() -> void:
+	if editor_plugin != null:
+		editor_plugin.package_import_dialog = self
 	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
@@ -1144,6 +1146,7 @@ func on_import_fully_completed():
 	if not batch_import_file_list.is_empty():
 		var rc = RefCounted.new()
 		rc.set_script(get_script())
+		rc.editor_plugin = editor_plugin
 		rc._show_importer_common()
 		rc.batch_import_file_list = batch_import_file_list.slice(1)
 		rc.batch_import_types = batch_import_types
