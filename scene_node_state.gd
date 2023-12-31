@@ -568,7 +568,7 @@ func consume_root(fileid: int) -> bool:
 			ret = true
 			if avatar.human_bone_to_rotation_delta.has("Root"):
 				meta.log_debug(fileid, "Root at " + str(fileid) + " has rotation delta " + str(avatar.human_bone_to_rotation_delta["Root"]))
-				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Hips"]
+				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta.get("Hips", Transform3D.IDENTITY)
 			elif meta.transform_fileid_to_parent_fileid.has(fileid):
 				var parent_fileid: int = meta.transform_fileid_to_parent_fileid[fileid]
 				if meta.transform_fileid_to_rotation_delta.has(parent_fileid):

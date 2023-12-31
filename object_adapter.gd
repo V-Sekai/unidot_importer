@@ -445,7 +445,7 @@ class UnidotObject:
 
 	var children_refs: Array:
 		get:
-			return keys.get("m_Children")
+			return keys.get("m_Children", [])
 
 
 ### ================ ASSET TYPES ================

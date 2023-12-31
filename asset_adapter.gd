@@ -668,7 +668,7 @@ class BaseModelHandler:
 			subresources["nodes"] = {}
 		if not subresources["nodes"].has("PATH:AnimationPlayer"):
 			subresources["nodes"]["PATH:AnimationPlayer"] = {}
-		if importer.keys.get("animationType", 2) == 3:
+		if importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid():
 			if not subresources["nodes"].has("PATH:Skeleton3D"):
 				subresources["nodes"]["PATH:Skeleton3D"] = {}
 			var bone_map: BoneMap = importer.generate_bone_map_from_human()
@@ -1779,7 +1779,7 @@ class FbxHandler:
 				used_names[orig_name] = next_num
 				used_names[try_name] = 1
 
-		if is_humanoid and json.has("nodes") and importer.keys.get("avatarSetup", 1) >= 1:
+		if is_humanoid and json.has("nodes") and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
 			for node in json["nodes"]:
 				var node_name: String = node.get("name", "")
 				if bone_map_dict.has(node_name):
