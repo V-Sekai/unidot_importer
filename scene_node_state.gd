@@ -541,14 +541,12 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 		while par_fileid != 0 and par_fileid != avatar.hips_fileid:
 			par_fileid = meta.transform_fileid_to_parent_fileid.get(par_fileid, 0)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
+			meta.log_debug(fileid, "AVA PREFAB Using avatar " + str(orig_bone_name) + "/" + str(godot_bone_name) + " for rotation delta!")
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
 		elif par_fileid == 0: # Not a decendent of the Hips bone
 			if avatar.human_bone_to_rotation_delta.has("Hips"):
+				meta.log_debug(fileid, "AVA PREFAB Using Hips for rotation delta of " + str(orig_bone_name) + "/" + str(godot_bone_name) + "!")
 				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Hips"]
-		elif meta.transform_fileid_to_parent_fileid.has(fileid):
-			var parent_fileid: int = meta.transform_fileid_to_parent_fileid[fileid]
-			if meta.transform_fileid_to_rotation_delta.has(parent_fileid):
-				meta.transform_fileid_to_rotation_delta[fileid] = meta.transform_fileid_to_rotation_delta[parent_fileid]
 	if name_to_return == "":
 		var next_bone: String = _find_next_avatar_bone_recursive(skel, bone_idx)
 		meta.log_debug(0, "Found next bone " + next_bone)
