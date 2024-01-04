@@ -60,7 +60,6 @@ var checkbox_on_unicode: String = "\u2611"
 
 var tmpdir: String = ""
 var asset_database: asset_database_class = null
-
 var current_selected_package: String
 var tree_dialog_state: int = 0
 var path_to_tree_item: Dictionary
@@ -81,6 +80,7 @@ var dont_auto_select_dependencies_checkbox: CheckBox
 var save_text_resources: CheckBox
 var save_text_scenes: CheckBox
 var skip_reimport_models_checkbox: CheckBox = null
+var set_animation_trees_active_checkbox: CheckBox
 var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
@@ -725,6 +725,8 @@ func _selected_package(p_path: String) -> void:
 	save_text_scenes.toggled.connect(self._save_text_scenes_changed)
 	skip_reimport_models_checkbox = _add_checkbox_option(options_vbox, "Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
 	skip_reimport_models_checkbox.toggled.connect(self._skip_reimport_models_checkbox_changed)
+	set_animation_trees_active_checkbox = _add_checkbox_option(options_vbox, "Allow active AnimationTrees (animate in editor)", true if asset_database.set_animation_trees_active else false)
+	set_animation_trees_active_checkbox.toggled.connect(self._set_animation_trees_active_changed)
 	enable_unidot_keys_checkbox = _add_checkbox_option(options_vbox, "Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
 	enable_unidot_keys_checkbox.toggled.connect(self._enable_unidot_keys_changed)
 	add_unsupported_components_checkbox = _add_checkbox_option(options_vbox, "Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
@@ -932,6 +934,9 @@ func _dont_auto_select_dependencies_checkbox_changed(val: bool):
 
 func _skip_reimport_models_checkbox_changed(val: bool):
 	asset_database.skip_reimport_models = val
+
+func _set_animation_trees_active_changed(val: bool):
+	asset_database.set_animation_trees_active = val
 
 func _enable_unidot_keys_changed(val: bool):
 	asset_database.enable_unidot_keys = val

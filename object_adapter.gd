@@ -26,8 +26,6 @@ const unidot_utils_class = preload("./unidot_utils.gd")
 
 var unidot_utils = unidot_utils_class.new()
 
-const ANIMATION_TREE_ACTIVE = true # false # Set to false to debug or avoid auto-playing animations
-
 const STRING_KEYS: Dictionary = {
 	"value": 1,
 	"m_Name": 1,
@@ -4038,6 +4036,8 @@ class UnidotGameObject:
 		var skip_first: bool = true
 		var orig_meta_owner: Node = state.owner
 		if sub_avatar_meta != null:
+			# Due to the scene unique name requirement,
+			# make sure all GeneralSkeleton trees are in their own scn file.
 			state = state.state_with_owner(ret)
 
 		var transform_delta: Transform3D = meta.transform_fileid_to_rotation_delta.get(transform.fileID, meta.prefab_transform_fileid_to_rotation_delta.get(transform.fileID, Transform3D()))
@@ -4107,7 +4107,7 @@ class UnidotGameObject:
 			# If not found, we can't recreate the animationLibrary
 			obj.setup_post_children(animtree)
 		if sub_avatar_meta != null:
-			var sub_scene_filename: String = meta.path.substr(0, len(meta.path) - 5) + "." + str(self.name) + ".tscn"
+			var sub_scene_filename: String = meta.fixup_godot_extension(meta.path.get_basename() + "." + str(self.name) + ".tscn")
 			var ps: PackedScene = PackedScene.new()
 			ps.pack(ret)
 			adapter.unidot_utils.save_resource(ps, sub_scene_filename)
@@ -4424,7 +4424,7 @@ class UnidotPrefabInstance:
 						existing_node.get_parent().add_child(animtree, true)
 						animtree.owner = state.owner
 						animtree.anim_player = animtree.get_path_to(existing_node)
-						animtree.active = ANIMATION_TREE_ACTIVE
+						animtree.active = meta.setting_animtree_active() and uprops.get("m_Enabled", true)
 						animtree.set_script(anim_tree_runtime)
 						# Weird special case, likely to break.
 						# The original file was a .glb and doesn't have an AnimationTree node.
@@ -6259,7 +6259,7 @@ class UnidotAnimator:
 				animtree.root_motion_track = NodePath("%GeneralSkeleton:Root")
 		state.add_child(animtree, new_parent, self)
 		animtree.anim_player = animtree.get_path_to(animplayer)
-		animtree.active = ANIMATION_TREE_ACTIVE
+		animtree.active = meta.setting_animtree_active() and keys.get("m_Enabled", true)
 		animtree.set_script(anim_tree_runtime)
 		# TODO: Add AnimationTree as well.
 		assign_controller(animplayer, animtree, keys["m_Controller"])

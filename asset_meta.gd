@@ -239,6 +239,19 @@ func is_force_humanoid() -> bool:
 	return log_database_holder.database.force_humanoid
 
 
+func is_humanoid() -> bool:
+	if not transform_fileid_to_rotation_delta:
+		return false
+	if not autodetected_bone_map_dict and not humanoid_bone_map_dict and not humanoid_bone_map_crc32_dict:
+		return false
+	return true
+
+
+# Set to false to debug or avoid auto-playing animations
+func setting_animtree_active() -> bool:
+	return log_database_holder.database.set_animation_trees_active
+
+
 func toposort_prefab_recurse(meta: Resource, tt: TopsortTmp):
 	for target_guid in meta.prefab_dependency_guids:
 		if not tt.visited.has(target_guid):

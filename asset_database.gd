@@ -23,6 +23,7 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var debug_disable_silhouette_fix: bool = false
 @export var force_humanoid: bool = false
 @export var enable_verbose_logs: bool = false
+@export var set_animation_trees_active: bool = true
 var log_limit_per_guid: int = 100000
 
 @export var global_log_count: int = 0

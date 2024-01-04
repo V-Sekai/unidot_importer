@@ -767,7 +767,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
 	ps.humanoid_original_transforms = metaobj.internal_data.get("humanoid_original_transforms", {})
-	if metaobj.importer.keys.get("animationType", 2) == 3:
+	if metaobj.is_force_humanoid() or metaobj.importer.keys.get("animationType", 2) == 3:
 		var bone_map: BoneMap = metaobj.importer.generate_bone_map_from_human()
 		var bone_map_dict: Dictionary = {}
 		for prop in bone_map.get_property_list():
