@@ -192,8 +192,8 @@ class ParseState:
 	func get_materials_path(material_name: String, ext: String=".material") -> String:
 		return get_materials_path_base(material_name, source_file_path.get_base_dir(), ext)
 
-	func sanitize_filename(sanitized_name: String) -> String:
-		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
+	func sanitize_filename(sanitized_name: String, repl: String="", include_dot: bool=true) -> String:
+		return sanitized_name.replace("/", repl).replace(":", repl).replace(".", repl).replace("@", repl).replace('"', repl).replace("<", repl).replace(">", repl).replace("*", repl).replace("|", repl).replace("?", repl)
 
 	func fold_root_transforms_into_only_child() -> bool:
 		# FIXME: Animations targeting the parent or the child might need to be adjusted.
@@ -634,11 +634,12 @@ class ParseState:
 						mat = new_mat
 						metaobj.log_debug(fileId, "External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
 					elif importMaterials and extractLegacyMaterials:
-						var legacy_material_name: String = godot_mat_name
+						# Exmaple [S*S]kitsune_men.material -> [S_S]kitsune_men.material
+						var legacy_material_name: String = sanitize_filename(godot_mat_name, "_") # It's unclear what should happen if this contains a "." character.
 						if legacy_material_name_setting == 0:
-							legacy_material_name = material_to_texture_name.get(godot_mat_name, godot_mat_name)
+							legacy_material_name = sanitize_filename(material_to_texture_name.get(godot_mat_name, godot_mat_name), "_")
 						if legacy_material_name_setting == 2:
-							legacy_material_name = source_file_path.get_file().get_basename() + "-" + godot_mat_name
+							legacy_material_name = sanitize_filename(source_file_path.get_file().get_basename() + "-" + godot_mat_name, "_")
 
 						metaobj.log_debug(fileId, "Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
 						var d = DirAccess.open("res://")
@@ -671,7 +672,7 @@ class ParseState:
 							new_mat = mat
 						else:
 							metaobj.log_fail(fileId, "Material " + str(legacy_material_name) + " was not found. using default")
-					if new_mat == null:
+					if new_mat == null and mat != null:
 						var respath: String = get_resource_path(godot_mat_name, ".material")
 						metaobj.log_debug(fileId, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
 						if mat.albedo_texture != null:
