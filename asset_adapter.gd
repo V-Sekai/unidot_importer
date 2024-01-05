@@ -1183,8 +1183,9 @@ class FbxHandler:
 			fps = _preprocess_fbx_anim_fps_binary(pkgasset, fbx_file)
 			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
-			var buffer_as_ascii: String = fbx_file.get_string_from_utf8()  # may contain unicode
-			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_ascii)
+			var buffer_as_utf8: String = fbx_file.get_string_from_utf8()  # may contain unicode
+			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_utf8)
+			var buffer_as_ascii: String = fbx_file.get_string_from_ascii() # match 1-to-1 with bytes
 			fps = _preprocess_fbx_anim_fps_ascii(pkgasset, buffer_as_ascii)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
