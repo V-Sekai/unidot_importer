@@ -3849,7 +3849,6 @@ class UnidotGameObject:
 				state = state.state_with_avatar_meta(sub_avatar_meta)
 				if godot_skeleton.name != "GeneralSkeleton":
 					log_fail("Skelley object should have ensured godot_skeleton with avatar is named GeneralSkeleton")
-					godot_skeleton.unique_name_in_owner = true
 				log_warn("Humanoid Animator component on skeleton bone " + str(skeleton_bone_name) + " does not fully support unique_name_in_owner")
 				# TODO: Implement scene saving for partial skeleton humanoid avatar
 		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID, godot_skeleton, skeleton_bone_index)
@@ -4024,8 +4023,14 @@ class UnidotGameObject:
 				sub_avatar_meta = component.get_avatar_meta()
 				if sub_avatar_meta != null:
 					state = state.state_with_avatar_meta(sub_avatar_meta)
-					if state.owner == null or ret == state.owner:
-						sub_avatar_meta = null
+		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
+		for new_skelley in list_of_skelleys:
+			if new_skelley.humanoid_avatar_meta != null and new_skelley.humanoid_avatar_meta != sub_avatar_meta:
+				sub_avatar_meta = new_skelley.humanoid_avatar_meta
+				state = state.state_with_avatar_meta(sub_avatar_meta)
+				break
+		if state.owner == null or ret == state.owner:
+			sub_avatar_meta = null
 		if ret == null:
 			ret = Node3D.new()
 			transform.configure_node(ret)
@@ -4067,7 +4072,6 @@ class UnidotGameObject:
 				if not name_map.has(component_key):
 					name_map[component_key] = component.fileID
 
-		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
 		var smrs: Array[UnidotSkinnedMeshRenderer]
 		for new_skelley in list_of_skelleys:
 			if not new_skelley.godot_skeleton:
@@ -6215,11 +6219,41 @@ class UnidotAnimation:
 class UnidotAnimator:
 	extends UnidotBehaviour
 
+	var forced_humanoid_avatar_meta: Resource
+
 	func get_godot_type() -> String:
 		return "AnimationTree"
 
+	func _find_mesh_reference_recursive(xform: UnidotTransform) -> Object:
+		children_refs = xform.children_refs
+		log_debug("find rec " + str(xform.gameObject.uniq_key))
+		for ref in children_refs:
+			var child = meta.lookup(ref, true)
+			if child != null:
+				var child_go: UnidotGameObject = child.gameObject
+				if child_go != null:
+					var smr := child_go.GetComponent("SkinnedMeshRenderer")
+					if smr != null:
+						var mesh_ref = smr.keys.get("m_Mesh")
+						if mesh_ref != null and len(mesh_ref) > 3:
+							var ret = meta.lookup_meta(mesh_ref)
+							if ret.internal_data.has("humanoid_root_bone"):
+								return ret
+		for ref in children_refs:
+			var child = meta.lookup(ref, true)
+			if child != null:
+				var ret = _find_mesh_reference_recursive(child)
+				if ret != null:
+					return ret
+		return null
+
 	func get_avatar_meta() -> Object:
-		return meta.lookup_meta(keys.get("m_Avatar", [null, 0, "", null]))
+		var ret = meta.lookup_meta(keys.get("m_Avatar", [null, 0, "", null]))
+		if ret != null:
+			return ret
+		if forced_humanoid_avatar_meta != null:
+			return forced_humanoid_avatar_meta
+		return null
 
 	func assign_controller(anim_player: AnimationPlayer, anim_tree: AnimationTree, controller_ref: Array):
 		var main_library: AnimationLibrary = null

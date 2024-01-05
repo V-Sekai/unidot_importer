@@ -237,19 +237,21 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				#ps.gameobjects_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.components_by_stripped_id[parent.fileID].push_back(asset)
 
-	var skelleys_with_no_parent: Array = node_state.initialize_skelleys(pkgasset.parsed_asset.assets.values())
+	var skelleys_with_no_parent: Array = node_state.initialize_skelleys(pkgasset.parsed_asset.assets.values(), is_prefab)
 
-	if len(skelleys_with_no_parent) == 1:
-		scene_contents = skelleys_with_no_parent[0].godot_skeleton
-		scene_contents.name = "RootSkeleton"
-		node_state = node_state.state_with_owner(scene_contents)
-	elif len(skelleys_with_no_parent) > 1:
-		# assert(not is_prefab)
+	for skel in skelleys_with_no_parent:
+		if skel.humanoid_avatar_meta != null:
+			node_state = node_state.state_with_avatar_meta(skel.humanoid_avatar_meta)
+			break
+
+	if len(skelleys_with_no_parent) >= 1:
 		if scene_contents == null:
-			pkgasset.log_fail("Not able to handle multiple skeletons with no parent in a prefab")
-		else:
-			for noparskel in skelleys_with_no_parent:
-				scene_contents.add_child(noparskel.godot_skeleton, true)
+			scene_contents = Node3D.new()
+			scene_contents.name = "RootNode3D"
+		scene_contents.add_child(skelleys_with_no_parent[0].godot_skeleton)
+		node_state = node_state.state_with_owner(scene_contents)
+		for noparskel in skelleys_with_no_parent:
+			scene_contents.add_child(noparskel.godot_skeleton, true)
 	#var fileid_to_prefab_nodepath = {}.duplicate()
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}

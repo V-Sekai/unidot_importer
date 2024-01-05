@@ -119,9 +119,11 @@ func get_object(fileid: int) -> RefCounted:
 	var node: Node = owner.get_node(np)
 	if node == null:
 		return ret
-	var keys: Variant = node.get_meta("unidot_keys")
-	if typeof(keys) == TYPE_DICTIONARY:
-		ret.keys = keys
+	meta.log_warn(fileid, "Attempting to access unidot_keys of node " + str(node.name))
+	if node.has_meta("unidot_keys"):
+		var keys: Variant = node.get_meta("unidot_keys")
+		if typeof(keys) == TYPE_DICTIONARY:
+			ret.keys = keys
 	return ret
 
 
@@ -175,6 +177,7 @@ class Skelley:
 	var found_prefab_instance: RefCounted = null  # UnidotPrefabInstance
 
 	var skeleton_profile_humanoid := SkeletonProfileHumanoid.new()
+	var humanoid_avatar_meta: Resource = null
 
 	func initialize(bone0: RefCounted):  # UnidotTransform
 		var current_parent: RefCounted = bone0  # UnidotTransform or UnidotPrefabInstance
@@ -329,7 +332,6 @@ class Skelley:
 					bones_set[bone.uniq_key] = true
 					bones.push_back(bone)
 		var idx: int = 0
-		var has_avatar: bool = false
 		for bone in bones:
 			if bone.is_stripped_or_prefab_instance():
 				# We do not know yet the full extent of the skeleton
@@ -344,11 +346,12 @@ class Skelley:
 			if go != null:
 				var animator: Object = go.GetComponent("Animator")
 				if animator != null:
-					if animator.get_avatar_meta() != null:
-						has_avatar = true
+					var ava_meta = animator.get_avatar_meta()
+					if ava_meta != null:
+						humanoid_avatar_meta = ava_meta
 			idx += 1
 
-		if has_avatar and godot_skeleton != null:
+		if humanoid_avatar_meta != null and godot_skeleton != null:
 			godot_skeleton.name = "GeneralSkeleton"
 		if not contains_stripped_bones:
 			var dedupe_dict = {}.duplicate()
@@ -450,7 +453,7 @@ func state_with_body(new_body: CollisionObject3D) -> RefCounted:
 
 
 func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
-	if not avatar_meta.humanoid_bone_map_dict or not avatar_meta.transform_fileid_to_rotation_delta:
+	if not avatar_meta.is_humanoid():
 		return self
 	var state = duplicate()
 	var avatar_state := AvatarState.new()
@@ -460,14 +463,19 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 	#avatar_state.current_avatar_object = new_avatar
 	avatar_state.humanoid_bone_map_dict = avatar_meta.humanoid_bone_map_crc32_dict.duplicate()
 	var has_root: bool = false
+	if avatar_meta.humanoid_bone_map_crc32_dict.is_empty():
+		for orig_bone_name in avatar_meta.autodetected_bone_map_dict:
+			if avatar_meta.internal_data.get("humanoid_root_bone", "") == orig_bone_name:
+				avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = "Root"
+			if not avatar_meta.autodetected_bone_map_dict[orig_bone_name] == "Root" or avatar_meta.internal_data.get("humanoid_root_bone", "").is_empty():
+				avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.autodetected_bone_map_dict[orig_bone_name]
+		for orig_bone_name in avatar_meta.humanoid_bone_map_dict:
+			avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.humanoid_bone_map_dict[orig_bone_name]
 	for crc in avatar_state.humanoid_bone_map_dict:
 		if avatar_state.humanoid_bone_map_dict[crc] == "Root":
 			has_root = true
 	if not has_root:
 		avatar_state.humanoid_bone_map_dict["Root"] = "Root"
-	if avatar_meta.humanoid_bone_map_crc32_dict.is_empty():
-		for orig_bone_name in avatar_meta.humanoid_bone_map_dict:
-			avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.humanoid_bone_map_dict[orig_bone_name]
 
 	avatar_state.humanoid_skeleton_hip_position = avatar_meta.humanoid_skeleton_hip_position
 
@@ -484,17 +492,6 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 			human_bone_to_rotation_delta[fileid_to_skeleton_bone[i]] = transform_fileid_to_rotation_delta[i]
 
 	avatar_state.human_bone_to_rotation_delta = human_bone_to_rotation_delta
-
-	avatar_state.excess_rotation_delta = Transform3D()
-	parent_fileid = avatar_meta.transform_fileid_to_parent_fileid.get(parent_fileid, 0)
-	while parent_fileid != 0:
-		avatar_state.excess_rotation_delta = transform_fileid_to_rotation_delta.get(parent_fileid, Transform3D.IDENTITY) * avatar_state.excess_rotation_delta
-		meta.log_debug(parent_fileid, "Calculating excess rotation delta: " + str(avatar_state.excess_rotation_delta))
-		parent_fileid = avatar_meta.transform_fileid_to_parent_fileid.get(parent_fileid, 0)
-	# FIXME: Should we be applying this to "Root" instead of "Hips"?
-	if "Hips" in avatar_state.human_bone_to_rotation_delta:
-		avatar_state.human_bone_to_rotation_delta["Hips"] = avatar_state.excess_rotation_delta * avatar_state.human_bone_to_rotation_delta["Hips"] * avatar_state.excess_rotation_delta.affine_inverse()
-
 	state.active_avatars.push_back(avatar_state)
 
 	return state
@@ -541,7 +538,7 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 		while par_fileid != 0 and par_fileid != avatar.hips_fileid:
 			par_fileid = meta.transform_fileid_to_parent_fileid.get(par_fileid, 0)
 		if avatar.human_bone_to_rotation_delta.has(godot_bone_name):
-			meta.log_debug(fileid, "AVA PREFAB Using avatar " + str(orig_bone_name) + "/" + str(godot_bone_name) + " for rotation delta!")
+			meta.log_debug(fileid, "AVA PREFAB Using avatar " + str(orig_bone_name) + "/" + str(godot_bone_name) + " for rotation delta! " + str(avatar.human_bone_to_rotation_delta[godot_bone_name]))
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
 		elif par_fileid == 0: # Not a decendent of the Hips bone
 			if avatar.human_bone_to_rotation_delta.has("Hips"):
@@ -596,7 +593,7 @@ func state_with_owner(new_owner: Node3D) -> RefCounted:
 #	return state
 
 
-func initialize_skelleys(assets: Array) -> Array:
+func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 	var skelleys: Dictionary = {}.duplicate()
 	var skel_ids: Dictionary = {}.duplicate()
 	var num_skels = 0
@@ -640,17 +637,33 @@ func initialize_skelleys(assets: Array) -> Array:
 				skelleys[this_id] = this_skelley
 				num_skels += 1
 
+			var mesh_ref = asset.get_mesh()
+			var mesh_meta = asset.meta.lookup_meta(mesh_ref)
+			var forced_avatar_meta = null
+			if mesh_meta != null:
+				if mesh_meta.is_humanoid():
+					if asset.meta.is_force_humanoid():
+						this_skelley.humanoid_avatar_meta = mesh_meta
+						forced_avatar_meta = mesh_meta
+
 			var find_animator_obj: RefCounted = bone0_obj
 			while find_animator_obj != null and find_animator_obj.gameObject != null:
 				var animator: RefCounted = find_animator_obj.gameObject.GetComponent("Animator")
+				var add_children: bool = false
 				if animator != null:
+					if animator.forced_humanoid_avatar_meta == null:
+						animator.forced_humanoid_avatar_meta = forced_avatar_meta
 					var avatar_meta = animator.get_avatar_meta()
 					if avatar_meta != null:
-						for child_ref in find_animator_obj.children_refs:
-							var child_obj = asset.meta.lookup(child_ref)
-							if child_obj != null and child_obj.gameObject != null and child_obj.gameObject.GetComponent("SkinnedMeshRenderer") != null:
-								continue
-							bones.append(child_ref)
+						add_children = true
+				elif find_animator_obj.parent == null and is_prefab:
+					add_children = true
+				if add_children:
+					for child_ref in find_animator_obj.children_refs:
+						var child_obj = asset.meta.lookup(child_ref)
+						if child_obj != null and child_obj.gameObject != null and child_obj.gameObject.GetComponent("SkinnedMeshRenderer") != null:
+							continue
+						bones.append(child_ref)
 				find_animator_obj = find_animator_obj.parent
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnidotTransform
@@ -667,6 +680,8 @@ func initialize_skelleys(assets: Array) -> Array:
 							if skel_ids.get(inst.uniq_key, -1) == this_id:  # FIXME: This seems to be missing??
 								# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + inst.uniq_key)
 								skelleys[new_id].add_bone(inst)
+						if skelleys[new_id].humanoid_avatar_meta == null:
+							skelleys[new_id].humanoid_avatar_meta = skelleys[this_id].humanoid_avatar_meta
 						for i in skel_ids:
 							if skel_ids.get(str(i)) == this_id:
 								skel_ids[str(i)] = new_id
