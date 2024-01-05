@@ -303,14 +303,14 @@ class ParseState:
 		#	GodotHumanT = ParOrigT * GodotCorrectionT
 		#	We want to solve for X = GodotCorrectionT.inv
 		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
-		p_global_rest *= node.get_bone_rest(p_skel_bone)
 		if humanoid_original_transforms.has(bone_name):
-			p_pre_retarget_global_rest *= humanoid_original_transforms.get(bone_name)
+			p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(bone_name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.get_bone_rest(p_skel_bone).origin)
 			if bone_name == "Hips":
 				humanoid_skeleton_hip_position = node.get_bone_rest(p_skel_bone).origin
 				humanoid_skeleton_hip_position.y = node.motion_scale
 		else:
 			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
+		p_global_rest *= node.get_bone_rest(p_skel_bone)
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			# metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
@@ -431,11 +431,11 @@ class ParseState:
 
 		if node is Node3D:
 			# The only known case of non-Node3D is AnimationPlayer
-			p_global_rest *= node.transform
 			if humanoid_original_transforms.has(node.name):
-				p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
+				p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(node.name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.transform.origin)
 			else:
 				p_pre_retarget_global_rest *= node.transform
+			p_global_rest *= node.transform
 
 			# For the purpose of determining which coordinate are negative, treat 0 as positive
 			# Though Godot probably malfunctions in other ways if scale axes are 0, since it will lose the rotation.
