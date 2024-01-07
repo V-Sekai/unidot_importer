@@ -11,8 +11,8 @@ const SEG_LEFT: int = 1
 const SEG_RIGHT: int = 2
 
 
-static func search_bone_by_name(skeleton: Skeleton3D, p_picklist: PackedStringArray, p_segregation: int = SEG_NONE, p_parent: int = -1, p_child: int = -1, p_children_count: int = -1) -> int:
-	print("Search bone by name " + str(p_picklist) + " from " + str(p_parent) + " " + str(p_child) + " " + str(p_children_count) + " " + str(p_segregation))
+static func search_bone_by_name(skeleton: Skeleton3D, log_debug_func: Callable, p_picklist: PackedStringArray, p_segregation: int = SEG_NONE, p_parent: int = -1, p_child: int = -1, p_children_count: int = -1) -> int:
+	log_debug_func.call("Search bone by name " + str(p_picklist) + " from " + str(p_parent) + " " + str(p_child) + " " + str(p_children_count) + " " + str(p_segregation))
 	# There may be multiple candidates hit by existing the subsidiary bone.
 	# The one with the shortest name is probably the original.
 	var hit_list: PackedStringArray = PackedStringArray()
@@ -70,9 +70,9 @@ static func search_bone_by_name(skeleton: Skeleton3D, p_picklist: PackedStringAr
 			break
 
 	if shortest.is_empty():
-		print("...Failed")
+		log_debug_func.call("...Failed")
 		return -1
-	print("Found " + str(shortest))
+	log_debug_func.call("Found " + str(shortest))
 
 	return skeleton.find_bone(shortest)
 
@@ -97,8 +97,8 @@ static func guess_bone_segregation(p_bone_name: String) -> int:
 	return SEG_NONE
 
 
-static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
-	print("Run auto mapping.")
+static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func: Callable, force_humanoid: bool = false, fallback_root_idx: int=-1) -> Dictionary:
+	log_debug_func.call("Run auto mapping.")
 	var bone_map_dict: Dictionary = {}
 
 	var bone_idx: int = -1
@@ -110,10 +110,14 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("pelvis")
 	picklist.push_back("waist")
 	picklist.push_back("torso")
-	var hips: int = search_bone_by_name(skeleton, picklist)
+	var hips: int = search_bone_by_name(skeleton, log_debug_func, picklist)
+	var missing_hips: bool = false
 	if hips == -1:
-		print("Auto Mapping couldn't guess Hips. Abort auto mapping.")
-		return {}  # If there is no Hips, we cannot guess bone after then.
+		log_debug_func.call("Auto Mapping couldn't guess Hips. Abort auto mapping.")
+		if fallback_root_idx == -1:
+			return {}  # If there is no Hips, we cannot guess bone after then.
+		hips = fallback_root_idx
+		missing_hips = true
 	else:
 		bone_map_dict[skeleton.get_bone_name(hips)] = "Hips"
 
@@ -149,7 +153,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 
 	if bone_idx == -1:
 		pass
-		# print("Auto Mapping couldn't guess Root.") # Root is not required, so continue.
+		# log_debug_func.call("Auto Mapping couldn't guess Root.") # Root is not required, so continue.
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "Root"
 
@@ -160,25 +164,27 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("neck")
 	picklist.push_back("head")  # For no neck model.
 	picklist.push_back("face")  # Same above.
-	var neck: int = search_bone_by_name(skeleton, picklist, SEG_NONE, hips)
+	var neck: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_NONE, hips)
 	picklist.clear()
 
 	# 4. Guess Head
 	picklist.push_back("head")
 	picklist.push_back("face")
-	var head: int = search_bone_by_name(skeleton, picklist, SEG_NONE, neck)
+	var head: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_NONE, neck)
 	if head == -1:
 		search_path = skeleton.get_bone_children(neck)
 		if search_path.size() == 1:
 			head = search_path[0]  # Maybe only one child of the Neck is Head.
 
 	if head == -1:
-		if neck != -1:
+		# When force_humanoid, we may be processing an outfit that touches the neck but has no head bone.
+		# In this specific case, prefer the Neck if we know that is what it is.
+		if neck != -1 and not (force_humanoid and skeleton.get_bone_name(neck).to_lower().contains("neck")):
 			head = neck  # The head animation should have more movement.
 			neck = -1
 			bone_map_dict[skeleton.get_bone_name(head)] = "Head"
 		else:
-			print("Auto Mapping couldn't guess Neck or Head.")  # Continued for guessing on the other bones. But abort when guessing spines step.
+			log_debug_func.call("Auto Mapping couldn't guess Neck or Head.")  # Continued for guessing on the other bones. But abort when guessing spines step.
 
 	else:
 		bone_map_dict[skeleton.get_bone_name(neck)] = "Neck"
@@ -191,15 +197,15 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	if neck_or_head != -1:
 		# 4-1. Guess Eyes
 		picklist.push_back("eye(?!.*(brow|lash|lid))")
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_LEFT, neck_or_head)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, neck_or_head)
 		if bone_idx == -1:
-			print("Auto Mapping couldn't guess LeftEye.")
+			log_debug_func.call("Auto Mapping couldn't guess LeftEye.")
 		else:
 			bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftEye"
 
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_RIGHT, neck_or_head)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, neck_or_head)
 		if bone_idx == -1:
-			print("Auto Mapping couldn't guess RightEye.")
+			log_debug_func.call("Auto Mapping couldn't guess RightEye.")
 		else:
 			bone_map_dict[skeleton.get_bone_name(bone_idx)] = "RightEye"
 
@@ -207,9 +213,9 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 
 		# 4-2. Guess Jaw
 		picklist.push_back("jaw")
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_NONE, neck_or_head)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_NONE, neck_or_head)
 		if bone_idx == -1:
-			print("Auto Mapping couldn't guess Jaw.")
+			log_debug_func.call("Auto Mapping couldn't guess Jaw.")
 		else:
 			bone_map_dict[skeleton.get_bone_name(bone_idx)] = "Jaw"
 
@@ -219,15 +225,15 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	# 5. Guess Foots
 	picklist.push_back("foot")
 	picklist.push_back("ankle")
-	var left_foot: int = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips)
+	var left_foot: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips)
 	if left_foot == -1:
-		print("Auto Mapping couldn't guess LeftFoot.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftFoot.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(left_foot)] = "LeftFoot"
 
-	var right_foot: int = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips)
+	var right_foot: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips)
 	if right_foot == -1:
-		print("Auto Mapping couldn't guess RightFoot.")
+		log_debug_func.call("Auto Mapping couldn't guess RightFoot.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(right_foot)] = "RightFoot"
 
@@ -240,20 +246,20 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("calf")
 	picklist.push_back("leg")
 	var left_lower_leg: int = -1
-	if left_foot != -1:
-		left_lower_leg = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips, left_foot)
+	if left_foot != -1 or force_humanoid:
+		left_lower_leg = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, left_foot)
 
 	if left_lower_leg == -1:
-		print("Auto Mapping couldn't guess LeftLowerLeg.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftLowerLeg.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(left_lower_leg)] = "LeftLowerLeg"
 
 	var right_lower_leg: int = -1
-	if right_foot != -1:
-		right_lower_leg = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips, right_foot)
+	if right_foot != -1 or force_humanoid:
+		right_lower_leg = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, right_foot)
 
 	if right_lower_leg == -1:
-		print("Auto Mapping couldn't guess RightLowerLeg.")
+		log_debug_func.call("Auto Mapping couldn't guess RightLowerLeg.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(right_lower_leg)] = "RightLowerLeg"
 
@@ -263,20 +269,32 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("up.*leg")
 	picklist.push_back("thigh")
 	picklist.push_back("leg")
-	if left_lower_leg != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips, left_lower_leg)
+	if left_lower_leg != -1 or force_humanoid:
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, left_lower_leg)
+
+	if force_humanoid and bone_idx == -1 and left_lower_leg != -1:
+		bone_idx = left_lower_leg
+		left_lower_leg = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["leg"]), SEG_LEFT, bone_idx)
+		if left_lower_leg != -1:
+			bone_map_dict[skeleton.get_bone_name(left_lower_leg)] = "LeftLowerLeg"
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess LeftUpperLeg.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftUpperLeg.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftUpperLeg"
 
 	bone_idx = -1
-	if right_lower_leg != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips, right_lower_leg)
+	if right_lower_leg != -1 or force_humanoid:
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, right_lower_leg)
+
+	if force_humanoid and bone_idx == -1 and right_lower_leg != -1:
+		bone_idx = right_lower_leg
+		right_lower_leg = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["leg"]), SEG_RIGHT, bone_idx)
+		if right_lower_leg != -1:
+			bone_map_dict[skeleton.get_bone_name(right_lower_leg)] = "RightLowerLeg"
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess RightUpperLeg.")
+		log_debug_func.call("Auto Mapping couldn't guess RightUpperLeg.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "RightUpperLeg"
 
@@ -287,7 +305,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("toe")
 	picklist.push_back("ball")
 	if left_foot != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_LEFT, left_foot)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_foot)
 		if bone_idx == -1:
 			search_path = skeleton.get_bone_children(left_foot)
 			if search_path.size() == 1:
@@ -296,13 +314,13 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 			search_path.clear()
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess LeftToes.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftToes.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftToes"
 
 	bone_idx = -1
 	if right_foot != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_RIGHT, right_foot)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_foot)
 		if bone_idx == -1:
 			search_path = skeleton.get_bone_children(right_foot)
 			if search_path.size() == 1:
@@ -311,7 +329,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 			search_path.clear()
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess RightToes.")
+		log_debug_func.call("Auto Mapping couldn't guess RightToes.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "RightToes"
 
@@ -323,46 +341,46 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("wrist")
 	picklist.push_back("palm")
 	picklist.push_back("fingers")
-	var left_hand_or_palm: int = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips, -1, 5)
+	var left_hand_or_palm: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, -1, 5)
 	if left_hand_or_palm == -1:
 		# Ambiguous, but try again for fewer finger models.
-		left_hand_or_palm = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips)
+		left_hand_or_palm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips)
 
 	var left_hand: int = left_hand_or_palm  # Check for the presence of a wrist, since bones with five children may be palmar.
 	while left_hand != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips, left_hand)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, left_hand)
 		if bone_idx == -1:
 			break
 
 		left_hand = bone_idx
 
 	if left_hand == -1:
-		print("Auto Mapping couldn't guess LeftHand.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftHand.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(left_hand)] = "LeftHand"
 
 	bone_idx = -1
-	var right_hand_or_palm: int = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips, -1, 5)
+	var right_hand_or_palm: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, -1, 5)
 	if right_hand_or_palm == -1:
 		# Ambiguous, but try again for fewer finger models.
-		right_hand_or_palm = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips)
+		right_hand_or_palm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips)
 
 	var right_hand: int = right_hand_or_palm
 	while right_hand != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips, right_hand)
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, right_hand)
 		if bone_idx == -1:
 			break
 
 		right_hand = bone_idx
 
 	if right_hand == -1:
-		print("Auto Mapping couldn't guess RightHand.")
+		log_debug_func.call("Auto Mapping couldn't guess RightHand.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(right_hand)] = "RightHand"
 
 	bone_idx = -1
 	picklist.clear()
-	print("Now fingers")
+	log_debug_func.call("Now fingers")
 	# 6-1. Guess Finger
 	var named_finger_is_found: bool = false
 	var fingers: PackedStringArray
@@ -391,7 +409,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 		left_fingers_map[4].push_back("LeftLittleDistal")
 		for i in range(5):
 			picklist.push_back(fingers[i])
-			var finger: int = search_bone_by_name(skeleton, picklist, SEG_LEFT, left_hand_or_palm, -1, 0)
+			var finger: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_hand_or_palm, -1, 0)
 			if finger != -1:
 				while finger != left_hand_or_palm && finger >= 0:
 					search_path.push_back(finger)
@@ -433,7 +451,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 					break
 
 				var finger_root: int = skeleton.find_bone(finger_names[i])
-				var finger: int = search_bone_by_name(skeleton, picklist, SEG_LEFT, finger_root, -1, 0)
+				var finger: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, finger_root, -1, 0)
 				if finger != -1:
 					while finger != finger_root && finger >= 0:
 						search_path.push_back(finger)
@@ -477,7 +495,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 		right_fingers_map[4].push_back("RightLittleDistal")
 		for i in range(5):
 			picklist.push_back(fingers[i])
-			var finger: int = search_bone_by_name(skeleton, picklist, SEG_RIGHT, right_hand_or_palm, -1, 0)
+			var finger: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_hand_or_palm, -1, 0)
 			if finger != -1:
 				while finger != right_hand_or_palm && finger >= 0:
 					search_path.push_back(finger)
@@ -520,7 +538,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 					break
 
 				var finger_root: int = skeleton.find_bone(finger_names[i])
-				var finger: int = search_bone_by_name(skeleton, picklist, SEG_RIGHT, finger_root, -1, 0)
+				var finger: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, finger_root, -1, 0)
 				if finger != -1:
 					while finger != finger_root && finger >= 0:
 						search_path.push_back(finger)
@@ -547,15 +565,15 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("shoulder")
 	picklist.push_back("clavicle")
 	picklist.push_back("collar")
-	var left_shoulder: int = search_bone_by_name(skeleton, picklist, SEG_LEFT, hips)
+	var left_shoulder: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips)
 	if left_shoulder == -1:
-		print("Auto Mapping couldn't guess LeftShoulder.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftShoulder.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(left_shoulder)] = "LeftShoulder"
 
-	var right_shoulder: int = search_bone_by_name(skeleton, picklist, SEG_RIGHT, hips)
+	var right_shoulder: int = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips)
 	if right_shoulder == -1:
-		print("Auto Mapping couldn't guess RightShoulder.")
+		log_debug_func.call("Auto Mapping couldn't guess RightShoulder.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(right_shoulder)] = "RightShoulder"
 
@@ -566,20 +584,20 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.push_back("elbow")
 	picklist.push_back("arm")
 	var left_lower_arm: int = -1
-	if left_shoulder != -1 && left_hand_or_palm != -1:
-		left_lower_arm = search_bone_by_name(skeleton, picklist, SEG_LEFT, left_shoulder, left_hand_or_palm)
+	if left_shoulder != -1 && (left_hand_or_palm != -1 or force_humanoid):
+		left_lower_arm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_shoulder, left_hand_or_palm)
 
 	if left_lower_arm == -1:
-		print("Auto Mapping couldn't guess LeftLowerArm.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftLowerArm.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(left_lower_arm)] = "LeftLowerArm"
 
 	var right_lower_arm: int = -1
-	if right_shoulder != -1 && right_hand_or_palm != -1:
-		right_lower_arm = search_bone_by_name(skeleton, picklist, SEG_RIGHT, right_shoulder, right_hand_or_palm)
+	if right_shoulder != -1 && (right_hand_or_palm != -1 or force_humanoid):
+		right_lower_arm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_shoulder, right_hand_or_palm)
 
 	if right_lower_arm == -1:
-		print("Auto Mapping couldn't guess RightLowerArm.")
+		log_debug_func.call("Auto Mapping couldn't guess RightLowerArm.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(right_lower_arm)] = "RightLowerArm"
 
@@ -588,20 +606,32 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	# 7-2. Guess UpperArms
 	picklist.push_back("up.*arm")
 	picklist.push_back("arm")
-	if left_shoulder != -1 && left_lower_arm != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_LEFT, left_shoulder, left_lower_arm)
+	if left_shoulder != -1 && (left_lower_arm != -1 or force_humanoid):
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_shoulder, left_lower_arm)
+
+	if force_humanoid and bone_idx == -1 and left_lower_arm != -1:
+		bone_idx = left_lower_arm
+		left_lower_arm = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["arm"]), SEG_LEFT, bone_idx)
+		if left_lower_arm != -1:
+			bone_map_dict[skeleton.get_bone_name(left_lower_arm)] = "LeftLowerArm"
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess LeftUpperArm.")
+		log_debug_func.call("Auto Mapping couldn't guess LeftUpperArm.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftUpperArm"
 
 	bone_idx = -1
-	if right_shoulder != -1 && right_lower_arm != -1:
-		bone_idx = search_bone_by_name(skeleton, picklist, SEG_RIGHT, right_shoulder, right_lower_arm)
+	if right_shoulder != -1 && (right_lower_arm != -1 or force_humanoid):
+		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_shoulder, right_lower_arm)
+
+	if force_humanoid and bone_idx == -1 and right_lower_arm != -1:
+		bone_idx = right_lower_arm
+		right_lower_arm = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["arm"]), SEG_RIGHT, bone_idx)
+		if right_lower_arm != -1:
+			bone_map_dict[skeleton.get_bone_name(right_lower_arm)] = "RightLowerArm"
 
 	if bone_idx == -1:
-		print("Auto Mapping couldn't guess RightUpperArm.")
+		log_debug_func.call("Auto Mapping couldn't guess RightUpperArm.")
 	else:
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "RightUpperArm"
 
@@ -609,11 +639,14 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	picklist.clear()
 
 	# 8. Guess UpperChest or Chest
-	if neck_or_head == -1:
-		print("Auto Mapping couldn't guess Neck or Head! Abort auto mapping.")
+	if neck_or_head == -1 and not force_humanoid:
+		log_debug_func.call("Auto Mapping couldn't guess Neck or Head! Abort audio mapping.")
 		return {}  # Abort.
 
-	var chest_or_upper_chest: int = skeleton.get_bone_parent(neck_or_head)
+	var chest_or_upper_chest: int = -1
+	if neck_or_head != -1:
+		chest_or_upper_chest = skeleton.get_bone_parent(neck_or_head)
+
 	var is_appropriate: bool = true
 	if left_shoulder != -1:
 		bone_idx = skeleton.get_bone_parent(left_shoulder)
@@ -652,8 +685,11 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 			chest_or_upper_chest = -1
 
 	if chest_or_upper_chest == -1:
-		print("Auto Mapping couldn't guess Chest or UpperChest. Abort auto mapping.")
-		return {}  # Will be not able to guess Spines.
+		log_debug_func.call("Auto Mapping couldn't guess Chest or UpperChest. Abort auto mapping.")
+		if force_humanoid:
+			return bone_map_dict
+		else:
+			return {}  # Will be not able to guess Spines.
 
 	# 9. Guess Spines
 	bone_idx = skeleton.get_bone_parent(chest_or_upper_chest)
@@ -663,10 +699,22 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 
 	search_path.reverse()
 	if search_path.size() == 0:
-		bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Spine"  # Maybe chibi model...?
+		if force_humanoid and missing_hips:
+			if skeleton.get_bone_name(chest_or_upper_chest).to_lower().contains("up"):
+				bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "UpperChest"
+			elif skeleton.get_bone_name(chest_or_upper_chest).to_lower().contains("spine"):
+				bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Spine"
+			else:
+				bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Chest"
+		else:
+			bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Spine"  # Maybe chibi model...?
 	elif search_path.size() == 1:
-		bone_map_dict[skeleton.get_bone_name(search_path[0])] = "Spine"
-		bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Chest"
+		if force_humanoid and missing_hips and skeleton.get_bone_name(chest_or_upper_chest).to_lower().contains("up") and not skeleton.get_bone_name(search_path[0]).to_lower().contains("spine"):
+			bone_map_dict[skeleton.get_bone_name(search_path[0])] = "Chest"
+			bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "UpperChest"
+		else:
+			bone_map_dict[skeleton.get_bone_name(search_path[0])] = "Spine"
+			bone_map_dict[skeleton.get_bone_name(chest_or_upper_chest)] = "Chest"
 	elif search_path.size() >= 2:
 		bone_map_dict[skeleton.get_bone_name(search_path[0])] = "Spine"
 		bone_map_dict[skeleton.get_bone_name(search_path[search_path.size() - 1])] = "Chest"  # Probably UppeChest's parent is appropriate.
@@ -675,7 +723,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D) -> Dictionary:
 	bone_idx = -1
 	search_path.clear()
 
-	print("Finish auto mapping.")
+	log_debug_func.call("Finish auto mapping.")
 	return bone_map_dict
 
 

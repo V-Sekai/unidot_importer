@@ -1605,59 +1605,57 @@ class FbxHandler:
 					skel.set_bone_pose_rotation(i, xform.basis.get_rotation_quaternion())
 					skel.set_bone_pose_scale(i, xform.basis.get_scale())
 					i += 1
-				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel)
+				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, pkgasset.parsed_meta.is_force_humanoid())
+				# The above fails if Hips could not be found. If forcing humanoid, try anyway in case this is an outfit.
+				if pkgasset.parsed_meta.is_force_humanoid() and pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty() and len(default_scene["nodes"]) < 100:
+					for root_idx in default_scene["nodes"]:
+						var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, root_idx)
+						if len(try_bone_map) > len(pkgasset.parsed_meta.autodetected_bone_map_dict):
+							pkgasset.parsed_meta.autodetected_bone_map_dict = try_bone_map
 				skel.free()
 
 			if not copy_avatar:
+				pkgasset.log_debug(str(importer.keys.get("humanDescription", {}).get("human", [])))
 				pkgasset.log_debug("AAAA set to humanoid and has nodes")
 				bone_map_dict = importer.generate_bone_map_dict_from_human()
 				pkgasset.log_debug(str(bone_map_dict))
 
+			var node_parents: Dictionary
+			for x_node_idx in range(len(json["nodes"])):
+				for chld in json["nodes"][x_node_idx].get("children", []):
+					node_parents[chld] = x_node_idx
+
 			# Discover missing Root bone if any, and correct for name conflicts.
 			var node_idx = 0
-			var hips_node_idx = -1
+			var human_skin_set: Dictionary
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
 				# pkgasset.log_debug("AAAA node name " + str(node_name))
 				if bone_map_dict.has(node_name):
 					var godot_human_name: String = bone_map_dict[node_name]
-					if godot_human_name == "Hips":
-						hips_node_idx = node_idx
 					human_skin_nodes.push_back(node_idx)
+					human_skin_set[node_idx] = true
 				node_idx += 1
+
 			var root_bone_name: String = ""
 			for key in bone_map_dict:
 				if bone_map_dict[key] == "Root":
 					root_bone_name = bone_map_dict[key]
+			var cur_human_node_idx = -1 if human_skin_nodes.is_empty() else human_skin_nodes[-1] # Doesn't matter which...just need to find a common ancestor.
 			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
-			for i in range(3):
-				if hips_node_idx == -1:
-					break
-				node_idx = 0
-				var new_root_idx = -1
-				var scene_nodes = json["scenes"][0]["nodes"].duplicate()
-				for node in json["nodes"]:
-					# "RootNode" is always created by the FBX2glTF conversion, so we promote these to gltf root scene nodes.
-					if node["name"] == "RootNode":
-						scene_nodes.append_array(node.get("children", []))
-						continue
-					for child in node.get("children", []):
-						if child == hips_node_idx:
-							pkgasset.log_debug("Found the child " + str(child) + " type " + str(typeof(child)) + " hni type " + str(typeof(hips_node_idx)))
-							pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
-							if root_bone_name != "":
-								bone_map_dict.erase(root_bone_name)
-							bone_map_dict[node["name"]] = "Root"
-							root_bone_name = node["name"]
-							new_root_idx = node_idx
-							human_skin_nodes.push_back(new_root_idx)
-							break
-					if new_root_idx != -1:
-						break
-					node_idx += 1
-				if scene_nodes.find(new_root_idx) != -1:
-					break # FIXME: Try to avoid putting the root of a scene into the skeleton.
-				hips_node_idx = new_root_idx
+			while node_parents.has(cur_human_node_idx):
+				var new_root_idx = node_parents[cur_human_node_idx]
+				var node = json["nodes"][new_root_idx]
+				pkgasset.log_debug("Adding node to skin " + str(new_root_idx) + " parent of " + str(cur_human_node_idx))
+				pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
+				if root_bone_name != "":
+					bone_map_dict.erase(root_bone_name)
+				bone_map_dict[node["name"]] = "Root"
+				root_bone_name = node["name"]
+				if not human_skin_set.has(new_root_idx):
+					human_skin_nodes.push_back(new_root_idx)
+					human_skin_set[new_root_idx] = true
+				cur_human_node_idx = new_root_idx
 
 			pkgasset.log_debug("human_skin_nodes is now " +str(human_skin_nodes))
 
@@ -1668,10 +1666,6 @@ class FbxHandler:
 
 			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
 			if copy_avatar:
-				var node_parents: Dictionary
-				for x_node_idx in range(len(json["nodes"])):
-					for chld in json["nodes"][x_node_idx].get("children", []):
-						node_parents[chld] = x_node_idx
 				var hip_parent_node_idx = -1
 				for x_node_idx in range(len(json["nodes"])):
 					var node: Dictionary = json["nodes"][x_node_idx]
