@@ -179,10 +179,13 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 	if head == -1:
 		# When force_humanoid, we may be processing an outfit that touches the neck but has no head bone.
 		# In this specific case, prefer the Neck if we know that is what it is.
-		if neck != -1 and not (force_humanoid and skeleton.get_bone_name(neck).to_lower().contains("neck")):
-			head = neck  # The head animation should have more movement.
-			neck = -1
-			bone_map_dict[skeleton.get_bone_name(head)] = "Head"
+		if neck != -1:
+			if force_humanoid and skeleton.get_bone_name(neck).to_lower().contains("neck"):
+				bone_map_dict[skeleton.get_bone_name(neck)] = "Neck"
+			else:
+				head = neck  # The head animation should have more movement.
+				neck = -1
+				bone_map_dict[skeleton.get_bone_name(head)] = "Head"
 		else:
 			log_debug_func.call("Auto Mapping couldn't guess Neck or Head.")  # Continued for guessing on the other bones. But abort when guessing spines step.
 

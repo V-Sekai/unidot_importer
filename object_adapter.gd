@@ -153,7 +153,7 @@ class UnidotObject:
 	func _to_string() -> String:
 		#return "[" + str(type) + " @" + str(fileID) + ": " + str(len(keys)) + "]" # str(keys) + "]"
 		#return "[" + str(type) + " @" + str(fileID) + ": " + JSON.print(keys) + "]"
-		return "[" + str(type) + " " + uniq_key + "]"
+		return "[" + str(type) + ":" + str(utype) + " " + str(get_debug_name()) + " @" + str(meta.guid) + ":" + str(fileID) + "]"
 
 	var name: String:
 		get:
@@ -162,7 +162,12 @@ class UnidotObject:
 	func get_name() -> String:
 		if fileID == meta.main_object_id:
 			return meta.get_main_object_name()
-		return str(keys.get("m_Name", "NO_NAME:" + uniq_key))
+		if not keys.get("m_Name", "").is_empty():
+			return keys.get("m_Name", "")
+		return str(keys.get("m_Name", "NO_NAME:" + str(fileID)))
+
+	func get_debug_name() -> String:
+		return get_name()
 
 	var toplevel: bool:
 		get:
@@ -429,7 +434,7 @@ class UnidotObject:
 		get:
 			if not is_stripped:
 				#if not (prefab_source_object[1] == 0 or prefab_instance[1] == 0):
-				#	log_debug(str(self.uniq_key) + " WITHIN " + str(self.meta.guid) + " / " + str(self.meta.path) + " keys:" + str(self.keys))
+				#	log_debug(str(self) + " WITHIN " + str(self.meta.guid) + " / " + str(self.meta.path) + " keys:" + str(self.keys))
 				pass  #assert (prefab_source_object[1] == 0 or prefab_instance[1] == 0)
 			else:
 				# Might have source object=0 if the object is a dummy / broken prefab?
@@ -1189,7 +1194,7 @@ class UnidotAnimatorRelated:
 				motion_node.play_mode = AnimationNodeAnimation.PLAY_MODE_BACKWARD
 		else:
 			var blend_tree = meta.lookup(motion_ref)
-			log_debug("type: " + str(blend_tree.type) + " class " + str(blend_tree.get_class()) + " " + str(blend_tree.uniq_key))
+			log_debug("Found blend tree " + str(blend_tree))
 			if blend_tree.type != "BlendTree":
 				log_fail("Animation not in animation_guid_fileid_to_name: " + str(anim_key))
 				motion_node = AnimationNodeAnimation.new()
@@ -2423,13 +2428,13 @@ class UnidotAnimationClip:
 					Animation.TYPE_POSITION_3D, Animation.TYPE_ROTATION_3D, Animation.TYPE_SCALE_3D:
 						resolved_key = "T" + resolved_key
 					_:
-						log_warn(str(self.uniq_key) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
+						log_warn(str(self) + ": anim Unsupported track type " + str(typ) + " at " + resolved_key)
 						new_track_names.append([clip.track_get_path(track_idx), "", []])
 						identical += 1
 						continue  # unsupported track type.
 				if not resolved_to_default_paths.has(resolved_key):
 					if not resolved_key.begins_with("T%GeneralSkeleton"): # This is normal
-						log_warn(str(self.uniq_key) + ": anim No default " + str(typ) + " track path at " + resolved_key)
+						log_warn(str(self) + ": anim No default " + str(typ) + " track path at " + resolved_key)
 					new_track_names.append([clip.track_get_path(track_idx), "", []])
 					identical += 1
 					continue
@@ -2502,7 +2507,7 @@ class UnidotAnimationClip:
 							# log_debug("Adapt key " + str(key) + " ts " + str(ts) + " rot=" + str(godot_rotation.get_euler()) + " scale=" + str(godot_scale) + " pos " + str(pos) + " -> " + str(converted_pos))
 							clip.track_set_key_value(track_idx, key, converted_pos)
 			if new_path == NodePath():
-				log_warn(str(self.uniq_key) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
+				log_warn(str(self) + ": anim Unable to resolve " + str(typ) + " track at " + resolved_key + " orig " + str(orig_info))
 				identical += 1
 				new_track_names.append([clip.track_get_path(track_idx), resolved_key, orig_info])
 				continue
@@ -3824,11 +3829,11 @@ class UnidotGameObject:
 			var child_game_object: UnidotGameObject = child_transform.gameObject
 			if child_game_object.is_prefab_reference:
 				log_warn("child gameObject is a prefab reference!", "chi;d", child_game_object)
-			var new_skelley: RefCounted = state.uniq_key_to_skelley.get(child_transform.uniq_key, null)  # Skelley
+			var new_skelley: RefCounted = state.fileID_to_skelley.get(child_transform.fileID, null)  # Skelley
 			if new_skelley == null and new_parent == null:
-				log_warn("We did not create a node for this child, but it is not a skeleton bone! " + uniq_key + " child " + child_transform.uniq_key + " gameObject " + child_game_object.uniq_key + " name " + child_game_object.name, "child", child_game_object)
+				log_warn("We did not create a node for this child, but it is not a skeleton bone! " + str(self) + " child " + str(child_transform) + " gameObject " + str(child_game_object), "child", child_game_object)
 			elif new_skelley != null:
-				# log_debug("Go from " + transform_asset.uniq_key + " to " + str(child_game_object) + " transform " + str(child_transform) + " found skelley " + str(new_skelley))
+				# log_debug("Go from " + str(transform_asset) + " to " + str(child_game_object) + " transform " + str(child_transform) + " found skelley " + str(new_skelley))
 				child_game_object.create_skeleton_bone(state, new_skelley)
 			else:
 				child_game_object.create_godot_node(state, new_parent)
@@ -3896,7 +3901,7 @@ class UnidotGameObject:
 			state.add_fileID(godot_skeleton, transform)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, fileID)
 			state.add_fileID_to_skeleton_bone(skeleton_bone_name, transform.fileID)
-			if len(components) > 1 or state.skelley_parents.has(transform.uniq_key):
+			if len(components) > 1 or state.skelley_parents.has(transform.fileID):
 				ret = BoneAttachment3D.new()
 				ret.name = self.name
 				ret.bone_name = skeleton_bone_name
@@ -3916,7 +3921,7 @@ class UnidotGameObject:
 		godot_skeleton.set_bone_rest(skeleton_bone_index, rest_bone_pose)
 		var smrs: Array[UnidotSkinnedMeshRenderer]
 		if ret != null:
-			var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
+			var list_of_skelleys: Array = state.skelley_parents.get(transform.fileID, [])
 			for new_skelley in list_of_skelleys:
 				ret.add_child(godot_skeleton, true)
 				godot_skeleton.owner = state.owner
@@ -3958,7 +3963,7 @@ class UnidotGameObject:
 		for child_ref in transform.children_refs:
 			var child_transform: UnidotTransform = meta.lookup(child_ref)
 			if ret == null and child_transform.is_prefab_reference or child_transform.type == "PrefabInstance":
-				#log_warn("Unable to recurse to child_transform " + child_transform.uniq_key + " on null skeleton bone ret", "children", self)
+				#log_warn("Unable to recurse to child_transform " + str(child_transform) + " on null skeleton bone ret", "children", self)
 				ret = BoneAttachment3D.new()
 				ret.name = self.name
 				ret.bone_name = skeleton_bone_name
@@ -3975,7 +3980,7 @@ class UnidotGameObject:
 		for smr in smrs:
 			var smrnode: Node = smr.create_skinned_mesh(state)
 			if smrnode != null:
-				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into node Skeleton " + str(state.owner.get_path_to(smrnode)))
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into node Skeleton " + str(state.owner.get_path_to(smrnode)))
 
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
@@ -4023,7 +4028,7 @@ class UnidotGameObject:
 				sub_avatar_meta = component.get_avatar_meta()
 				if sub_avatar_meta != null:
 					state = state.state_with_avatar_meta(sub_avatar_meta)
-		var list_of_skelleys: Array = state.skelley_parents.get(transform.uniq_key, [])
+		var list_of_skelleys: Array = state.skelley_parents.get(transform.fileID, [])
 		for new_skelley in list_of_skelleys:
 			if new_skelley.humanoid_avatar_meta != null and new_skelley.humanoid_avatar_meta != sub_avatar_meta:
 				sub_avatar_meta = new_skelley.humanoid_avatar_meta
@@ -4101,7 +4106,7 @@ class UnidotGameObject:
 		for smr in smrs:
 			var smrnode: Node = smr.create_skinned_mesh(state)
 			if smrnode != null:
-				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into nested Skeleton " + str(state.owner.get_path_to(smrnode)))
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into nested Skeleton " + str(state.owner.get_path_to(smrnode)))
 
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
@@ -4125,22 +4130,22 @@ class UnidotGameObject:
 	var components: Variant:  # Array:
 		get:
 			if is_stripped:
-				log_fail("Attempted to access the component array of a stripped " + type + " " + uniq_key, "components")
+				log_fail("Attempted to access the component array of a stripped " + type + " " + str(self), "components")
 				# FIXME: Stripped objects do not know their name.
 				return 12345.678  # ????
 			return keys.get("m_Component")
 
 	func get_transform() -> Object:  # UnidotTransform:
 		if is_stripped:
-			log_fail("Attempted to access the transform of a stripped " + type + " " + uniq_key, "transform")
+			log_fail("Attempted to access the transform of a stripped " + type + " " + str(self), "transform")
 			# FIXME: Stripped objects do not know their name.
 			return null  # ????
 		if typeof(components) != TYPE_ARRAY:
-			log_fail(uniq_key + " has component array: " + str(components), "transform")
+			log_fail(str(self) + " has component array: " + str(components), "transform")
 		elif len(components) < 1 or typeof(components[0]) != TYPE_DICTIONARY:
-			log_fail(uniq_key + " has invalid first component: " + str(components), "transform")
+			log_fail(str(self) + " has invalid first component: " + str(components), "transform")
 		elif len(components[0].values()[0]) < 3:
-			log_fail(uniq_key + " has invalid component: " + str(components), "transform")
+			log_fail(str(self) + " has invalid component: " + str(components), "transform")
 		else:
 			var component = meta.lookup(components[0].values()[0])
 			if component.type != "Transform" and component.type != "RectTransform":
@@ -4180,16 +4185,28 @@ class UnidotGameObject:
 			# (The PrefabInstance itself will be the toplevel object)
 			return false
 		if typeof(transform) == TYPE_NIL:
-			log_warn(uniq_key + " has no transform in toplevel: " + str(transform))
+			log_warn(str(self) + " has no transform in toplevel: " + str(transform))
 			return false
 		if typeof(transform.parent_ref) != TYPE_ARRAY:
-			log_warn(uniq_key + " has invalid or missing parent_ref: " + str(transform.parent_ref))
+			log_warn(str(self) + " has invalid or missing parent_ref: " + str(transform.parent_ref))
 			return false
 		return transform.parent_ref[1] == 0
 
 	func get_gameObject() -> UnidotGameObject:  # UnidotGameObject:
 		return self
 
+	func get_debug_name() -> String:
+		if is_stripped or self.name.is_empty():
+			var bone: String = meta.fileid_to_skeleton_bone.get(fileID, meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
+			if not bone.is_empty():
+				return bone
+			var np: NodePath = meta.fileid_to_nodepath.get(fileID, meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
+			if not np.is_empty():
+				return np.get_name(np.get_name_count() - 1)
+			if is_stripped:
+				return "[stripped]"
+			return "[empty]"
+		return str(self.name)
 
 # Is a PrefabInstance a GameObject? Unidot seems to treat it that way at times. Other times not...
 # Is this canon? We'll never know because the documentation denies even the existence of a "PrefabInstance" class
@@ -4234,7 +4251,7 @@ class UnidotPrefabInstance:
 		if source_prefab_meta != null:
 			go_id = source_prefab_meta.prefab_main_gameobject_id
 		else:
-			log_debug("During prefab name lookup, ailed to lookup meta from " + str(self.uniq_key) + " for source prefab " + str(self.source_prefab))
+			log_debug("During prefab name lookup, ailed to lookup meta from " + str(self) + " for source prefab " + str(self.source_prefab))
 		for mod in modifications:
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
@@ -4262,7 +4279,7 @@ class UnidotPrefabInstance:
 			return []
 		var packed_scene: PackedScene = target_prefab_meta.get_godot_resource(source_prefab)
 		if packed_scene == null:
-			log_fail("Failed to instantiate prefab with guid " + uniq_key + " from " + str(self.meta.guid), "prefab", source_prefab)
+			log_fail("Failed to instantiate prefab with guid " + str(self) + " from " + str(self.meta.guid), "prefab", source_prefab)
 			return []
 		meta.transform_fileid_to_parent_fileid[meta.xor_or_stripped(target_prefab_meta.prefab_main_transform_id, self.fileID)] = self.parent_ref[1]
 		log_debug("Assigning prefab root transform " + str(meta.xor_or_stripped(target_prefab_meta.prefab_main_transform_id, self.fileID)) + " parent fileid " + str(self.parent_ref[1]))
@@ -4309,13 +4326,6 @@ class UnidotPrefabInstance:
 			if set_editable_children(state, instanced_scene) != instanced_scene:
 				instanced_scene.scene_file_path = ""
 				set_owner_rec(instanced_scene, state.owner)
-		## using _bundled.editable_instance happens after the data is discarded...
-		## This whole system doesn't work. We need an engine mod instead that allows set_editable_instance.
-		##if new_parent != null:
-		# In this case, we must also set editable children later in convert_scene.gd
-		# Here is how we keep track of it:
-		##	ps.prefab_instance_paths.push_back(state.owner.get_path_to(instanced_scene))
-		# state = state.state_with_owner(instanced_scene)
 		var anim_player: AnimationPlayer = instanced_scene.get_node_or_null("AnimationPlayer") as AnimationPlayer
 		if anim_player != null:
 			var root_node: Node = anim_player.get_node(anim_player.root_node)
@@ -4340,7 +4350,7 @@ class UnidotPrefabInstance:
 		#log_debug("Resulting name_map: " + str(ps.prefab_gameobject_name_map))
 		meta.remap_prefab_fileids(self.fileID, target_prefab_meta)
 
-		state.add_bones_to_prefabbed_skeletons(self.uniq_key, target_prefab_meta, instanced_scene)
+		state.add_bones_to_prefabbed_skeletons(self.fileID, target_prefab_meta, instanced_scene)
 
 		log_debug("Prefab " + str(packed_scene.resource_path) + " ------------")
 		log_debug("Adding to parent " + str(new_parent))
@@ -4496,7 +4506,7 @@ class UnidotPrefabInstance:
 				if not nodepath_to_first_virtual_object.has(target_nodepath) or nodepath_to_first_virtual_object[target_nodepath] is UnidotTransform or nodepath_to_first_virtual_object[target_nodepath] is UnidotGameObject:
 					nodepath_to_first_virtual_object[target_nodepath] = virtual_unidot_object
 				var converted: Dictionary = virtual_unidot_object.convert_properties(existing_node, uprops)
-				log_debug("Converted props " + str(converted) + " from " + str(nodepath_to_keys.get(target_nodepath)) + " at " + str(virtual_unidot_object.uniq_key))
+				log_debug("Converted props " + str(converted) + " from " + str(nodepath_to_keys.get(target_nodepath)) + " at " + str(virtual_unidot_object))
 				virtual_unidot_object.apply_component_props(existing_node, converted)
 				if not nodepath_to_keys.has(target_nodepath):
 					nodepath_to_keys[target_nodepath] = converted
@@ -4545,7 +4555,7 @@ class UnidotPrefabInstance:
 			var source_obj_ref = par.prefab_source_object
 			var source_transform_id: int = gntfac.get(source_obj_ref[1], pgntfac.get(source_obj_ref[1], {})).get(4, 0)
 			var transform_delta: Transform3D = target_prefab_meta.transform_fileid_to_rotation_delta.get(source_transform_id, target_prefab_meta.prefab_transform_fileid_to_rotation_delta.get(source_transform_id, Transform3D()))
-			log_debug("Checking stripped GameObject " + str(par.uniq_key) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			log_debug("Checking stripped GameObject " + str(par) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
@@ -4626,7 +4636,7 @@ class UnidotPrefabInstance:
 			# NOTE: transform_asset may be a GameObject, in case it was referenced by a Component.
 			var par: UnidotTransform = transform_asset
 			var source_obj_ref = par.prefab_source_object
-			log_debug("Checking stripped Transform " + str(par.uniq_key) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
+			log_debug("Checking stripped Transform " + str(par) + ": " + str(source_obj_ref) + " is it " + target_prefab_meta.guid)
 			assert(target_prefab_meta.guid == source_obj_ref[2])
 			var target_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_nodepath.get(source_obj_ref[1], NodePath()))
 			var target_skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone.get(source_obj_ref[1], target_prefab_meta.prefab_fileid_to_skeleton_bone.get(source_obj_ref[1], ""))
@@ -4658,9 +4668,9 @@ class UnidotPrefabInstance:
 					log_debug("Made a new attachment! " + str(target_skel_bone))
 					state.add_child(attachment, godot_skeleton, transform_asset)
 
-			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.uniq_key, [])
+			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.fileID, [])
 			if not list_of_skelleys.is_empty():
-				log_debug("It's Peanut Butter Skelley time: " + str(transform_asset.uniq_key))
+				log_debug("It's Peanut Butter Skelley time: " + str(transform_asset))
 			for new_skelley in list_of_skelleys:
 				if new_skelley.godot_skeleton != null:
 					if not state.active_avatars.is_empty():
@@ -4678,7 +4688,7 @@ class UnidotPrefabInstance:
 					log_debug("Adding " + str(child_transform.gameObject.name) + " to " + str(attachment.name))
 				# child_transform usually Transform; occasionally can be PrefabInstance
 				if attachment == null:
-					log_fail("Unable to recurse to child_transform " + child_transform.uniq_key + " on null bone attachment", "children", self)
+					log_fail("Unable to recurse to child_transform " + str(child_transform) + " on null bone attachment", "children", self)
 				var prefab_data: Array = recurse_to_child_transform(state, child_transform, attachment)
 				if child_transform.gameObject != null:
 					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
@@ -4689,13 +4699,13 @@ class UnidotPrefabInstance:
 			state.add_name_map_to_prefabbed_transform(transform_asset.fileID, name_map)
 			state.body = orig_state_body
 
-		for skelley in state.prefab_state.skelleys_by_parented_prefab.get(self.uniq_key, []):
+		for skelley in state.prefab_state.skelleys_by_parented_prefab.get(self.fileID, []):
 			for smr in skelley.skinned_mesh_renderers:
 				smrs.append(smr)
 		for smr in smrs:
 			var smrnode: Node = smr.create_skinned_mesh(state)
 			if smrnode != null:
-				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
 		for animtree in animator_node_to_object:
 			var obj: RefCounted = animator_node_to_object[animtree]
 			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
@@ -4803,17 +4813,30 @@ class UnidotComponent:
 
 	func get_gameObject() -> UnidotGameObject:
 		if is_stripped:
-			log_fail("Attempted to access the gameObject of a stripped " + type + " " + uniq_key, "gameObject")
+			log_fail("Attempted to access the gameObject of a stripped " + type + " " + str(self), "gameObject")
 			# FIXME: Stripped objects do not know their name.
 			return null  # ????
 		return meta.lookup(keys.get("m_GameObject", [null, 0, "", 0]))
 
 	func get_name() -> String:
 		if is_stripped:
-			log_fail("Attempted to access the name of a stripped " + type + " " + uniq_key, "name")
+			log_fail("Attempted to access the name of a stripped " + type + " " + str(self), "name")
 			# FIXME: Stripped objects do not know their name.
 			# FIXME: Make the calling function crash, since we don't have stacktraces wwww
 			return "[stripped]"  # ????
+		return str(gameObject.name)
+
+	func get_debug_name() -> String:
+		if is_stripped or gameObject == null:
+			var bone: String = meta.fileid_to_skeleton_bone.get(fileID, meta.prefab_fileid_to_skeleton_bone.get(fileID, ""))
+			if not bone.is_empty():
+				return bone
+			var np: NodePath = meta.fileid_to_nodepath.get(fileID, meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
+			if not np.is_empty():
+				return np.get_name(np.get_name_count() - 1)
+			if is_stripped:
+				return "[stripped]"
+			return "[null gameObject]"
 		return str(gameObject.name)
 
 	func is_toplevel() -> bool:
@@ -4874,13 +4897,13 @@ class UnidotTransform:
 				if cnt != 1:
 					signs *= -1 # Make sure exactly one is negative
 				if signs.x < 0: # Rotate about X axis 180 degrees
-					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about x, now cur_signs is " + str(cur_signs))
+					#log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about x, now cur_signs is " + str(cur_signs))
 					orig_rot_godot = Quaternion(1, 0, 0, 0) * orig_rot_godot
 				elif signs.y < 0: # Rotate about Y axis 180 degrees
-					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about y, now cur_signs is " + str(cur_signs))
+					#log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about y, now cur_signs is " + str(cur_signs))
 					orig_rot_godot = Quaternion(0, 1, 0, 0) * orig_rot_godot
 				else: # Rotate about Z axis 180 degrees
-					log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about z, now cur_signs is " + str(cur_signs))
+					#log_debug("Restored scale signs " + str(orig_scale_godot) + ". rotate about z, now cur_signs is " + str(cur_signs))
 					orig_rot_godot = Quaternion(0, 0, 1, 0) * orig_rot_godot
 
 		var outdict: Dictionary
@@ -4902,10 +4925,12 @@ class UnidotTransform:
 		#	log_debug("convert_properties: Node has no parent.")
 
 		var rot_quat: Quaternion = Quaternion.IDENTITY
-		var orig_rot_quat: Quaternion = rotation_delta.basis.get_rotation_quaternion().inverse() * orig_rot_godot * rotation_delta_post.basis.get_rotation_quaternion().inverse()
+		#log_debug("inv post " + str(rotation_delta_post.basis.get_rotation_quaternion().inverse()) + " orig rot " + str(orig_rot_godot) + " inv delta " + str(rotation_delta.basis.get_rotation_quaternion().inverse()))
+		var orig_rot_quat: Quaternion = rotation_delta_post.basis.get_rotation_quaternion().inverse() * orig_rot_godot * rotation_delta.basis.get_rotation_quaternion().inverse()
 		orig_rot_quat.y = -orig_rot_quat.y
 		orig_rot_quat.z = -orig_rot_quat.z
 		var rot_vec: Variant = get_quat(uprops, "m_LocalRotation", orig_rot_quat) # left-handed
+		#log_debug("Original rotation: " + str(orig_rot_quat) + " -> " + str(rot_vec))
 		if typeof(rot_vec) == TYPE_QUATERNION:
 			rot_quat = rot_vec as Quaternion
 			# Assuming t-pose, in a humanoid a lot of these expressions will cancel out nicely to godot's bone rest (T-pose)
@@ -4931,8 +4956,8 @@ class UnidotTransform:
 		else:
 			rot_quat = orig_rot_godot
 		rot_quat = rotation_delta.basis.get_rotation_quaternion().inverse() * rot_quat * rotation_delta_post.basis.get_rotation_quaternion().inverse()
-		rot_quat.y = -rot_quat.y
-		rot_quat.z = -rot_quat.z
+		#rot_quat.y = -rot_quat.y
+		#rot_quat.z = -rot_quat.z
 
 		var orig_scale: Vector3 = cur_signs * (rotation_delta.basis.inverse() * Basis.from_scale(orig_scale_godot.abs()) * rotation_delta_post.basis.inverse()).get_scale()
 		#log_debug("Original scale: " + str(orig_scale_godot) + " -> " + str(orig_scale))
@@ -4979,7 +5004,7 @@ class UnidotTransform:
 	var parent_ref: Variant:  # Array: # UnidotRef
 		get:
 			if is_stripped:
-				log_fail("Attempted to access the parent of a stripped " + type + " " + uniq_key, "parent")
+				log_fail("Attempted to access the parent of a stripped " + type + " " + str(self), "parent")
 				return 12345.678  # FIXME: Returning bogus value to crash whoever does this
 			return keys.get("m_Father", [null, 0, "", 0])
 
@@ -4992,7 +5017,7 @@ class UnidotTransform:
 	var parent: Variant:  # UnidotTransform:
 		get:
 			if is_stripped:
-				log_fail("Attempted to access the parent of a stripped " + type + " " + uniq_key, "parent")
+				log_fail("Attempted to access the parent of a stripped " + type + " " + str(self), "parent")
 				return 12345.678  # FIXME: Returning bogus value to crash whoever does this
 			return meta.lookup(parent_ref)
 
@@ -5382,7 +5407,7 @@ class UnidotMeshFilter:
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
-			log_debug("MeshFilter " + str(self.uniq_key) + " ref " + str(mesh_ref) + " new mesh " + str(new_mesh) + " old mesh " + str(node.mesh))
+			log_debug("MeshFilter " + str(self) + " ref " + str(mesh_ref) + " new mesh " + str(new_mesh) + " old mesh " + str(node.mesh))
 			outdict["_mesh"] = new_mesh  # property track?
 		return outdict
 
@@ -5522,11 +5547,10 @@ class UnidotSkinnedMeshRenderer:
 		#if first_bone_obj.is_stripped:
 		#	log_fail("Cannot create skinned mesh on stripped skeleton!")
 		#	return null
-		var first_bone_key: String = first_bone_obj.uniq_key
-		log_debug("SkinnedMeshRenderer: Looking up " + first_bone_key + " for " + str(self.gameObject))
-		var skelley: RefCounted = state.uniq_key_to_skelley.get(first_bone_key, null)  # Skelley
+		log_debug("SkinnedMeshRenderer: Looking up " + str(first_bone_obj) + " for " + str(self.gameObject))
+		var skelley: RefCounted = state.fileID_to_skelley.get(first_bone_obj.fileID, null)  # Skelley
 		if skelley == null:
-			log_fail("Unable to find Skelley to add a mesh " + name + " for " + first_bone_key, "bones", first_bone_obj)
+			log_fail("Unable to find Skelley to add a mesh " + str(self) + " for " + str(first_bone_obj), "bones", first_bone_obj)
 		return skelley
 
 	func create_skinned_mesh(state: RefCounted) -> Node:
@@ -5535,7 +5559,7 @@ class UnidotSkinnedMeshRenderer:
 			return null
 		var gdskel: Skeleton3D = skelley.godot_skeleton
 		if gdskel == null:
-			log_fail("Unable to find skeleton to add a mesh " + name + " for " + meta.lookup(bones[0]).uniq_key, "bones", meta.lookup(bones[0]))
+			log_fail("Unable to find skeleton to add a mesh " + name + " for " + str(meta.lookup(bones[0])), "bones", meta.lookup(bones[0]))
 			return null
 		var component_name: String = type
 		if not self.gameObject.is_stripped:
@@ -6226,7 +6250,6 @@ class UnidotAnimator:
 
 	func _find_mesh_reference_recursive(xform: UnidotTransform) -> Object:
 		children_refs = xform.children_refs
-		log_debug("find rec " + str(xform.gameObject.uniq_key))
 		for ref in children_refs:
 			var child = meta.lookup(ref, true)
 			if child != null:

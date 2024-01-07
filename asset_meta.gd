@@ -546,7 +546,7 @@ func lookup_or_instantiate(unidot_ref: Array, type: String) -> RefCounted:
 	var found_object: RefCounted = lookup(unidot_ref, true)
 	if found_object != null:
 		#if found_object.type != type: # Too hard to verify because it could be a subclass.
-		#	log_warn(0, "lookup_or_instantiate " + str(found_object.uniq_key) + " not type " + str(type), "ref", unidot_ref)
+		#	log_warn(0, "lookup_or_instantiate " + str(found_object) + " not type " + str(type), "ref", unidot_ref)
 		return found_object
 	var found_meta: Resource = lookup_meta(unidot_ref)
 	if found_meta == null:
