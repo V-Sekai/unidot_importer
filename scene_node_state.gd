@@ -680,6 +680,15 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 			if mesh_meta != null:
 				if mesh_meta.is_humanoid():
 					if asset.meta.is_force_humanoid():
+						var bone_map_dict: Dictionary = {}
+						if mesh_meta.importer.type == "ModelImporter":
+							var bone_map: BoneMap = mesh_meta.importer.generate_bone_map_from_human()
+							for prop in bone_map.get_property_list():
+								if prop["name"].begins_with("bone_map/"):
+									var prof_name: String = prop["name"].trim_prefix("bone_map/")
+									bone_map_dict[prof_name] = bone_map.get_skeleton_bone_name(prof_name)
+						else:
+							asset.log_warn("Mesh using ModelImporter")
 						var orig_skin: Skin = asset.meta.get_godot_resource([null, -mesh_ref[1], mesh_ref[2], 0])
 						if orig_skin == null:
 							asset.log_warn("Failed to lookup original skin for " + str(asset) + " ref " + str(mesh_ref))
@@ -689,8 +698,14 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 								var bind_name: String = orig_skin.get_bind_name(idx)
 								asset.log_debug("Skin bind " + str(idx) + " Humanoid original name for " + str(orig_bones[idx][1]) + " (" + str(asset.meta.lookup(orig_bones[idx])) + ") is " + bind_name)
 								prefab_state.fileID_to_forced_humanoid_godot_name[orig_bones[idx][1]] = bind_name
-								prefab_state.fileID_to_forced_humanoid_orig_name[orig_bones[idx][1]] = meta_godot_to_orig_bone_names.get(bind_name, bind_name)
-								this_skelley.fileID_to_orig_name[orig_bones[idx][1]] = meta_godot_to_orig_bone_names.get(bind_name, bind_name)
+								var orig_bind_name: String = bone_map_dict.get(bind_name, bind_name)
+								if meta_godot_to_orig_bone_names.has(orig_bind_name) or orig_bind_name != bind_name:
+									var orig_name: String = meta_godot_to_orig_bone_names.get(orig_bind_name, orig_bind_name)
+									prefab_state.fileID_to_forced_humanoid_orig_name[orig_bones[idx][1]] = orig_name
+									this_skelley.fileID_to_orig_name[orig_bones[idx][1]] = orig_name
+									asset.log_debug("Skin bind " + str(idx) + " bind " + str(bind_name) + " orig human " + str(orig_bind_name) + " mapped to orig name " + str(orig_name))
+								else:
+									asset.log_debug("Skin bind " + str(idx) + " bind " + str(bind_name) + " orig human " + str(orig_bind_name) + " not found in orig names")
 						if this_skelley.humanoid_avatar_meta == null:
 							this_skelley.humanoid_avatar_meta = mesh_meta
 						forced_avatar_meta = mesh_meta
