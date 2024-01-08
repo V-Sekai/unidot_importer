@@ -660,6 +660,10 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 			var this_id: int = num_skels
 			var this_skelley: Skelley = null
 			if skel_ids.has(bone0_obj.fileID):
+				# asset.log_debug("Found an existing skelley for " + str(bone0_obj) + ": " + str(skel_ids[bone0_obj.fileID]))
+				if not skelleys.has(skel_ids[bone0_obj.fileID]):
+					asset.log_fail("Skelleys missing " + str(bone0_obj) + " " + str(skel_ids[bone0_obj.fileID]) + ": " + str(skelleys))
+			if skel_ids.has(bone0_obj.fileID) and skelleys.has(skel_ids[bone0_obj.fileID]):
 				this_id = skel_ids[bone0_obj.fileID]
 				this_skelley = skelleys[this_id]
 			else:
@@ -713,7 +717,7 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnidotTransform
 				var added_bones = this_skelley.add_bone(bone_obj)
-				# asset.log_debug("Told skelley " + str(this_id) + " to add bone " + bone_obj.fileID + ": " + str(added_bones))
+				# asset.log_debug("Told skelley " + str(this_id) + " to add bone " + str(bone_obj) + ": " + str(added_bones))
 				for added_bone in added_bones:
 					var fileID: int = added_bone.fileID
 					if skel_ids.get(fileID, this_id) != this_id:
@@ -723,13 +727,15 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 						for inst in skelleys[this_id].bones:
 							# asset.log_debug("Loop " + str(inst.fileID) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.fileID, -1)))
 							if skel_ids.get(inst.fileID, -1) == this_id:  # FIXME: This seems to be missing??
-								# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + inst.fileID)
+								# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + str(inst))
+								if not skelleys.has(new_id):
+									asset.log_fail("Skelleys missing " + str(new_id) + " from " + str(inst) + " thisid " + str(this_id))
 								skelleys[new_id].add_bone(inst)
 						if skelleys[new_id].humanoid_avatar_meta == null:
 							skelleys[new_id].humanoid_avatar_meta = skelleys[this_id].humanoid_avatar_meta
 						for i in skel_ids:
-							if skel_ids.get(str(i)) == this_id:
-								skel_ids[str(i)] = new_id
+							if skel_ids.get(i) == this_id:
+								skel_ids[i] = new_id
 						skelleys.erase(this_id)  # We merged two skeletons.
 						this_id = new_id
 						this_skelley = skelleys[this_id]
