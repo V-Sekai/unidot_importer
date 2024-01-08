@@ -267,6 +267,28 @@ func update_global_logs():
 		result_log_lineedit.scroll_vertical = current_scroll
 
 
+func update_all_logs():
+	var root_ti: TreeItem = main_dialog_tree.get_root()
+	var current_scroll = result_log_lineedit.scroll_vertical
+	var child_list: Array[TreeItem]
+	_get_children_recursive(child_list, root_ti)
+	visible_log_lines.resize(0)
+	var filtered_msgs: PackedStringArray
+	for child_ti in child_list:
+		for sub_col in range(2, 5):
+			child_ti.set_metadata(sub_col, null)
+	for child_ti in child_list:
+		if child_ti.get_parent() == null:
+			continue
+		for sub_col in range(2, 5):
+			if child_ti.is_checked(sub_col):
+				if not child_ti.get_parent().is_checked(sub_col):
+					log_column_checked(child_ti, sub_col, true, false)
+				break
+	result_log_lineedit.text = '\n'.join(visible_log_lines)
+	result_log_lineedit.scroll_vertical = current_scroll
+	result_log_lineedit.visible = true
+
 class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var fail_highlight: Dictionary
 	var warn_highlight: Dictionary
@@ -390,6 +412,10 @@ func _cell_selected() -> void:
 			_check_recursively(ti, new_checked, process_dependencies)
 	elif col >= 2:
 		ti.set_checked(col, not ti.is_checked(col))
+		log_column_checked(ti, col, ti.is_checked(col))
+
+func log_column_checked(ti: TreeItem, col: int, is_checked: bool, update_textbox: bool=true):
+	if col >= 2:
 		var current_scroll = result_log_lineedit.scroll_vertical
 		var child_list: Array[TreeItem]
 		_get_children_recursive(child_list, ti)
@@ -450,13 +476,10 @@ func _cell_selected() -> void:
 						child_ti.set_selectable(sub_col, true)
 		#print("Updating text " + str(ti.is_checked(col)))
 		#print(len(visible_log_lines))
-		result_log_lineedit.text = '\n'.join(visible_log_lines)
-		result_log_lineedit.scroll_vertical = current_scroll
-		main_dialog_tree.size_flags_stretch_ratio = 1.0
-		options_vbox.visible = false
-		result_log_lineedit.visible = true # not visible_log_lines.is_empty()
-		main_dialog.get_ok_button().visible = false
-		result_log_lineedit.size_flags_stretch_ratio = 1.0
+		if update_textbox:
+			result_log_lineedit.text = '\n'.join(visible_log_lines)
+			result_log_lineedit.scroll_vertical = current_scroll
+			result_log_lineedit.visible = true # not visible_log_lines.is_empty()
 
 const HUMAN_READABLE_NAMES: Dictionary = {
 	5866666021909216657: "Animator",
@@ -1171,17 +1194,21 @@ func on_import_fully_completed():
 func update_task_color(tw: RefCounted):
 	var ti: TreeItem = tw.extra
 	if tw.did_fail and tw.asset.parsed_meta == null:
+		asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " failed to parse meta. did_fail=" + str(tw.did_fail))
 		ti.set_icon(0, status_error_icon)
 		ti.set_custom_color(0, Color("#ffbb77"))
 	elif tw.asset.parsed_meta == null:
+		asset_database.log_debug([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " skipped import and succeeded")
 		ti.set_icon(0, status_success_icon)
 		ti.set_custom_color(0, Color("#ddffbb"))
 	else:
 		var holder: asset_meta_class.LogMessageHolder = tw.asset.parsed_meta.log_message_holder
 		if tw.did_fail:
+			asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " parsed meta but did_fail=" + str(tw.did_fail) + " is_loaded=" + str(tw.is_loaded))
 			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff7733"))
 		elif not tw.is_loaded:
+			asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " could not be loaded.")
 			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff4422"))
 		elif holder.has_fails():
@@ -1238,8 +1265,6 @@ func do_import_step():
 		update_task_color(tw)
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
-		asset_database.save()
-		on_import_fully_completed()
 		if not paused:
 			status_bar.text = "Import complete."
 		return
@@ -1642,9 +1667,11 @@ func _do_import_step_tick():
 		asset_database.log_debug([null, 0, "", 0], "Saved database")
 		if not paused:
 			status_bar.text = "Import complete."
+		update_all_logs()
 		call_deferred(&"on_import_fully_completed")
-	#asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
-	update_global_logs()
+	else:
+		#asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
+		update_global_logs()
 	import_step_reentrant = false
 
 
@@ -1754,7 +1781,7 @@ func _asset_tree_window_confirmed():
 	main_dialog.get_ok_button().visible = false
 
 	global_logs_tree_item = root_item.create_child(0)
-	global_logs_tree_item.set_text(0, "Global Logs")
+	global_logs_tree_item.set_text(0, "Global import status messages")
 	global_logs_tree_item.set_text(1, " ")
 	var log_column = 2
 	if not asset_database.enable_verbose_logs:
@@ -1762,9 +1789,8 @@ func _asset_tree_window_confirmed():
 	global_logs_tree_item.set_cell_mode(log_column, TreeItem.CELL_MODE_CHECK)
 	global_logs_tree_item.set_checked(log_column, true)
 	global_logs_tree_item.set_text_alignment(log_column, HORIZONTAL_ALIGNMENT_RIGHT)
-	global_logs_tree_item.set_text(log_column, "Logs")
+	global_logs_tree_item.set_text(log_column, "Status")
 	global_logs_tree_item.set_selectable(log_column, true)
-	global_logs_tree_item.set_icon(log_column, log_icon)
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
