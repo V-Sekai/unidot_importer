@@ -3856,7 +3856,7 @@ class UnidotGameObject:
 					log_fail("Skelley object should have ensured godot_skeleton with avatar is named GeneralSkeleton")
 				log_warn("Humanoid Animator component on skeleton bone " + str(skeleton_bone_name) + " does not fully support unique_name_in_owner")
 				# TODO: Implement scene saving for partial skeleton humanoid avatar
-		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID, godot_skeleton, skeleton_bone_index)
+		var avatar_bone_name = state.consume_avatar_bone(self.name, skeleton_bone_name, transform.fileID, skelley, skeleton_bone_index)
 		#var configure_root_bone: bool = false
 		if not avatar_bone_name.is_empty():
 			var conflicting_bone := godot_skeleton.find_bone(avatar_bone_name)

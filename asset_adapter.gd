@@ -1266,7 +1266,8 @@ class FbxHandler:
 		if cur_children.is_empty():
 			return out_map
 		var this_children = []
-		for child in cur_children:
+		for child_f in cur_children:
+			var child: int = int(child_f)
 			if gltf_nodes[child].get("skin", -1) >= 0 and gltf_nodes[child].get("mesh", -1) >= 0:
 				this_children.append(gltf_nodes[child]["name"])
 			out_map = assign_skinned_parents(out_map, gltf_nodes, gltf_nodes[child]["name"], gltf_nodes[child].get("children", []))
@@ -1414,6 +1415,8 @@ class FbxHandler:
 		json["nodes"].remove_at(node_idx)  # remove_at index
 		for node in json["nodes"]:
 			var children: Array = node.get("children", [])
+			for i in range(len(children)):
+				children[i] = int(children[i])
 			children.erase(node_idx)  # erase by value
 			for i in range(len(children)):
 				if children[i] > node_idx:
@@ -1521,7 +1524,8 @@ class FbxHandler:
 						var root_children: Array = root_node["children"]
 						default_scene["nodes"] = []
 						root_node.erase("children")
-						for child_idx in root_children:
+						for child_idx_f in root_children:
+							var child_idx: int = int(child_idx_f)
 							default_scene["nodes"].append(child_idx)
 							var child_node: Dictionary = json["nodes"][child_idx]
 							if not root_xform.is_equal_approx(Transform3D.IDENTITY):
@@ -1595,7 +1599,7 @@ class FbxHandler:
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")
 					for chld in node.get("children", ""):
-						skel.set_bone_parent(chld, i)
+						skel.set_bone_parent(int(chld), i)
 					i += 1
 				i = 0
 				for node in json["nodes"]:
@@ -1623,10 +1627,10 @@ class FbxHandler:
 			var node_parents: Dictionary
 			for x_node_idx in range(len(json["nodes"])):
 				for chld in json["nodes"][x_node_idx].get("children", []):
-					node_parents[chld] = x_node_idx
+					node_parents[int(chld)] = x_node_idx
 
 			# Discover missing Root bone if any, and correct for name conflicts.
-			var node_idx = 0
+			var node_idx: int = 0
 			var human_skin_set: Dictionary
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
@@ -1641,21 +1645,21 @@ class FbxHandler:
 			for key in bone_map_dict:
 				if bone_map_dict[key] == "Root":
 					root_bone_name = bone_map_dict[key]
-			var cur_human_node_idx = -1 if human_skin_nodes.is_empty() else human_skin_nodes[-1] # Doesn't matter which...just need to find a common ancestor.
+			var cur_human_node_idx: int = -1 if human_skin_nodes.is_empty() else human_skin_nodes[-1] # Doesn't matter which...just need to find a common ancestor.
+			pkgasset.log_debug("cur_human_node_idx=" + str(cur_human_node_idx) + " / " + str(json["nodes"][cur_human_node_idx]))
 			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
 			while node_parents.has(cur_human_node_idx):
 				var new_root_idx = node_parents[cur_human_node_idx]
 				var node = json["nodes"][new_root_idx]
 				pkgasset.log_debug("Adding node to skin " + str(new_root_idx) + " parent of " + str(cur_human_node_idx))
 				pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
-				if root_bone_name != "":
-					bone_map_dict.erase(root_bone_name)
-				bone_map_dict[node["name"]] = "Root"
 				root_bone_name = node["name"]
 				if not human_skin_set.has(new_root_idx):
 					human_skin_nodes.push_back(new_root_idx)
 					human_skin_set[new_root_idx] = true
 				cur_human_node_idx = new_root_idx
+			if root_bone_name != "":
+				bone_map_dict[root_bone_name] = "Root"
 
 			pkgasset.log_debug("human_skin_nodes is now " +str(human_skin_nodes))
 

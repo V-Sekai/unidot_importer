@@ -17,9 +17,9 @@ var meta: Resource = null  # asset_database.AssetMeta instance
 var env: Environment = null
 
 # Dictionary from parent_transform fileID -> array of convert_scene.Skelley
-var skelley_parents: Dictionary = {}.duplicate()
+var skelley_parents: Dictionary
 # Dictionary from any transform fileID -> convert_scene.Skelley
-var fileID_to_skelley: Dictionary = {}.duplicate()
+var fileID_to_skelley: Dictionary
 
 var active_avatars: Array[AvatarState]
 var prefab_state: PrefabState = null
@@ -35,6 +35,8 @@ class PrefabState:
 	var gameobjects_by_parented_prefab: Dictionary = {}.duplicate()
 	#var gameobjects_by_parented_prefab_source_obj: Dictionary = {}.duplicate()
 	var skelleys_by_parented_prefab: Dictionary = {}.duplicate()
+	var fileID_to_forced_humanoid_orig_name: Dictionary
+	var fileID_to_forced_humanoid_godot_name: Dictionary
 
 	var non_stripped_prefab_references: Dictionary = {}.duplicate()  # some legacy 5.6 thing I think
 	var gameobject_name_map: Dictionary = {}.duplicate()
@@ -159,6 +161,8 @@ class Skelley:
 	var bones: Array[RefCounted]
 
 	var root_bones: Array[RefCounted]
+	var fileID_to_orig_name: Dictionary
+	var godot_bone_idx_to_orig_name: Dictionary
 
 	var bones_set: Dictionary
 	var fileID_to_bone: Dictionary
@@ -375,7 +379,8 @@ class Skelley:
 					if not dedupe_dict.has(bone_name):
 						dedupe_dict[bone_name] = bone
 				godot_skeleton.add_bone(bone_name)
-				bone.log_debug("Godot Skeleton adding bone " + str(bone) + " " + bone_name + " idx " + str(idx) + " new size " + str(godot_skeleton.get_bone_count()))
+				godot_bone_idx_to_orig_name[idx] = fileID_to_orig_name.get(bone.fileID, orig_bone_name)
+				bone.log_debug("Godot Skeleton adding bone " + str(bone) + " " + bone_name + " orig name " + str(godot_bone_idx_to_orig_name[idx]) + " idx " + str(idx) + " new size " + str(godot_skeleton.get_bone_count()))
 				idx += 1
 			idx = 0
 			for bone in bones:
@@ -469,15 +474,15 @@ func state_with_avatar_meta(avatar_meta: Object) -> RefCounted:
 	var has_root: bool = false
 	if avatar_meta.humanoid_bone_map_crc32_dict.is_empty():
 		for orig_bone_name in avatar_meta.autodetected_bone_map_dict:
-			if avatar_meta.internal_data.get("humanoid_root_bone", "") == orig_bone_name:
-				avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = "Root"
 			if not avatar_meta.autodetected_bone_map_dict[orig_bone_name] == "Root" or avatar_meta.internal_data.get("humanoid_root_bone", "").is_empty():
 				avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.autodetected_bone_map_dict[orig_bone_name]
+		#	if avatar_meta.internal_data.get("humanoid_root_bone", "") == orig_bone_name:
+		#		avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = "Root"
 		for orig_bone_name in avatar_meta.humanoid_bone_map_dict:
 			avatar_state.humanoid_bone_map_dict[avatar_state.crc32.crc32(orig_bone_name)] = avatar_meta.humanoid_bone_map_dict[orig_bone_name]
-	for crc in avatar_state.humanoid_bone_map_dict:
-		if avatar_state.humanoid_bone_map_dict[crc] == "Root":
-			has_root = true
+	#for crc in avatar_state.humanoid_bone_map_dict:
+	#	if avatar_state.humanoid_bone_map_dict[crc] == "Root":
+	#		has_root = true
 	if not has_root:
 		avatar_state.humanoid_bone_map_dict["Root"] = "Root"
 
@@ -513,21 +518,31 @@ func apply_excess_rotation_delta(node: Node3D, fileID: int):
 
 var last_humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 
-func _find_next_avatar_bone_recursive(skel: Skeleton3D, bone_idx: int) -> String:
+func _find_next_avatar_bone_recursive(skelley: Skelley, skel: Skeleton3D, bone_idx: int) -> String:
 	for avatar in active_avatars:
-		var crc32_name := avatar.crc32.crc32(skel.get_bone_name(bone_idx))
+		var orig_bone_name: String = skelley.godot_bone_idx_to_orig_name.get(bone_idx, skel.get_bone_name(bone_idx))
+		var crc32_name := avatar.crc32.crc32(orig_bone_name)
+		meta.log_debug(0, "searching bone " + str(bone_idx) + " bone_name=" + str(skel.get_bone_name(bone_idx)) + " orig name=" + str(orig_bone_name) + " crc " + str(crc32_name) + " humanoid " + str(avatar.humanoid_bone_map_dict.get(crc32_name)))
 		if avatar.humanoid_bone_map_dict.has(crc32_name):
 			return avatar.humanoid_bone_map_dict[crc32_name]
 	for child_idx in skel.get_bone_children(bone_idx):
-		var ret: String = _find_next_avatar_bone_recursive(skel, child_idx)
+		var ret: String = _find_next_avatar_bone_recursive(skelley, skel, child_idx)
 		if ret != "":
 			meta.log_debug(0, "Found a bone " + ret)
 			return ret
 	return ""
 
-func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int, skel: Skeleton3D, bone_idx: int) -> String:
+func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid: int, skelley: Skelley, bone_idx: int) -> String:
+	var skel: Skeleton3D = skelley.godot_skeleton
 	apply_excess_rotation_delta(skel, fileid)
 	var name_to_return: String = ""
+	var forced_orig_name: String = prefab_state.fileID_to_forced_humanoid_orig_name.get(fileid, "")
+	var bone_name_forced: bool = false
+	if not forced_orig_name.is_empty() and forced_orig_name != orig_bone_name:
+		godot_bone_name = prefab_state.fileID_to_forced_humanoid_godot_name.get(fileid, orig_bone_name)
+		meta.log_debug(fileid, "Avatar bone " + str(orig_bone_name) + " mapped to original name " + forced_orig_name + " godot name " + str(godot_bone_name))
+		orig_bone_name = forced_orig_name
+		bone_name_forced = true
 	meta.log_debug(fileid, "consume avatar bone " + str(orig_bone_name) + " " + str(godot_bone_name) + " for skel " + str(skel) + ":" + str(skel.get_bone_name(bone_idx)))
 	for avatar in active_avatars:
 		var crc32_name := avatar.crc32.crc32(orig_bone_name)
@@ -546,17 +561,27 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 			meta.log_debug(fileid, "AVA PREFAB Using avatar " + str(orig_bone_name) + "/" + str(godot_bone_name) + " for rotation delta! " + str(avatar.human_bone_to_rotation_delta[godot_bone_name]))
 			meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta[godot_bone_name]
 		elif par_fileid == 0: # Not a decendent of the Hips bone
-			if avatar.human_bone_to_rotation_delta.has("Hips"):
+			if avatar.human_bone_to_rotation_delta.has("Root"):
+				meta.log_debug(fileid, "AVA PREFAB Using Root for rotation delta of " + str(orig_bone_name) + "/" + str(godot_bone_name) + "!")
+				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Root"]
+			elif avatar.human_bone_to_rotation_delta.has("Hips"):
 				meta.log_debug(fileid, "AVA PREFAB Using Hips for rotation delta of " + str(orig_bone_name) + "/" + str(godot_bone_name) + "!")
 				meta.transform_fileid_to_rotation_delta[fileid] = avatar.human_bone_to_rotation_delta["Hips"]
 	if name_to_return == "":
-		var next_bone: String = _find_next_avatar_bone_recursive(skel, bone_idx)
-		meta.log_debug(0, "Found next bone " + next_bone)
-		if next_bone == "Hips":
-			for avatar in active_avatars:
-				if avatar.humanoid_bone_map_dict.has("Root"):
-					name_to_return = "Root"
-					avatar.humanoid_bone_map_dict.erase("Root")
+		if bone_name_forced:
+			name_to_return = godot_bone_name
+		var has_root: bool = false
+		for avatar in active_avatars:
+			if avatar.humanoid_bone_map_dict.has("Root"):
+				has_root = true
+		if has_root:
+			var next_bone: String = _find_next_avatar_bone_recursive(skelley, skel, bone_idx)
+			meta.log_debug(fileid, "Found next bone " + next_bone)
+			if next_bone == "Hips":
+				for avatar in active_avatars:
+					if avatar.humanoid_bone_map_dict.has("Root"):
+						name_to_return = "Root"
+						avatar.humanoid_bone_map_dict.erase("Root")
 	return name_to_return
 
 func consume_root(fileid: int) -> bool:
@@ -651,7 +676,19 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 			if mesh_meta != null:
 				if mesh_meta.is_humanoid():
 					if asset.meta.is_force_humanoid():
-						this_skelley.humanoid_avatar_meta = mesh_meta
+						var orig_skin: Skin = asset.meta.get_godot_resource([null, -mesh_ref[1], mesh_ref[2], 0])
+						if orig_skin == null:
+							asset.log_warn("Failed to lookup original skin for " + str(asset) + " ref " + str(mesh_ref))
+						else:
+							var meta_godot_to_orig_bone_names: Dictionary = mesh_meta.internal_data.get("godot_sanitized_to_orig_remap", {}).get("bone_name", {})
+							for idx in range(len(orig_bones)):
+								var bind_name: String = orig_skin.get_bind_name(idx)
+								asset.log_debug("Skin bind " + str(idx) + " Humanoid original name for " + str(orig_bones[idx][1]) + " (" + str(asset.meta.lookup(orig_bones[idx])) + ") is " + bind_name)
+								prefab_state.fileID_to_forced_humanoid_godot_name[orig_bones[idx][1]] = bind_name
+								prefab_state.fileID_to_forced_humanoid_orig_name[orig_bones[idx][1]] = meta_godot_to_orig_bone_names.get(bind_name, bind_name)
+								this_skelley.fileID_to_orig_name[orig_bones[idx][1]] = meta_godot_to_orig_bone_names.get(bind_name, bind_name)
+						if this_skelley.humanoid_avatar_meta == null:
+							this_skelley.humanoid_avatar_meta = mesh_meta
 						forced_avatar_meta = mesh_meta
 
 			var find_animator_obj: RefCounted = bone0_obj
