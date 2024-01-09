@@ -164,7 +164,7 @@ class UnidotObject:
 			return meta.get_main_object_name()
 		if not keys.get("m_Name", "").is_empty():
 			return keys.get("m_Name", "")
-		return str(keys.get("m_Name", "NO_NAME:" + str(fileID)))
+		return str(keys.get("m_Name", "NO_NAME_" + str(fileID)))
 
 	func get_debug_name() -> String:
 		return get_name()
@@ -4251,7 +4251,7 @@ class UnidotPrefabInstance:
 		if source_prefab_meta != null:
 			go_id = source_prefab_meta.prefab_main_gameobject_id
 		else:
-			log_debug("During prefab name lookup, ailed to lookup meta from " + str(self) + " for source prefab " + str(self.source_prefab))
+			log_debug("During prefab name lookup, failed to lookup meta for source prefab " + str(self.source_prefab))
 		for mod in modifications:
 			var property_key: String = mod.get("propertyPath", "")
 			var source_obj_ref: Array = mod.get("target", [null, 0, "", null])
@@ -4820,7 +4820,7 @@ class UnidotComponent:
 
 	func get_name() -> String:
 		if is_stripped:
-			log_fail("Attempted to access the name of a stripped " + type + " " + str(self), "name")
+			log_fail("Attempted to access the name of a stripped " + type, "name")
 			# FIXME: Stripped objects do not know their name.
 			# FIXME: Make the calling function crash, since we don't have stacktraces wwww
 			return "[stripped]"  # ????
