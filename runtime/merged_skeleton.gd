@@ -61,7 +61,7 @@ func uniqify_skins(mesh_instances: Array[MeshInstance3D]) -> Array[Skin]:
 	var unique_skins: Array[Skin]
 	for mesh_inst in mesh_instances:
 		var skel: Skeleton3D = mesh_inst.get_node(mesh_inst.get_skeleton_path()) as Skeleton3D
-		if mesh_inst.skin.resource_local_to_scene:
+		if mesh_inst.skin.resource_local_to_scene and mesh_inst.skin.has_meta(&"orig_skin"):
 			# We can assume this is not referencing a different scene file, so it is mutable
 			if not orig_skin_to_skin.has(mesh_inst.skin):
 				convert_to_named_bind(skel, mesh_inst.skin)
@@ -74,6 +74,7 @@ func uniqify_skins(mesh_instances: Array[MeshInstance3D]) -> Array[Skin]:
 				var new_skin: Skin = mesh_inst.skin.duplicate() as Skin
 				convert_to_named_bind(skel, new_skin)
 				new_skin.resource_local_to_scene = true
+				new_skin.set_meta(&"orig_skin", mesh_inst.skin)
 				orig_skin_to_skin[mesh_inst.skin] = new_skin
 				mesh_inst.skin = new_skin
 				unique_skins.append(new_skin)
@@ -84,24 +85,51 @@ func attach_skeleton(skel_arg: Skeleton3D):
 	target_skel = skel_arg
 	if target_skel == null:
 		return
+	var rel_scale := self.scale
+	var scale_par: Node3D = self.get_parent()
+	while scale_par != target_skel:
+		rel_scale *= scale_par.scale
+		scale_par = scale_par.get_parent()
 	# Godot will logspam errors and corrupt NodePath to ^"" before we even get to _exit_tree, so we store strings instead.
 	my_path_from_skel = str(target_skel.get_path_to(self))
 	#print(my_path_from_skel)
-	bone_attachments = find_bone_attachments(target_skel)
+
+	# Godot bone attachments are incredibly buggy and not unsetting a skeleton could crash godot with
+	# "ERROR: Cannot update external skeleton cache: Skeleton3D Nodepath does not point to a Skeleton3D node!"
+	# So I will disable them for now...
+	# bone_attachments = find_bone_attachments(target_skel)
 	mesh_instances = find_mesh_instances(target_skel)
 	unique_skins = uniqify_skins(mesh_instances)
 
-	if not target_skel.has_meta(&"merged_skeleton_bone_owners"):
-		target_skel.set_meta(&"merged_skeleton_bone_owners", {})
-	var bone_owners: Dictionary = target_skel.get_meta(&"merged_skeleton_bone_owners")
-	var added_to_owners: Dictionary
+	var scale_ratio: float = sqrt(3) / rel_scale.length()
+	scale = Vector3.ONE * scale_ratio
+	if motion_scale != 0 and target_skel.motion_scale != 0:
+		scale_ratio *= target_skel.motion_scale / motion_scale
+	target_skel.reset_bone_poses()
+	if not has_meta(&"did_reset_pose") or not get_meta(&"did_reset_pose"):
+		set_meta(&"did_reset_pose", true)
+		reset_bone_poses()
 
 	for skin in unique_skins:
+		var orig_skin = skin.get_meta(&"orig_skin")
 		for bind_idx in range(skin.get_bind_count()):
 			var bind_name: String = skin.get_bind_name(bind_idx)
 			if not required_bones.has(bind_name):
 				required_bones[bind_name] = []
 			required_bones[bind_name].append(skin)
+			var target_bone_idx := target_skel.find_bone(bind_name)
+			var my_bone_idx := find_bone(bind_name)
+			if target_bone_idx != -1 and my_bone_idx != -1:
+				set_bone_pose_position(my_bone_idx, target_skel.get_bone_pose_position(target_bone_idx))
+				set_bone_pose_rotation(my_bone_idx, target_skel.get_bone_pose_rotation(target_bone_idx))
+				set_bone_pose_scale(my_bone_idx, target_skel.get_bone_pose_scale(target_bone_idx)) # should always be 1,1,1
+	for bone in get_parentless_bones():
+		set_bone_pose_scale(bone, Vector3.ONE / scale_ratio)
+
+	if not target_skel.has_meta(&"merged_skeleton_bone_owners"):
+		target_skel.set_meta(&"merged_skeleton_bone_owners", {})
+	var bone_owners: Dictionary = target_skel.get_meta(&"merged_skeleton_bone_owners")
+	var added_to_owners: Dictionary
 
 	for bone_key in required_bones:
 		var bone := bone_key as String
@@ -147,6 +175,7 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			target_skel.set_bone_rest(target_bone_idx, get_bone_rest(chain_bone_idx))
 			target_parent_bone_idx = target_bone_idx
 
+	update_skin_poses()
 	for attachment in bone_attachments:
 		if attachment.get_use_external_skeleton():
 			var extern_skel: Skeleton3D = attachment.get_node_or_null(attachment.get_external_skeleton()) as Skeleton3D
@@ -171,6 +200,9 @@ func detach_skeleton():
 	if target_skel == null:
 		print(str(name) + " Exiting tree without detaching skeleton")
 		return
+	scale = Vector3.ONE
+	for bone in get_parentless_bones():
+		set_bone_pose_scale(bone, Vector3.ONE)
 	print(str(name) + "Detaching Bone Attachments: " + str(bone_attachments))
 	print(str(name) + "Detaching Mesh Instances: " + str(mesh_instances))
 	#push_warning("Before bone attachments")
@@ -202,6 +234,15 @@ func detach_skeleton():
 			mesh_inst.set_skeleton_path(NodePath(np))
 	mesh_instances.clear()
 	#push_warning("Before get meta")
+
+	for skin in unique_skins:
+		var orig_skin = skin.get_meta(&"orig_skin")
+		for bind_idx in range(skin.get_bind_count()):
+			var bind_name: String = skin.get_bind_name(bind_idx)
+			if not required_bones.has(bind_name):
+				required_bones[bind_name] = []
+			required_bones[bind_name].append(skin)
+			skin.set_bind_pose(bind_idx, orig_skin.get_bind_pose(bind_idx))
 
 	if not target_skel.has_meta(&"merged_skeleton_bone_owners"):
 		target_skel.set_meta(&"merged_skeleton_bone_owners", {})
@@ -266,6 +307,61 @@ func detach_skeleton():
 		print(str(name) + " detached from parent skeleton")
 
 
+func update_skin_poses():
+	# Calculate global_bone_pose
+	var my_poses: Array[Transform3D]
+	my_poses.resize(get_bone_count())
+	var poses_filled: Array[bool]
+	poses_filled.resize(get_bone_count())
+	var target_poses: Array[Transform3D]
+	target_poses.resize(target_skel.get_bone_count())
+	var target_poses_filled: Array[bool]
+	target_poses_filled.resize(target_skel.get_bone_count())
+
+	for skin in unique_skins:
+		var orig_skin = skin.get_meta(&"orig_skin")
+		for bind_idx in range(skin.get_bind_count()):
+			var bind_name: String = skin.get_bind_name(bind_idx)
+			var target_bone_idx := target_skel.find_bone(bind_name)
+			var my_bone_idx := find_bone(bind_name)
+			if target_bone_idx == -1 or my_bone_idx == -1:
+				continue
+			# Workaround for get_bone_global_pose
+			# var relative_transform := target_skel.get_bone_global_pose(target_bone_idx) * get_bone_global_pose(my_bone_idx).affine_inverse()
+			# get_bone_global_pose seems to trigger NOTIFICATION_UPDATE_SKELETON
+			# which crashes godot even if this is deferred, so we do it ourselves.
+			var bone_stack: Array[int]
+			bone_stack.append(my_bone_idx)
+			while bone_stack[-1] != -1 and not poses_filled[bone_stack[-1]]:
+				var parent_idx := get_bone_parent(bone_stack[-1])
+				bone_stack.append(parent_idx)
+			while not bone_stack.is_empty():
+				var parent_idx := bone_stack[-1]
+				bone_stack.pop_back()
+				if not bone_stack.is_empty():
+					poses_filled[bone_stack[-1]] = true
+					if parent_idx == -1:
+						my_poses[bone_stack[-1]] = get_bone_pose(bone_stack[-1])
+					else:
+						my_poses[bone_stack[-1]] = my_poses[parent_idx] * get_bone_pose(bone_stack[-1])
+			bone_stack.append(target_bone_idx)
+			while bone_stack[-1] != -1 and not target_poses_filled[bone_stack[-1]]:
+				var parent_idx := target_skel.get_bone_parent(bone_stack[-1])
+				bone_stack.append(parent_idx)
+			while not bone_stack.is_empty():
+				var parent_idx := bone_stack[-1]
+				bone_stack.pop_back()
+				if not bone_stack.is_empty():
+					target_poses_filled[bone_stack[-1]] = true
+					if parent_idx == -1:
+						target_poses[bone_stack[-1]] = target_skel.get_bone_rest(bone_stack[-1])
+					else:
+						target_poses[bone_stack[-1]] = target_poses[parent_idx] * target_skel.get_bone_rest(bone_stack[-1])
+			# End get_bone_global_pose_workaround
+			var relative_transform := target_poses[target_bone_idx].affine_inverse() * my_poses[my_bone_idx]
+			skin.set_bind_pose(bind_idx, relative_transform * orig_skin.get_bind_pose(bind_idx))
+
+
 func _init():
 	if Engine.is_editor_hint():
 		if is_inside_tree():
@@ -300,6 +396,8 @@ func _notification(what):
 		return
 	match what:
 		NOTIFICATION_UPDATE_SKELETON:
+			# update_skin_poses.call_deferred()
+			update_skin_poses()
 			pass
 		NOTIFICATION_PREDELETE:
 			detach_skeleton()
