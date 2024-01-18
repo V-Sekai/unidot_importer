@@ -119,6 +119,7 @@ var asset_scenes: Array = [].duplicate()
 
 var result_log_lineedit: TextEdit 
 
+var new_editor_plugin := EditorPlugin.new()
 var pkg: Object = null  # Type package_file, set in _selected_package
 
 func _resource_reimported(resources: PackedStringArray):
@@ -146,7 +147,7 @@ func _init():
 	import_worker2.stage2 = true
 	import_worker2.asset_processing_finished.connect(self._asset_processing_stage2_finished, CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	editor_filesystem.resources_reimported.connect(self._resource_reimported)
 	editor_filesystem.resources_reload.connect(self._resource_reloaded)
 
@@ -646,6 +647,27 @@ func _meta_completed(tw: Object):
 
 	if _meta_work_count <= 0:
 		if auto_import:
+			if preprocess_timer != null:
+				preprocess_timer.queue_free()
+			preprocess_timer = Timer.new()
+			preprocess_timer.wait_time = 0.1
+			preprocess_timer.autostart = true
+			preprocess_timer.process_callback = Timer.TIMER_PROCESS_IDLE
+			new_editor_plugin.get_editor_interface().get_base_control().add_child(preprocess_timer, true)
+			preprocess_timer.timeout.connect(self._auto_import_tick)
+
+var auto_clean_tick_count = 10
+
+func _auto_import_tick():
+	if new_editor_plugin.get_editor_interface().get_resource_filesystem().is_scanning():
+		auto_clean_tick_count = 10
+	else:
+		# Reduce chance of race condition with editor scanning / import
+		auto_clean_tick_count -= 1
+		if auto_clean_tick_count < 0:
+			preprocess_timer.timeout.disconnect(self._auto_import_tick)
+			preprocess_timer.queue_free()
+			preprocess_timer = null
 			_asset_tree_window_confirmed()
 
 
@@ -913,12 +935,12 @@ func show_importer(ep: EditorPlugin) -> void:
 
 func check_fbx2gltf():
 	var d = DirAccess.open("res://")
-	var addon_path: String = EditorPlugin.new().get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
+	var addon_path: String = new_editor_plugin.get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
 	if not addon_path.get_file().is_empty():
 		print(addon_path)
 		if not d.file_exists(addon_path):
 			var error_dialog := AcceptDialog.new()
-			EditorPlugin.new().get_editor_interface().get_base_control().add_child(error_dialog)
+			new_editor_plugin.get_editor_interface().get_base_control().add_child(error_dialog)
 			error_dialog.title = "Unidot Importer"
 			error_dialog.dialog_text = "FBX2glTF is not configured in Editor settings. This will cause corrupt imports!\nPlease install FBX2glTF in Editor Settings."
 			error_dialog.popup_centered()
@@ -989,7 +1011,7 @@ func _add_batch_import():
 	file_dialog.set_title("Batch import additional .unitypackage archives...")
 	file_dialog.file_selected.connect(self._selected_batch_import_file)
 	file_dialog.files_selected.connect(self._selected_batch_import_files)
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(file_dialog, true)
 	if file_dialog != null:
 		if editor_plugin != null:
 			file_dialog.current_dir = editor_plugin.last_selected_dir
@@ -1032,7 +1054,7 @@ func _abort_clicked():
 func _show_importer_common() -> void:
 	if editor_plugin != null:
 		editor_plugin.package_import_dialog = self
-	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
+	base_control = new_editor_plugin.get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
@@ -1153,7 +1175,7 @@ func on_import_fully_completed():
 	print("Import is fully completed")
 	da.remove("res://_sentinel_file.png")
 	da.remove("res://_sentinel_file.png.import")
-	var ei = EditorPlugin.new().get_editor_interface()
+	var ei = new_editor_plugin.get_editor_interface()
 	if ei.has_method("save_all_scenes"):
 		ei.save_all_scenes()
 	else:
@@ -1259,7 +1281,7 @@ func do_import_step():
 	if _currently_preprocessing_assets != 0:
 		asset_database.log_fail([null, 0, "", 0], "Import step called during preprocess")
 		return
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 
 	for tw in asset_work_completed:
 		update_task_color(tw)
@@ -1677,7 +1699,7 @@ func _do_import_step_tick():
 
 func _scan_sources_complete(useless: Variant = null):
 	update_progress_bar(5)
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
 	asset_database.log_debug([null, 0, "", 0], "Reimporting sentinel to wait for import step to finish.")
 	editor_filesystem.reimport_files(PackedStringArray(["res://_sentinel_file.png"]))
@@ -1707,13 +1729,13 @@ func _scan_sources_complete(useless: Variant = null):
 	import_step_timer.wait_time = 0.1
 	import_step_timer.autostart = true
 	import_step_timer.process_callback = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(import_step_timer, true)
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(import_step_timer, true)
 	import_step_timer.timeout.connect(self._do_import_step_tick)
 
 
 func _preprocess_wait_tick():
 	update_global_logs()
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
 		update_progress_bar(5)
 		asset_database.log_debug([null, 0, "", 0], "Done preprocessing. ready to trigger scan_sources!")
@@ -1825,7 +1847,7 @@ func _asset_tree_window_confirmed():
 	preprocess_timer.wait_time = 0.1
 	preprocess_timer.autostart = true
 	preprocess_timer.process_callback = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(preprocess_timer, true)
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(preprocess_timer, true)
 	preprocess_timer.timeout.connect(self._preprocess_wait_tick)
 	if num_processing == 0:
 		asset_database.log_debug([null, 0, "", 0], "No assets to process!")
