@@ -123,39 +123,40 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 
 	picklist.clear()
 
-	# 2. Guess Root
-	bone_idx = skeleton.get_bone_parent(hips)
-	while bone_idx >= 0:
-		search_path.push_back(bone_idx)
-		bone_idx = skeleton.get_bone_parent(bone_idx)
+	if not force_humanoid:
+		# 2. Guess Root
+		bone_idx = skeleton.get_bone_parent(hips)
+		while bone_idx >= 0:
+			search_path.push_back(bone_idx)
+			bone_idx = skeleton.get_bone_parent(bone_idx)
 
-	if search_path.is_empty():
-		bone_idx = -1
-	elif len(search_path) == 1:
-		bone_idx = search_path[0]  # It is only one bone which can be root.
-	else:
-		var found: bool = false
-		for spath in search_path:
-			var re = RegEx.new()
-			re.compile("root")
-			if re.search(skeleton.get_bone_name(spath).to_lower()):
-				bone_idx = spath  # Name match is preferred.
-				found = true
-				break
-		if not found:
+		if search_path.is_empty():
+			bone_idx = -1
+		elif len(search_path) == 1:
+			bone_idx = search_path[0]  # It is only one bone which can be root.
+		else:
+			var found: bool = false
 			for spath in search_path:
-				if skeleton.get_bone_global_rest(spath).origin.is_zero_approx():
-					bone_idx = spath  # The bone existing at the origin is appropriate as a root.
+				var re = RegEx.new()
+				re.compile("root")
+				if re.search(skeleton.get_bone_name(spath).to_lower()):
+					bone_idx = spath  # Name match is preferred.
 					found = true
 					break
-		if not found:
-			bone_idx = search_path[len(search_path) - 1]  # Ambiguous, but most parental bone selected.
+			if not found:
+				for spath in search_path:
+					if skeleton.get_bone_global_rest(spath).origin.is_zero_approx():
+						bone_idx = spath  # The bone existing at the origin is appropriate as a root.
+						found = true
+						break
+			if not found:
+				bone_idx = search_path[len(search_path) - 1]  # Ambiguous, but most parental bone selected.
 
-	if bone_idx == -1:
-		pass
-		# log_debug_func.call("Auto Mapping couldn't guess Root.") # Root is not required, so continue.
-	else:
-		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "Root"
+		if bone_idx == -1:
+			pass
+			# log_debug_func.call("Auto Mapping couldn't guess Root.") # Root is not required, so continue.
+		else:
+			bone_map_dict[skeleton.get_bone_name(bone_idx)] = "Root"
 
 	bone_idx = -1
 	search_path.clear()

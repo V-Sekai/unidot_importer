@@ -1609,13 +1609,15 @@ class FbxHandler:
 					skel.set_bone_pose_rotation(i, xform.basis.get_rotation_quaternion())
 					skel.set_bone_pose_scale(i, xform.basis.get_scale())
 					i += 1
-				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, pkgasset.parsed_meta.is_force_humanoid())
+				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, false)
 				# The above fails if Hips could not be found. If forcing humanoid, try anyway in case this is an outfit.
-				if pkgasset.parsed_meta.is_force_humanoid() and pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty() and len(default_scene["nodes"]) < 100:
-					for root_idx in default_scene["nodes"]:
-						var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, root_idx)
-						if len(try_bone_map) > len(pkgasset.parsed_meta.autodetected_bone_map_dict):
-							pkgasset.parsed_meta.autodetected_bone_map_dict = try_bone_map
+				if pkgasset.parsed_meta.is_force_humanoid() and pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty():
+					pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true)
+					if pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty() and len(default_scene["nodes"]) < 100:
+						for root_idx in default_scene["nodes"]:
+							var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, root_idx)
+							if len(try_bone_map) > len(pkgasset.parsed_meta.autodetected_bone_map_dict):
+								pkgasset.parsed_meta.autodetected_bone_map_dict = try_bone_map
 				skel.free()
 
 			if not copy_avatar:
@@ -1653,7 +1655,8 @@ class FbxHandler:
 				var node = json["nodes"][new_root_idx]
 				pkgasset.log_debug("Adding node to skin " + str(new_root_idx) + " parent of " + str(cur_human_node_idx))
 				pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node["name"]
-				root_bone_name = node["name"]
+				if not bone_map_dict.has(node["name"]):
+					root_bone_name = node["name"]
 				if not human_skin_set.has(new_root_idx):
 					human_skin_nodes.push_back(new_root_idx)
 					human_skin_set[new_root_idx] = true
