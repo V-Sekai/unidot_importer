@@ -3982,6 +3982,9 @@ class UnidotGameObject:
 			if smrnode != null:
 				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into node Skeleton " + str(state.owner.get_path_to(smrnode)))
 
+		if ret is BoneAttachment3D and ret.get_child_count() == 0:
+			godot_skeleton.remove_child(ret)
+			ret.queue_free()
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
 		for animtree in animator_node_to_object:
@@ -4587,7 +4590,7 @@ class UnidotPrefabInstance:
 						attachment = BoneAttachment3D.new()
 						attachment.name = target_skel_bone  # target_parent_obj.name if not stripped??
 						attachment.bone_name = target_skel_bone
-						state.add_child(attachment, godot_skeleton, gameobject_asset)
+						state.add_child(attachment, godot_skeleton, null) # gameobject_asset)
 						gameobject_fileid_to_attachment[gameobject_asset.fileID] = attachment
 			for component in ps.components_by_stripped_id.get(gameobject_asset.fileID, []):
 				if component.type == "MeshFilter":
@@ -4629,6 +4632,10 @@ class UnidotPrefabInstance:
 			gameobject_fileid_to_body[gameobject_asset.fileID] = state.body
 			state.body = orig_state_body
 			state.add_component_map_to_prefabbed_gameobject(gameobject_asset.fileID, comp_map)
+			if attachment != null and attachment is BoneAttachment3D and attachment.get_child_count() == 0:
+				target_parent_obj.remove_child(attachment)
+				attachment.queue_free()
+				gameobject_fileid_to_attachment.erase(gameobject_asset.fileID)
 
 		var smrs: Array[UnidotSkinnedMeshRenderer]
 		# And now for the analogous code to process stripped Transforms.
