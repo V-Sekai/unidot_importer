@@ -1609,13 +1609,13 @@ class FbxHandler:
 					skel.set_bone_pose_rotation(i, xform.basis.get_rotation_quaternion())
 					skel.set_bone_pose_scale(i, xform.basis.get_scale())
 					i += 1
-				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, false)
+				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, pkgasset.parsed_meta.is_force_humanoid())
 				# The above fails if Hips could not be found. If forcing humanoid, try anyway in case this is an outfit.
 				if pkgasset.parsed_meta.is_force_humanoid() and pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty():
-					pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true)
+					pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, true)
 					if pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty() and len(default_scene["nodes"]) < 100:
 						for root_idx in default_scene["nodes"]:
-							var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, root_idx)
+							var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, true, root_idx)
 							if len(try_bone_map) > len(pkgasset.parsed_meta.autodetected_bone_map_dict):
 								pkgasset.parsed_meta.autodetected_bone_map_dict = try_bone_map
 				skel.free()

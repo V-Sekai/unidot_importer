@@ -44,7 +44,7 @@ static func search_bone_by_name(skeleton: Skeleton3D, log_debug_func: Callable, 
 			if hit_list.size() > 0:
 				shortest = hit_list[0]
 				for hit in hit_list:
-					if len(hit) < len(shortest):
+					if len(hit) + 1 < len(shortest):
 						shortest = hit  # Prioritize parent.
 		else:
 			var idx: int = skeleton.get_bone_parent(p_child)
@@ -97,7 +97,7 @@ static func guess_bone_segregation(p_bone_name: String) -> int:
 	return SEG_NONE
 
 
-static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func: Callable, force_humanoid: bool = false, fallback_root_idx: int=-1) -> Dictionary:
+static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func: Callable, allow_incomplete_chains: bool = false, force_humanoid: bool = false, fallback_root_idx: int=-1) -> Dictionary:
 	log_debug_func.call("Run auto mapping.")
 	var bone_map_dict: Dictionary = {}
 
@@ -181,7 +181,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 		# When force_humanoid, we may be processing an outfit that touches the neck but has no head bone.
 		# In this specific case, prefer the Neck if we know that is what it is.
 		if neck != -1:
-			if force_humanoid and skeleton.get_bone_name(neck).to_lower().contains("neck"):
+			if allow_incomplete_chains and skeleton.get_bone_name(neck).to_lower().contains("neck"):
 				bone_map_dict[skeleton.get_bone_name(neck)] = "Neck"
 			else:
 				head = neck  # The head animation should have more movement.
@@ -250,7 +250,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 	picklist.push_back("calf")
 	picklist.push_back("leg")
 	var left_lower_leg: int = -1
-	if left_foot != -1 or force_humanoid:
+	if left_foot != -1 or allow_incomplete_chains:
 		left_lower_leg = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, left_foot)
 
 	if left_lower_leg == -1:
@@ -259,7 +259,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 		bone_map_dict[skeleton.get_bone_name(left_lower_leg)] = "LeftLowerLeg"
 
 	var right_lower_leg: int = -1
-	if right_foot != -1 or force_humanoid:
+	if right_foot != -1 or allow_incomplete_chains:
 		right_lower_leg = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, right_foot)
 
 	if right_lower_leg == -1:
@@ -273,10 +273,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 	picklist.push_back("up.*leg")
 	picklist.push_back("thigh")
 	picklist.push_back("leg")
-	if left_lower_leg != -1 or force_humanoid:
+	if left_lower_leg != -1 or allow_incomplete_chains:
 		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, hips, left_lower_leg)
 
-	if force_humanoid and bone_idx == -1 and left_lower_leg != -1:
+	if allow_incomplete_chains and bone_idx == -1 and left_lower_leg != -1:
 		bone_idx = left_lower_leg
 		left_lower_leg = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["leg"]), SEG_LEFT, bone_idx)
 		if left_lower_leg != -1:
@@ -288,10 +288,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftUpperLeg"
 
 	bone_idx = -1
-	if right_lower_leg != -1 or force_humanoid:
+	if right_lower_leg != -1 or allow_incomplete_chains:
 		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, hips, right_lower_leg)
 
-	if force_humanoid and bone_idx == -1 and right_lower_leg != -1:
+	if allow_incomplete_chains and bone_idx == -1 and right_lower_leg != -1:
 		bone_idx = right_lower_leg
 		right_lower_leg = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["leg"]), SEG_RIGHT, bone_idx)
 		if right_lower_leg != -1:
@@ -588,7 +588,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 	picklist.push_back("elbow")
 	picklist.push_back("arm")
 	var left_lower_arm: int = -1
-	if left_shoulder != -1 && (left_hand_or_palm != -1 or force_humanoid):
+	if left_shoulder != -1 && (left_hand_or_palm != -1 or allow_incomplete_chains):
 		left_lower_arm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_shoulder, left_hand_or_palm)
 
 	if left_lower_arm == -1:
@@ -597,7 +597,7 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 		bone_map_dict[skeleton.get_bone_name(left_lower_arm)] = "LeftLowerArm"
 
 	var right_lower_arm: int = -1
-	if right_shoulder != -1 && (right_hand_or_palm != -1 or force_humanoid):
+	if right_shoulder != -1 && (right_hand_or_palm != -1 or allow_incomplete_chains):
 		right_lower_arm = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_shoulder, right_hand_or_palm)
 
 	if right_lower_arm == -1:
@@ -610,10 +610,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 	# 7-2. Guess UpperArms
 	picklist.push_back("up.*arm")
 	picklist.push_back("arm")
-	if left_shoulder != -1 && (left_lower_arm != -1 or force_humanoid):
+	if left_shoulder != -1 && (left_lower_arm != -1 or allow_incomplete_chains):
 		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_LEFT, left_shoulder, left_lower_arm)
 
-	if force_humanoid and bone_idx == -1 and left_lower_arm != -1:
+	if allow_incomplete_chains and bone_idx == -1 and left_lower_arm != -1:
 		bone_idx = left_lower_arm
 		left_lower_arm = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["arm"]), SEG_LEFT, bone_idx)
 		if left_lower_arm != -1:
@@ -625,10 +625,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 		bone_map_dict[skeleton.get_bone_name(bone_idx)] = "LeftUpperArm"
 
 	bone_idx = -1
-	if right_shoulder != -1 && (right_lower_arm != -1 or force_humanoid):
+	if right_shoulder != -1 && (right_lower_arm != -1 or allow_incomplete_chains):
 		bone_idx = search_bone_by_name(skeleton, log_debug_func, picklist, SEG_RIGHT, right_shoulder, right_lower_arm)
 
-	if force_humanoid and bone_idx == -1 and right_lower_arm != -1:
+	if allow_incomplete_chains and bone_idx == -1 and right_lower_arm != -1:
 		bone_idx = right_lower_arm
 		right_lower_arm = search_bone_by_name(skeleton, log_debug_func, PackedStringArray(["arm"]), SEG_RIGHT, bone_idx)
 		if right_lower_arm != -1:
