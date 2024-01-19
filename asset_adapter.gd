@@ -1646,7 +1646,7 @@ class FbxHandler:
 			var root_bone_name: String = ""
 			for key in bone_map_dict:
 				if bone_map_dict[key] == "Root":
-					root_bone_name = bone_map_dict[key]
+					root_bone_name = key
 			var cur_human_node_idx: int = -1 if human_skin_nodes.is_empty() else human_skin_nodes[-1] # Doesn't matter which...just need to find a common ancestor.
 			pkgasset.log_debug("cur_human_node_idx=" + str(cur_human_node_idx) + " / " + str(json["nodes"][cur_human_node_idx]))
 			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
