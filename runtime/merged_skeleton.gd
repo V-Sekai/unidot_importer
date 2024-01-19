@@ -182,7 +182,7 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			"RightLowerArm": "RightUpperArm",
 			"RightHand": "RightLowerArm",
 		}
-		const PRESERVE_POSITION_ROTATION_BONES := {
+		const PRESERVE_POSITION_BONES := {
 			"Hips": "Root",
 			"Head": "Hips",
 			"LeftShoulder": "Hips",
@@ -190,9 +190,9 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			"LeftUpperLeg": "Hips",
 			"RightUpperLeg": "Hips",
 		}
-		for bone in PRESERVE_POSITION_ROTATION_BONES:
+		for bone in PRESERVE_POSITION_BONES:
 			var my_idx: int = find_bone(bone)
-			var relative_bone_name: String = PRESERVE_POSITION_ROTATION_BONES[bone]
+			var relative_bone_name: String = PRESERVE_POSITION_BONES[bone]
 			if my_idx == -1:
 				continue
 			var target_bone_idx := target_skel.find_bone(bone)
@@ -208,7 +208,6 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_pose
 			set_bone_pose_position(my_idx, combined_pose.origin)
 			print("Bone " + str(bone) + " set position to " + str(combined_pose.origin))
-			set_bone_pose_rotation(my_idx, combined_pose.basis.get_rotation_quaternion())
 			if bone == "Hips":
 				if find_bone("Head") != -1:
 					adjust_bone_scale("Hips", "Head")
@@ -456,8 +455,14 @@ func update_skin_poses():
 		var orig_skin = skin.get_meta(&"orig_skin")
 		for bind_idx in range(skin.get_bind_count()):
 			var bind_name: String = skin.get_bind_name(bind_idx)
+			var orig_bind_name: String = orig_skin.get_bind_name(bind_idx) if orig_skin != null else bind_name
+			if orig_bind_name.is_empty():
+				var bind_bone: int = orig_skin.get_bind_bone(bind_idx)
+				if bind_bone > len(get_bone_count()):
+					bind_bone = 0
+				orig_bind_name = get_bone_name(bind_bone)
 			var target_bone_idx := target_skel.find_bone(bind_name)
-			var my_bone_idx := find_bone(bind_name)
+			var my_bone_idx := find_bone(orig_bind_name)
 			if target_bone_idx == -1 or my_bone_idx == -1:
 				continue
 			# Workaround for get_bone_global_pose

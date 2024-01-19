@@ -13,9 +13,12 @@ var last_selected_dir: String = ""
 var file_dialog_mode := EditorFileDialog.DISPLAY_LIST
 
 var skeleton_editor: VBoxContainer
+var controls : HBoxContainer
 var merge_armature_button: Button
 var mirror_pose_button: Button
 var lock_bone_button: Button
+var rename_bone_button: Button
+var rename_bone_dropdown: OptionButton
 var selected_skel: Skeleton3D
 var merge_armature_selected_node: Node3D
 
@@ -115,23 +118,44 @@ func _enter_tree():
 	#add_tool_menu_item("Debug Anim", self.anim_import)
 	#add_tool_menu_item("Queue Test...", self.queue_test)
 	#add_tool_menu_item("Print scene nodes with owner...", self.anim_import) # self.recursive_print_scene)
+	controls = HBoxContainer.new()
 	merge_armature_button = Button.new()
 	merge_armature_button.text = "Merge to Parent"
 	merge_armature_button.hide()
 	merge_armature_button.pressed.connect(merge_armature_button_clicked)
-	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, merge_armature_button)
+	controls.add_child(merge_armature_button)
 	mirror_pose_button = Button.new()
 	mirror_pose_button.toggle_mode = true
 	mirror_pose_button.text = "Mirror Mode"
 	mirror_pose_button.hide()
 	mirror_pose_button.toggled.connect(mirror_pose_button_toggled)
-	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, mirror_pose_button)
+	controls.add_child(mirror_pose_button)
 	lock_bone_button = Button.new()
 	lock_bone_button.toggle_mode = true
 	lock_bone_button.text = "Lock Bone"
 	lock_bone_button.hide()
 	lock_bone_button.toggled.connect(lock_bone_button_toggled)
-	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, lock_bone_button)
+	controls.add_child(lock_bone_button)
+	rename_bone_dropdown = OptionButton.new()
+	rename_bone_dropdown.fit_to_longest_item = false
+	rename_bone_dropdown.add_item("Current", -1)
+	rename_bone_dropdown.add_item("Original", -2)
+	rename_bone_dropdown.add_item("Custom bone name...", -3)
+	var sph := SkeletonProfileHumanoid.new()
+	for bone_idx in sph.bone_size:
+		var bn := sph.get_bone_name(bone_idx)
+		if bn.contains("Meta") or bn.contains("Proximal") or bn.contains("Intermed") or bn.contains("Distal"):
+			continue
+		rename_bone_dropdown.add_item(bn, bone_idx)
+	for bone_idx in sph.bone_size:
+		var bn := sph.get_bone_name(bone_idx)
+		if not (bn.contains("Meta") or bn.contains("Proximal") or bn.contains("Intermed") or bn.contains("Distal")):
+			continue
+		rename_bone_dropdown.add_item(bn, bone_idx)
+	rename_bone_dropdown.hide()
+	rename_bone_dropdown.item_selected.connect(bone_name_changed)
+	controls.add_child(rename_bone_dropdown)
+	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, controls)
 
 func _exit_tree():
 	# print("run exit tree")
@@ -142,10 +166,8 @@ func _exit_tree():
 	remove_tool_menu_item("Show last Unidot import logs")
 	#remove_tool_menu_item("Debug Anim")
 	#remove_tool_menu_item("Queue Test...")
-	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, merge_armature_button)
-	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, mirror_pose_button)
-	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, lock_bone_button)
-
+	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, controls)
+	controls.queue_free()
 
 func connect_skeleton_tree_signal():
 	var editor_inspector = get_editor_interface().get_inspector()
@@ -167,12 +189,10 @@ func _handles(p_object: Variant) -> bool:
 			mirror_pose_button.hide()
 			lock_bone_button.hide()
 			select_skeleton(null)
-		var skel := node.get_node("%GeneralSkeleton") as Skeleton3D
-		if skel.is_ancestor_of(node):
-			skel = null
-		if skel == null:
-			skel = node.get_node("GeneralSkeleton") as Skeleton3D
-		if skel != null and skel != node:
+		for skel_node in node.find_children("*", "Skeleton3D", ):
+			var skel := skel_node as Skeleton3D
+			if skel == null or skel == node:
+				continue
 			var par: Node = node
 			for i in range(3):
 				par = par.get_parent()
@@ -194,9 +214,6 @@ func merge_armature_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
-	var skel := new_child.get_node("%GeneralSkeleton") as Skeleton3D
-	if skel == null:
-		return
 	if not new_child.scene_file_path.is_empty():
 		new_child.owner.set_editable_instance(new_child, true)
 		new_child.set_display_folded(false)
@@ -211,11 +228,15 @@ func merge_armature_button_clicked():
 		anim.set("reset_on_save", false)
 		anim.set("active", false)
 
-	skel.set_display_folded(true)
-	if skel.get_script() == null:
-		# print("Attaching merged_skeleton script to " + str(get_path_to(new_child)))
-		var script: Resource = get_script()
-		skel.set_script(load(script.resource_path.get_base_dir().path_join("runtime").path_join("merged_skeleton.gd")))
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		if skel == null:
+			continue
+		skel.set_display_folded(true)
+		if skel.get_script() == null:
+			# print("Attaching merged_skeleton script to " + str(get_path_to(new_child)))
+			var script: Resource = get_script()
+			skel.set_script(load(script.resource_path.get_base_dir().path_join("runtime").path_join("merged_skeleton.gd")))
 
 
 func get_mirrored_bone_name(bone_name: String) -> String:
@@ -331,6 +352,7 @@ func disconn_possibly_freed():
 
 func select_skeleton(skel: Skeleton3D):
 	var undo_redo := get_undo_redo()
+	rename_bone_dropdown.hide()
 	if skel != null and skel.has_signal(&"updated_skeleton_pose"):
 		connect_skeleton_tree_signal.call_deferred()
 		if lock_bone_mode or mirror_bone_mode:
@@ -397,11 +419,19 @@ func joint_selected(joint_tree: Tree):
 	var edited_object := get_editor_interface().get_inspector().get_edited_object()
 	if edited_object != null and edited_object is Skeleton3D and edited_object != selected_skel:
 		select_skeleton(edited_object as Skeleton3D)
+	rename_bone_dropdown.size = Vector2(50, 0)
+	rename_bone_dropdown.show()
 	set_selected_joint_name(selected_bone_name)
 
 
 func set_selected_joint_name(bone_name: String, from_undo: bool = false):
 	selected_bone_name = bone_name
+	if selected_skel.has_meta("renamed_bones"):
+		rename_bone_dropdown.set_item_text(0, "Rebind " + selected_skel.get_meta("renamed_bones").get(selected_bone_name, selected_bone_name))
+	else:
+		rename_bone_dropdown.set_item_text(0, "Rebind " + selected_bone_name)
+	rename_bone_dropdown.set_item_text(1, "Revert bone bind to " + selected_bone_name)
+	rename_bone_dropdown.selected = 0
 	selected_bone_idx = selected_skel.find_bone(selected_bone_name)
 	# print("Selected bone " + str(selected_bone_name) + " index " + str(selected_bone_idx))
 	if mirror_bone_mode:
@@ -416,6 +446,60 @@ func set_selected_joint_name(bone_name: String, from_undo: bool = false):
 	#else:
 		#mirror_pose_button.hide()
 
+func bone_name_changed(idx):
+	var new_id := rename_bone_dropdown.get_item_id(idx)
+	var orig_name: String = selected_bone_name
+	if not selected_skel.has_meta("renamed_bones"):
+		selected_skel.set_meta("renamed_bones", {})
+	var new_name: String = selected_skel.get_meta("renamed_bones").get(orig_name, orig_name)
+	if new_id == -1:
+		return
+	elif new_id == -2:
+		new_name = orig_name
+	elif new_id == -3:
+		var ad := ConfirmationDialog.new()
+		var line_edit := LineEdit.new()
+		line_edit.placeholder_text = orig_name
+		line_edit.text = new_name
+		ad.add_child(line_edit)
+		ad.register_text_enter(line_edit)
+		ad.ok_button_text = "Rename " + str(orig_name)
+		ad.confirmed.connect(bone_name_confirmed.bind(ad, line_edit))
+		ad.canceled.connect(ad.queue_free)
+		add_child(ad)
+		ad.show()
+		ad.popup_centered_clamped()
+		return
+	elif new_id > 0:
+		var sph := SkeletonProfileHumanoid.new()
+		new_name = sph.get_bone_name(new_id)
+	rename_bone_name(new_name)
+
+func bone_name_confirmed(ad: ConfirmationDialog, line_edit: LineEdit):
+	if not line_edit.text.strip_edges().is_empty():
+		rename_bone_name(line_edit.text.strip_edges())
+	ad.queue_free()
+
+func rename_bone_name(new_name: String):
+	selected_skel.get_meta("renamed_bones")[selected_bone_name] = new_name
+	rename_bone_dropdown.set_item_text(0, new_name)
+	rename_bone_dropdown.selected = 0
+	var unique_skins = selected_skel.get(&"unique_skins") as Array[Skin]
+	if not unique_skins:
+		return
+	for skin in unique_skins:
+		var orig_skin_meta := skin.get_meta(&"orig_skin") as Skin
+		if orig_skin_meta != null:
+			for i in range(orig_skin_meta.get_bind_count()):
+				var bn := orig_skin_meta.get_bind_name(i)
+				if bn.is_empty():
+					var bb := orig_skin_meta.get_bind_bone(i)
+					if bb == -1:
+						continue
+					bn = selected_skel.get_bone_name(bb)
+				if bn == selected_bone_name:
+					skin.set_bind_name(i, new_name)
+	selected_skel.propagate_notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
 
 # Mirror mode and bone child locking implementation:
 func perform_bone_mirror(changed_indices: PackedInt32Array):
