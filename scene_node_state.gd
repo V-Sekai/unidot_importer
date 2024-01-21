@@ -538,14 +538,19 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 	var name_to_return: String = ""
 	var forced_orig_name: String = prefab_state.fileID_to_forced_humanoid_orig_name.get(fileid, "")
 	var bone_name_forced: bool = false
-	if not forced_orig_name.is_empty() and forced_orig_name != orig_bone_name:
+	if (not forced_orig_name.is_empty() and forced_orig_name != orig_bone_name) or prefab_state.fileID_to_forced_humanoid_godot_name.get(fileid, orig_bone_name) != orig_bone_name:
 		godot_bone_name = prefab_state.fileID_to_forced_humanoid_godot_name.get(fileid, orig_bone_name)
 		meta.log_debug(fileid, "Avatar bone " + str(orig_bone_name) + " mapped to original name " + forced_orig_name + " godot name " + str(godot_bone_name))
-		orig_bone_name = forced_orig_name
+		if not forced_orig_name.is_empty():
+			orig_bone_name = forced_orig_name
+		else:
+			orig_bone_name = godot_bone_name
 		bone_name_forced = true
 	meta.log_debug(fileid, "consume avatar bone " + str(orig_bone_name) + " " + str(godot_bone_name) + " for skel " + str(skel) + ":" + str(skel.get_bone_name(bone_idx)))
 	for avatar in active_avatars:
 		var crc32_name := avatar.crc32.crc32(orig_bone_name)
+		if godot_bone_name == "Hips":
+			meta.log_debug(fileid, "Hips position " + str(avatar.humanoid_skeleton_hip_position) + " crc32=" + str(crc32_name) + " | " + str(avatar.humanoid_bone_map_dict.get(crc32_name)))
 		if avatar.humanoid_bone_map_dict.has(crc32_name):
 			if name_to_return.is_empty():
 				name_to_return = avatar.humanoid_bone_map_dict[crc32_name]

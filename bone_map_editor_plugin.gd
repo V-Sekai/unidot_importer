@@ -428,7 +428,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = left_fingers_map[i][1]
 					named_finger_is_found = true
 				elif search_path.size() >= 3:
-					search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
+					if len(skeleton.get_bone_name(search_path[-1])) > len(skeleton.get_bone_name(search_path[-2])) or skeleton.get_bone_name(search_path[-2]).to_lower().contains("distal"):
+						search_path = search_path.slice(-4) # Eliminate the possibility of carpal bone.
+					else:
+						search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = left_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = left_fingers_map[i][1]
 					bone_map_dict[skeleton.get_bone_name(search_path[2])] = left_fingers_map[i][2]
@@ -469,7 +472,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = left_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = left_fingers_map[i][1]
 				elif search_path.size() >= 3:
-					search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
+					if len(skeleton.get_bone_name(search_path[-1])) > len(skeleton.get_bone_name(search_path[-2])) or skeleton.get_bone_name(search_path[-2]).to_lower().contains("distal"):
+						search_path = search_path.slice(-4) # Eliminate the possibility of carpal bone.
+					else:
+						search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = left_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = left_fingers_map[i][1]
 					bone_map_dict[skeleton.get_bone_name(search_path[2])] = left_fingers_map[i][2]
@@ -514,7 +520,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = right_fingers_map[i][1]
 					named_finger_is_found = true
 				elif search_path.size() >= 3:
-					search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
+					if len(skeleton.get_bone_name(search_path[-1])) > len(skeleton.get_bone_name(search_path[-2])) or skeleton.get_bone_name(search_path[-2]).to_lower().contains("distal"):
+						search_path = search_path.slice(-4) # Eliminate the possibility of carpal bone.
+					else:
+						search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = right_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = right_fingers_map[i][1]
 					bone_map_dict[skeleton.get_bone_name(search_path[2])] = right_fingers_map[i][2]
@@ -556,7 +565,10 @@ static func auto_mapping_process_dictionary(skeleton: Skeleton3D, log_debug_func
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = right_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = right_fingers_map[i][1]
 				elif search_path.size() >= 3:
-					search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
+					if len(skeleton.get_bone_name(search_path[-1])) > len(skeleton.get_bone_name(search_path[-2])) or skeleton.get_bone_name(search_path[-2]).to_lower().contains("distal"):
+						search_path = search_path.slice(-4) # Eliminate the possibility of carpal bone.
+					else:
+						search_path = search_path.slice(-3)  # Eliminate the possibility of carpal bone.
 					bone_map_dict[skeleton.get_bone_name(search_path[0])] = right_fingers_map[i][0]
 					bone_map_dict[skeleton.get_bone_name(search_path[1])] = right_fingers_map[i][1]
 					bone_map_dict[skeleton.get_bone_name(search_path[2])] = right_fingers_map[i][2]
