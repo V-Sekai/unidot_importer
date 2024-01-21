@@ -82,46 +82,10 @@ func uniqify_skins(mesh_instances: Array[MeshInstance3D]) -> Array[Skin]:
 	return unique_skins
 
 
-func adjust_bone_scale(bone_name: String, relative_to_bone: String):
-	var bone_idx := find_bone(bone_name)
-	var idx := find_bone(relative_to_bone)
-	if bone_idx == -1 or idx == -1:
-		return
-	var chest_pose := Transform3D.IDENTITY
-	while idx != -1:
-		chest_pose = get_bone_pose(idx) * chest_pose
-		idx = get_bone_parent(idx)
-	idx = bone_idx
-	var hips_pose := Transform3D.IDENTITY
-	while idx != -1:
-		hips_pose = get_bone_pose(idx) * hips_pose
-		idx = get_bone_parent(idx)
-	var hips_to_chest_distance: float = hips_pose.origin.distance_to(chest_pose.origin)
-	print("bone " + str(bone_idx) + " at " + str(hips_pose.origin) + " rel " + str(relative_to_bone) + " at " + str(chest_pose.origin) + " length " + str(hips_to_chest_distance))
-
-	var target_position := target_skel.get_bone_global_pose(target_skel.find_bone(bone_name)).origin
-	print("Target position ")
-	var target_chest_position := target_skel.get_bone_global_pose(target_skel.find_bone(relative_to_bone)).origin
-	var target_hips_to_chest_distance: float = target_position.distance_to(target_chest_position)
-	print("target bone " + str(bone_name) + " at " + str(target_position) + " rel " + str(relative_to_bone) + " at " + str(target_chest_position) + " length " + str(target_hips_to_chest_distance))
-
-	var hips_scale_ratio: float = clampf(target_hips_to_chest_distance / hips_to_chest_distance, 0.5, 2.0)
-	var final_scale: Vector3 = hips_scale_ratio * get_bone_pose_scale(bone_idx) # * get_bone_pose_scale(bone_idx) / hips_pose.basis.get_scale()
-	print("RATIO: " + str(hips_scale_ratio) + " orig " + str(get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
-	set_bone_pose_scale(bone_idx, final_scale)
-
-
 func attach_skeleton(skel_arg: Skeleton3D):
 	target_skel = skel_arg
 	if target_skel == null:
 		return
-	scale = Vector3.ONE
-	var rel_scale := self.scale
-	var scale_par: Node3D = self.get_parent()
-	while scale_par != target_skel:
-		scale_par.scale = Vector3.ONE
-		rel_scale *= scale_par.scale
-		scale_par = scale_par.get_parent()
 	# Godot will logspam errors and corrupt NodePath to ^"" before we even get to _exit_tree, so we store strings instead.
 	my_path_from_skel = str(target_skel.get_path_to(self))
 	#print(my_path_from_skel)
@@ -135,19 +99,7 @@ func attach_skeleton(skel_arg: Skeleton3D):
 	mesh_instances = find_mesh_instances(target_skel)
 	unique_skins = uniqify_skins(mesh_instances)
 
-	var scale_ratio: float = sqrt(3) / rel_scale.length()
-	scale = Vector3.ONE * scale_ratio
-	if motion_scale != 0 and target_skel.motion_scale != 0:
-		# print(target_skel.motion_scale / motion_scale)
-		scale_ratio = target_skel.motion_scale / motion_scale / scale_ratio
-	target_skel.reset_bone_poses()
-	var set_initial_pose := false
-	if not has_meta(&"did_reset_pose") or not get_meta(&"did_reset_pose"):
-		set_meta(&"did_reset_pose", true)
-		set_initial_pose = true
-		reset_bone_poses()
-		for bone in get_parentless_bones():
-			set_bone_pose_scale(bone, Vector3.ONE * scale_ratio)
+	#target_skel.reset_bone_poses()
 
 	var required_bones: Dictionary
 	for skin in unique_skins:
@@ -169,97 +121,6 @@ func attach_skeleton(skel_arg: Skeleton3D):
 	var bone_owners: Dictionary = target_skel.get_meta(&"merged_skeleton_bone_owners")
 	var added_to_owners: Dictionary
 	# var prof := SkeletonProfileHumanoid.new()
-
-	if set_initial_pose:
-		const BONE_TO_PARENT := {
-			# "Chest": "Hips",
-			"LeftLowerLeg": "LeftUpperLeg",
-			"LeftFoot": "LeftLowerLeg",
-			"RightLowerLeg": "RightUpperLeg",
-			"RightFoot": "RightLowerLeg",
-			"LeftLowerArm": "LeftUpperArm",
-			"LeftHand": "LeftLowerArm",
-			"RightLowerArm": "RightUpperArm",
-			"RightHand": "RightLowerArm",
-		}
-		const PRESERVE_POSITION_BONES := {
-			"Hips": "Root",
-			"Head": "Hips",
-			"LeftShoulder": "Hips",
-			"RightShoulder": "Hips",
-			"LeftUpperLeg": "Hips",
-			"RightUpperLeg": "Hips",
-		}
-		for bone in PRESERVE_POSITION_BONES:
-			var my_idx: int = find_bone(bone)
-			var relative_bone_name: String = PRESERVE_POSITION_BONES[bone]
-			if my_idx == -1:
-				continue
-			var target_bone_idx := target_skel.find_bone(bone)
-			var target_pose := target_skel.get_bone_global_pose(target_bone_idx)
-			#var target_relative_bone_idx := target_skel.find_bone(relative_bone_name)
-			#var target_relative_pose := target_skel.get_bone_global_pose(target_relative_bone_idx)
-			var my_parent_idx := get_bone_parent(my_idx)
-			var parent_to_relative_bone_pose := Transform3D.IDENTITY
-			while my_parent_idx != -1: # and get_bone_name(my_parent_idx) != relative_bone_name:
-				parent_to_relative_bone_pose = get_bone_pose(my_parent_idx) * parent_to_relative_bone_pose
-				my_parent_idx = get_bone_parent(my_parent_idx)
-			# var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_relative_pose.affine_inverse() * target_pose
-			var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_pose
-			set_bone_pose_position(my_idx, combined_pose.origin)
-			print("Bone " + str(bone) + " set position to " + str(combined_pose.origin))
-			if bone == "Hips":
-				if find_bone("Head") != -1:
-					adjust_bone_scale("Hips", "Head")
-				else:
-					adjust_bone_scale("Hips", "Chest")
-
-		for bone in BONE_TO_PARENT:
-			var parent_bone_name: String = BONE_TO_PARENT[bone]
-			adjust_bone_scale(parent_bone_name, bone)
-			#var parent_bone_idx := find_bone(get_bone_name(sph_bone_parent_idx))
-			'''
-			if true:
-				var parent_bone_idx := find_bone(prof.get_bone_name(sph_bone_parent_idx))
-				var target_parent_bone_idx := target_skel.find_bone(prof.get_bone_name(sph_bone_parent_idx))
-				var adjust_parent_length: bool = false
-				if prof.get_tail_direction(sph_bone_parent_idx) == SkeletonProfile.TAIL_DIRECTION_SPECIFIC_CHILD:
-					if prof.get_bone_tail(sph_bone_parent_idx) == prof.get_bone_name(sph_bone_idx):
-						adjust_parent_length = true
-				else:
-					adjust_parent_length = true # I guess
-				if adjust_parent_length:
-					var target_segment_length: float = 0
-					var idx: int = target_bone_idx
-					while idx != -1 and idx != target_parent_bone_idx:
-						print("Target " + str(idx))
-						target_segment_length += target_skel.get_bone_pose_position(idx).length()
-						idx = target_skel.get_bone_parent(idx)
-						if idx != -1:
-							target_segment_length *= target_skel.get_bone_pose_scale(idx).y
-					var my_segment_length: float = 0
-					idx = bone_idx
-					var last_idx := idx
-					var rotation_quat: Quaternion = Quaternion.IDENTITY
-					while idx != -1 and idx != parent_bone_idx:
-						print("My " + str(idx))
-						my_segment_length += get_bone_pose_position(idx).length()
-						last_idx = idx
-						idx = get_bone_parent(idx)
-						if idx != -1:
-							rotation_quat = get_bone_pose_rotation(idx) * rotation_quat
-							my_segment_length *= get_bone_pose_scale(idx).y
-					var bone_scale_ratio: float = clampf(target_segment_length / my_segment_length, 0.5, 2.0)
-					var bone_scale_vector: Vector3 = Vector3.ONE * bone_scale_ratio
-					var rotated_scale: Vector3 = (Basis(get_bone_pose_rotation(parent_bone_idx)) * Basis.from_scale(bone_scale_vector)).get_scale()
-					set_bone_pose_scale(parent_bone_idx, bone_scale_vector * get_bone_pose_scale(parent_bone_idx))
-					for child_idx in get_bone_children(parent_bone_idx):
-						if child_idx != last_idx:
-							print("Reset scale " + str(child_idx))
-							set_bone_pose_position(child_idx, get_bone_pose_position(child_idx) / rotated_scale)
-							set_bone_pose_scale(child_idx, get_bone_pose_scale(child_idx) / rotated_scale)
-					set_bone_pose_scale(bone_idx, get_bone_pose_scale(bone_idx) / (Basis(rotation_quat) * Basis.from_scale(bone_scale_vector)).get_scale())
-			'''
 
 	for bone_key in required_bones:
 		var bone := bone_key as String
