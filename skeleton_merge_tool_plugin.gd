@@ -7,6 +7,7 @@ var controls : HBoxContainer
 var merge_armature_button: Button
 var unmerge_armature_button: Button
 var merge_armature_preserve_pose_button: Button
+var align_reset_armature_button: Button
 var mirror_pose_button: Button
 var lock_bone_button: Button
 var rename_bone_button: Button
@@ -39,10 +40,15 @@ func _enter_tree():
 	# Initialization of the plugin goes here.
 	controls = HBoxContainer.new()
 	merge_armature_button = Button.new()
-	merge_armature_button.text = "Auto Align Armature"
+	merge_armature_button.text = "Auto Scale to T-Pose"
 	merge_armature_button.hide()
 	merge_armature_button.pressed.connect(align_armature_button_clicked)
 	controls.add_child(merge_armature_button)
+	align_reset_armature_button = Button.new()
+	align_reset_armature_button.text = "Align to RESET Pose"
+	align_reset_armature_button.hide()
+	align_reset_armature_button.pressed.connect(align_reset_armature_button_clicked)
+	controls.add_child(align_reset_armature_button)
 	unmerge_armature_button = Button.new()
 	unmerge_armature_button.text = "Unmerge Armature"
 	unmerge_armature_button.hide()
@@ -53,6 +59,7 @@ func _enter_tree():
 	merge_armature_preserve_pose_button.hide()
 	merge_armature_preserve_pose_button.pressed.connect(merge_armature_button_clicked)
 	controls.add_child(merge_armature_preserve_pose_button)
+
 	mirror_pose_button = Button.new()
 	mirror_pose_button.toggle_mode = true
 	mirror_pose_button.text = "Mirror Mode"
@@ -86,12 +93,10 @@ func _enter_tree():
 	controls.add_child(rename_bone_dropdown)
 	controls.hide()
 	add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, controls)
-	print("ADDING CONTROL TO CONTAINER")
 
 
 func _exit_tree():
 	# Clean-up of the plugin goes here.
-	print("REMOVING CONTROL TO CONTAINER")
 	remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, controls)
 	controls.queue_free()
 
@@ -128,16 +133,19 @@ func _handles(p_object: Variant) -> bool:
 					merge_armature_selected_node = node
 					if skel.get_script() == null:
 						show_control(merge_armature_preserve_pose_button)
+						hide_control(align_reset_armature_button)
 						hide_control(merge_armature_button)
 						hide_control(unmerge_armature_button)
 					elif skel is merged_skeleton_script:
 						show_control(merge_armature_button)
+						show_control(align_reset_armature_button)
 						show_control(unmerge_armature_button)
 						hide_control(merge_armature_preserve_pose_button)
 					return false # We don't use _edit
 	merge_armature_selected_node = null
 	hide_control(merge_armature_button)
 	hide_control(unmerge_armature_button)
+	hide_control(align_reset_armature_button)
 	hide_control(merge_armature_preserve_pose_button)
 	return false
 
@@ -160,49 +168,81 @@ func hide_control(control):
 
 
 func unmerge_armature_button_clicked():
-	print("A")
 	if merge_armature_selected_node == null:
-		print("Ax")
 		return
-	print("B")
 	var new_child: Node3D = merge_armature_selected_node
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
-		print("C")
 		if skel == null or not skel.has_method(&"detach_skeleton"):
-			print("D")
 			continue
 		skel.detach_skeleton()
 		skel.set_script(null)
 		hide_control(merge_armature_button)
 		hide_control(unmerge_armature_button)
+		hide_control(align_reset_armature_button)
 		show_control(merge_armature_preserve_pose_button)
-		print("E")
 
 
 func align_armature_button_clicked():
-	print("A")
 	if merge_armature_selected_node == null:
-		print("Ax")
 		return
-	print("B")
 	var new_child: Node3D = merge_armature_selected_node
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
-		print("C")
 		if skel == null:
 			continue
-		print("D")
 		var par: Node3D = skel.get_parent_node_3d()
 		while par != null:
 			if par is Skeleton3D:
 				break
 			par = par.get_parent_node_3d()
 		if par != null:
-			print("E")
 			var target_skel := par as Skeleton3D
 			merged_skeleton_script.adjust_pose(skel, target_skel)
 
+
+func align_reset_armature_button_clicked():
+	if merge_armature_selected_node == null:
+		return
+	var new_child: Node3D = merge_armature_selected_node
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		if skel == null:
+			continue
+		var par: Node3D = skel.get_parent_node_3d()
+		while par != null:
+			if par is Skeleton3D:
+				break
+			par = par.get_parent_node_3d()
+		if par != null:
+			var target_skel := par as Skeleton3D
+			skel.reset_bone_poses()
+			play_all_reset_animations(skel, target_skel)
+			target_skel.reset_bone_poses()
+			play_all_reset_animations(target_skel, target_skel.owner)
+			merged_skeleton_script.preserve_pose(skel, target_skel)
+
+func play_all_reset_animations(node: Node3D, toplevel_node: Node):
+	while node != null:
+		for anim_player in node.find_children("*", "AnimationPlayer", false, true):
+			if anim_player.has_animation(&"RESET"):
+				var root_node: Node = anim_player.get_node(anim_player.root_node)
+				var reset_anim: Animation = anim_player.get_animation(&"RESET")
+				if reset_anim != null and root_node != null:
+					# Copied from AnimationMixer::reset()
+					var aux_player := AnimationPlayer.new()
+					root_node.add_child(aux_player)
+					aux_player.reset_on_save = false
+					var al := AnimationLibrary.new()
+					al.add_animation(&"RESET", reset_anim)
+					aux_player.add_animation_library(&"", al)
+					aux_player.assigned_animation = &"RESET"
+					aux_player.seek(0.0, true)
+					root_node.remove_child(aux_player)
+					aux_player.queue_free()
+		if node == toplevel_node:
+			break
+		node = node.get_parent_node_3d()
 
 func merge_armature_button_clicked():
 	if merge_armature_selected_node == null:
@@ -251,6 +291,7 @@ func merge_armature_button_clicked():
 				merged_skeleton_script.preserve_pose(skel, target_skel)
 				skel.set_script(merged_skeleton_script)
 				show_control(merge_armature_button)
+				show_control(align_reset_armature_button)
 				show_control(unmerge_armature_button)
 				hide_control(merge_armature_preserve_pose_button)
 
@@ -424,7 +465,7 @@ func joint_selected(joint_tree: Tree):
 
 func set_selected_joint_name(bone_name: String, from_undo: bool = false):
 	selected_bone_name = bone_name
-	print(selected_bone_name + " -> " + str(selected_skel.has_meta("renamed_bones")))
+	print("Selected " + selected_bone_name + " -> " + str(selected_skel.has_meta("renamed_bones")))
 	if selected_skel.has_meta("renamed_bones"):
 		rename_bone_dropdown.set_item_text(0, "Rebind " + selected_skel.get_meta("renamed_bones").get(selected_bone_name, selected_bone_name))
 	else:
@@ -469,7 +510,7 @@ func bone_name_changed(idx):
 	elif new_id > 0:
 		var sph := SkeletonProfileHumanoid.new()
 		new_name = sph.get_bone_name(new_id)
-	print(selected_bone_name + " / " + new_name)
+	print("Rebind " + selected_bone_name + " / " + new_name)
 	rename_bone_name(new_name)
 
 
