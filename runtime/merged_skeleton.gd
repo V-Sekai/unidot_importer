@@ -100,13 +100,16 @@ func attach_skeleton(skel_arg: Skeleton3D):
 	# Godot bone attachments are incredibly buggy and not unsetting a skeleton could crash godot with
 	# "ERROR: Cannot update external skeleton cache: Skeleton3D Nodepath does not point to a Skeleton3D node!"
 	# So I will disable them for now...
-	# bone_attachments = find_bone_attachments(target_skel)
+	bone_attachments = find_bone_attachments(target_skel)
 	mesh_instances = find_mesh_instances(target_skel)
 	unique_skins = uniqify_skins(mesh_instances)
 
 	#target_skel.reset_bone_poses()
 
 	var required_bones: Dictionary
+	for attachment in bone_attachments:
+		# Some models such as PhantomVenus create a bone which is only referenced by a BoneAttachment3D
+		required_bones[attachment.bone_name] = []
 	for skin in unique_skins:
 		var orig_skin = skin.get_meta(&"orig_skin")
 		for bind_idx in range(skin.get_bind_count()):
@@ -180,9 +183,11 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			var extern_skel: Skeleton3D = attachment.get_node_or_null(attachment.get_external_skeleton()) as Skeleton3D
 			if extern_skel == self:
 				attachment.set_external_skeleton(attachment.get_path_to(target_skel))
+				attachment.bone_idx = target_skel.find_bone(attachment.bone_name)
 		elif attachment.get_parent() == self:
 			attachment.set_external_skeleton(attachment.get_path_to(target_skel))
 			attachment.set_use_external_skeleton(true)
+			attachment.bone_idx = target_skel.find_bone(attachment.bone_name)
 	print("Merging Bone Attachments: " + str(bone_attachments))
 
 	for mesh_inst in mesh_instances:
@@ -209,6 +214,7 @@ func detach_skeleton():
 		if attachment.get_parent() == self:
 			attachment.set_use_external_skeleton(false)
 			attachment.set_external_skeleton(NodePath())
+			attachment.bone_idx = find_bone(attachment.bone_name)
 		else:
 			var np: String = ".."
 			var par: Node = attachment.get_parent()
@@ -216,6 +222,7 @@ func detach_skeleton():
 				np += "/.."
 				par = par.get_parent()
 			attachment.set_external_skeleton(NodePath(np))
+			attachment.bone_idx = find_bone(attachment.bone_name)
 	bone_attachments.clear()
 	#push_warning("Before mesh instances")
 
@@ -440,17 +447,17 @@ static func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_na
 		hips_pose = skel.get_bone_pose(idx) * hips_pose
 		idx = skel.get_bone_parent(idx)
 	var hips_to_chest_distance: float = hips_pose.origin.distance_to(chest_pose.origin)
-	print("bone " + str(bone_idx) + " at " + str(hips_pose.origin) + " rel " + str(relative_to_bone) + " at " + str(chest_pose.origin) + " length " + str(hips_to_chest_distance))
+	# print("bone " + str(bone_idx) + " at " + str(hips_pose.origin) + " rel " + str(relative_to_bone) + " at " + str(chest_pose.origin) + " length " + str(hips_to_chest_distance))
 
 	var target_position := target_skel.get_bone_global_pose(target_skel.find_bone(bone_name)).origin
-	print("Target position ")
+	# print("Target position ")
 	var target_chest_position := target_skel.get_bone_global_pose(target_skel.find_bone(relative_to_bone)).origin
 	var target_hips_to_chest_distance: float = target_position.distance_to(target_chest_position)
-	print("target bone " + str(bone_name) + " at " + str(target_position) + " rel " + str(relative_to_bone) + " at " + str(target_chest_position) + " length " + str(target_hips_to_chest_distance))
+	# print("target bone " + str(bone_name) + " at " + str(target_position) + " rel " + str(relative_to_bone) + " at " + str(target_chest_position) + " length " + str(target_hips_to_chest_distance))
 
 	var hips_scale_ratio: float = clampf(target_hips_to_chest_distance / hips_to_chest_distance, 0.5, 2.0)
 	var final_scale: Vector3 = hips_scale_ratio * skel.get_bone_pose_scale(bone_idx) # * get_bone_pose_scale(bone_idx) / hips_pose.basis.get_scale()
-	print("RATIO: " + str(hips_scale_ratio) + " orig " + str(skel.get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
+	# print("RATIO: " + str(hips_scale_ratio) + " orig " + str(skel.get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
 	skel.set_bone_pose_scale(bone_idx, final_scale)
 
 
