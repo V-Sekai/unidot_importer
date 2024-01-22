@@ -5,6 +5,7 @@ extends EditorPlugin
 var skeleton_editor: VBoxContainer
 var controls : HBoxContainer
 var merge_armature_button: Button
+var unmerge_armature_button: Button
 var merge_armature_preserve_pose_button: Button
 var mirror_pose_button: Button
 var lock_bone_button: Button
@@ -31,19 +32,26 @@ var locked_bone_bunny_positions: PackedVector3Array
 var locked_bone_bunny_rotations: Array[Quaternion]
 var locked_bone_bunny_rot_scales: Array[Basis]
 
+const merged_skeleton_script := preload("runtime/merged_skeleton.gd")
+
 
 func _enter_tree():
 	# Initialization of the plugin goes here.
 	controls = HBoxContainer.new()
 	merge_armature_button = Button.new()
-	merge_armature_button.text = "Simple Armature Merge"
+	merge_armature_button.text = "Auto Align Armature"
 	merge_armature_button.hide()
-	merge_armature_button.pressed.connect(merge_armature_button_clicked.bind(false))
+	merge_armature_button.pressed.connect(align_armature_button_clicked)
 	controls.add_child(merge_armature_button)
+	unmerge_armature_button = Button.new()
+	unmerge_armature_button.text = "Unmerge Armature"
+	unmerge_armature_button.hide()
+	unmerge_armature_button.pressed.connect(unmerge_armature_button_clicked)
+	controls.add_child(unmerge_armature_button)
 	merge_armature_preserve_pose_button = Button.new()
-	merge_armature_preserve_pose_button.text = "Merge Current Pose"
+	merge_armature_preserve_pose_button.text = "Merge Parent Armature"
 	merge_armature_preserve_pose_button.hide()
-	merge_armature_preserve_pose_button.pressed.connect(merge_armature_button_clicked.bind(true))
+	merge_armature_preserve_pose_button.pressed.connect(merge_armature_button_clicked)
 	controls.add_child(merge_armature_preserve_pose_button)
 	mirror_pose_button = Button.new()
 	mirror_pose_button.toggle_mode = true
@@ -117,13 +125,19 @@ func _handles(p_object: Variant) -> bool:
 				par = par.get_parent()
 				if par == null: break
 				if par is Skeleton3D and par.name == "GeneralSkeleton" and par != skel:
+					merge_armature_selected_node = node
 					if skel.get_script() == null:
-						merge_armature_selected_node = node
-						show_control(merge_armature_button)
 						show_control(merge_armature_preserve_pose_button)
-						return false # We don't use _edit
+						hide_control(merge_armature_button)
+						hide_control(unmerge_armature_button)
+					elif skel is merged_skeleton_script:
+						show_control(merge_armature_button)
+						show_control(unmerge_armature_button)
+						hide_control(merge_armature_preserve_pose_button)
+					return false # We don't use _edit
 	merge_armature_selected_node = null
 	hide_control(merge_armature_button)
+	hide_control(unmerge_armature_button)
 	hide_control(merge_armature_preserve_pose_button)
 	return false
 
@@ -145,86 +159,52 @@ func hide_control(control):
 			controls.hide()
 
 
-func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_name: String, relative_to_bone: String):
-	var bone_idx := skel.find_bone(bone_name)
-	var idx := skel.find_bone(relative_to_bone)
-	if bone_idx == -1 or idx == -1:
+func unmerge_armature_button_clicked():
+	print("A")
+	if merge_armature_selected_node == null:
+		print("Ax")
 		return
-	var chest_pose := Transform3D.IDENTITY
-	while idx != -1:
-		chest_pose = skel.get_bone_pose(idx) * chest_pose
-		idx = skel.get_bone_parent(idx)
-	idx = bone_idx
-	var hips_pose := Transform3D.IDENTITY
-	while idx != -1:
-		hips_pose = skel.get_bone_pose(idx) * hips_pose
-		idx = skel.get_bone_parent(idx)
-	var hips_to_chest_distance: float = hips_pose.origin.distance_to(chest_pose.origin)
-	print("bone " + str(bone_idx) + " at " + str(hips_pose.origin) + " rel " + str(relative_to_bone) + " at " + str(chest_pose.origin) + " length " + str(hips_to_chest_distance))
-
-	var target_position := target_skel.get_bone_global_pose(target_skel.find_bone(bone_name)).origin
-	print("Target position ")
-	var target_chest_position := target_skel.get_bone_global_pose(target_skel.find_bone(relative_to_bone)).origin
-	var target_hips_to_chest_distance: float = target_position.distance_to(target_chest_position)
-	print("target bone " + str(bone_name) + " at " + str(target_position) + " rel " + str(relative_to_bone) + " at " + str(target_chest_position) + " length " + str(target_hips_to_chest_distance))
-
-	var hips_scale_ratio: float = clampf(target_hips_to_chest_distance / hips_to_chest_distance, 0.5, 2.0)
-	var final_scale: Vector3 = hips_scale_ratio * skel.get_bone_pose_scale(bone_idx) # * get_bone_pose_scale(bone_idx) / hips_pose.basis.get_scale()
-	print("RATIO: " + str(hips_scale_ratio) + " orig " + str(skel.get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
-	skel.set_bone_pose_scale(bone_idx, final_scale)
-
-
-func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D):
-
-	const BONE_TO_PARENT := {
-		# "Chest": "Hips",
-		"LeftLowerLeg": "LeftUpperLeg",
-		"LeftFoot": "LeftLowerLeg",
-		"RightLowerLeg": "RightUpperLeg",
-		"RightFoot": "RightLowerLeg",
-		"LeftLowerArm": "LeftUpperArm",
-		"LeftHand": "LeftLowerArm",
-		"RightLowerArm": "RightUpperArm",
-		"RightHand": "RightLowerArm",
-	}
-	const PRESERVE_POSITION_BONES := {
-		"Hips": "Root",
-		"Head": "Hips",
-		"LeftShoulder": "Hips",
-		"RightShoulder": "Hips",
-		"LeftUpperLeg": "Hips",
-		"RightUpperLeg": "Hips",
-	}
-	for bone in PRESERVE_POSITION_BONES:
-		var my_idx: int = skel.find_bone(bone)
-		var relative_bone_name: String = PRESERVE_POSITION_BONES[bone]
-		if my_idx == -1:
+	print("B")
+	var new_child: Node3D = merge_armature_selected_node
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		print("C")
+		if skel == null or not skel.has_method(&"detach_skeleton"):
+			print("D")
 			continue
-		var target_bone_idx := target_skel.find_bone(bone)
-		var target_pose := target_skel.get_bone_global_pose(target_bone_idx)
-		#var target_relative_bone_idx := target_skel.find_bone(relative_bone_name)
-		#var target_relative_pose := target_skel.get_bone_global_pose(target_relative_bone_idx)
-		var my_parent_idx := skel.get_bone_parent(my_idx)
-		var parent_to_relative_bone_pose := Transform3D.IDENTITY
-		while my_parent_idx != -1: # and get_bone_name(my_parent_idx) != relative_bone_name:
-			parent_to_relative_bone_pose = skel.get_bone_pose(my_parent_idx) * parent_to_relative_bone_pose
-			my_parent_idx = skel.get_bone_parent(my_parent_idx)
-		# var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_relative_pose.affine_inverse() * target_pose
-		var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_pose
-		skel.set_bone_pose_position(my_idx, combined_pose.origin)
-		print("Bone " + str(bone) + " set position to " + str(combined_pose.origin))
-		if bone == "Hips":
-			if skel.find_bone("Head") != -1:
-				adjust_bone_scale(skel, target_skel, "Hips", "Head")
-			else:
-				adjust_bone_scale(skel, target_skel, "Hips", "Chest")
-
-	for bone in BONE_TO_PARENT:
-		var parent_bone_name: String = BONE_TO_PARENT[bone]
-		adjust_bone_scale(skel, target_skel, parent_bone_name, bone)
+		skel.detach_skeleton()
+		skel.set_script(null)
+		hide_control(merge_armature_button)
+		hide_control(unmerge_armature_button)
+		show_control(merge_armature_preserve_pose_button)
+		print("E")
 
 
-func merge_armature_button_clicked(preserve_pose: bool):
+func align_armature_button_clicked():
+	print("A")
+	if merge_armature_selected_node == null:
+		print("Ax")
+		return
+	print("B")
+	var new_child: Node3D = merge_armature_selected_node
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		print("C")
+		if skel == null:
+			continue
+		print("D")
+		var par: Node3D = skel.get_parent_node_3d()
+		while par != null:
+			if par is Skeleton3D:
+				break
+			par = par.get_parent_node_3d()
+		if par != null:
+			print("E")
+			var target_skel := par as Skeleton3D
+			merged_skeleton_script.adjust_pose(skel, target_skel)
+
+
+func merge_armature_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
@@ -248,9 +228,6 @@ func merge_armature_button_clicked(preserve_pose: bool):
 			continue
 		skel.set_display_folded(true)
 		if skel.get_script() == null:
-			# print("Attaching merged_skeleton script to " + str(get_path_to(new_child)))
-			var script: Resource = get_script()
-
 			var par: Node3D = skel.get_parent_node_3d()
 			while par != null:
 				if par is Skeleton3D:
@@ -267,36 +244,15 @@ func merge_armature_button_clicked(preserve_pose: bool):
 						scale_par = scale_par.get_parent()
 					var scale_ratio: float = sqrt(3) / rel_scale.length()
 					skel.transform = Transform3D.IDENTITY
-					if not preserve_pose:
-						target_skel.reset_bone_poses()
-						skel.reset_bone_poses()
 					# print(target_skel.motion_scale / motion_scale)
 					scale_ratio = target_skel.motion_scale / skel.motion_scale / scale_ratio
 					for bone in skel.get_parentless_bones():
 						skel.set_bone_pose_scale(bone, skel.get_bone_pose_scale(bone) * scale_ratio)
-				if not preserve_pose:
-					adjust_pose(skel, target_skel)
-				else:
-					for bone in target_skel.get_bone_count():
-						var my_bone = skel.find_bone(target_skel.get_bone_name(bone))
-						if my_bone != null:
-							var pose_adj: Quaternion = Quaternion.IDENTITY
-							if not target_skel.show_rest_only:
-								pose_adj = target_skel.get_bone_rest(bone).basis.get_rotation_quaternion() * target_skel.get_bone_pose_rotation(bone).inverse()
-							if skel.show_rest_only:
-								pose_adj *= skel.get_bone_rest(my_bone).basis.get_rotation_quaternion()
-							else:
-								pose_adj *= skel.get_bone_pose_rotation(my_bone)
-							skel.set_bone_pose_rotation(my_bone, pose_adj)
-							var position_adj: Vector3 = Vector3.ZERO
-							if not target_skel.show_rest_only:
-								position_adj = target_skel.get_bone_rest(bone).origin - target_skel.get_bone_pose_position(bone)
-							if skel.show_rest_only:
-								position_adj += skel.get_bone_rest(my_bone).origin
-							else:
-								position_adj += skel.get_bone_pose_position(my_bone)
-							skel.set_bone_pose_position(my_bone, position_adj)
-				skel.set_script(load(script.resource_path.get_base_dir().path_join("runtime").path_join("merged_skeleton.gd")))
+				merged_skeleton_script.preserve_pose(skel, target_skel)
+				skel.set_script(merged_skeleton_script)
+				show_control(merge_armature_button)
+				show_control(unmerge_armature_button)
+				hide_control(merge_armature_preserve_pose_button)
 
 
 func get_mirrored_bone_name(bone_name: String) -> String:
@@ -611,6 +567,9 @@ func perform_bone_lock(changed_indices: PackedInt32Array):
 
 func on_skeleton_poses_changed(force_mirror: bool = false):
 	var changed: bool = false
+	last_pose_positions.resize(selected_skel.get_bone_count())
+	last_pose_rotations.resize(selected_skel.get_bone_count())
+	last_pose_scales.resize(selected_skel.get_bone_count())
 	for i in range(selected_skel.get_bone_count()):
 		if (last_pose_positions[i] != selected_skel.get_bone_pose_position(i) or
 				last_pose_rotations[i] != selected_skel.get_bone_pose_rotation(i) or
@@ -631,9 +590,6 @@ func on_skeleton_poses_changed(force_mirror: bool = false):
 				last_pose_scales[last_mirror_bone_idx].is_equal_approx(selected_skel.get_bone_pose_scale(last_mirror_bone_idx))):
 			perform_bone_mirror(PackedInt32Array([last_mirror_bone_idx]))
 	if lock_bone_mode or mirror_bone_mode:
-		last_pose_positions.resize(selected_skel.get_bone_count())
-		last_pose_rotations.resize(selected_skel.get_bone_count())
-		last_pose_scales.resize(selected_skel.get_bone_count())
 		var changed_indices: PackedInt32Array
 		for i in range(selected_skel.get_bone_count()):
 			if not (last_pose_positions[i].is_equal_approx(selected_skel.get_bone_pose_position(i)) and

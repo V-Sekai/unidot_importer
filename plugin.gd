@@ -12,8 +12,7 @@ var package_import_dialog: RefCounted = null
 var last_selected_dir: String = ""
 var file_dialog_mode := EditorFileDialog.DISPLAY_LIST
 
-const skeleton_merge_tool_plugin_class := preload("./skeleton_merge_tool_plugin.gd")
-var skeleton_merge_tool_plugin : skeleton_merge_tool_plugin_class
+var skeleton_merge_tool_plugin : EditorPlugin
 
 
 func recursive_print(node: Node, indent: String = ""):
@@ -109,8 +108,10 @@ func _enter_tree():
 	add_tool_menu_item("Reimport extracted .unitypackage...", self.show_reimport)
 	add_tool_menu_item("Show last Unidot import logs", self.show_importer_logs)
 	#add_tool_menu_item("Debug Anim", self.anim_import)
-	skeleton_merge_tool_plugin = skeleton_merge_tool_plugin_class.new()
-	add_child(skeleton_merge_tool_plugin)
+	var skeleton_merge_tool_class = load(get_script().resource_path.get_base_dir().path_join("skeleton_merge_tool_plugin.gd"))
+	if skeleton_merge_tool_class != null:
+		skeleton_merge_tool_plugin = skeleton_merge_tool_class.new()
+		add_child(skeleton_merge_tool_plugin)
 
 func _exit_tree():
 	# print("run exit tree")
@@ -120,8 +121,9 @@ func _exit_tree():
 	remove_tool_menu_item("Reimport extracted .unitypackage...")
 	remove_tool_menu_item("Show last Unidot import logs")
 	#remove_tool_menu_item("Debug Anim")
-	remove_child(skeleton_merge_tool_plugin)
-	skeleton_merge_tool_plugin.queue_free()
+	if skeleton_merge_tool_plugin != null:
+		remove_child(skeleton_merge_tool_plugin)
+		skeleton_merge_tool_plugin.queue_free()
 
 func _handles(p_object: Variant) -> bool:
 	return skeleton_merge_tool_plugin._handles(p_object)

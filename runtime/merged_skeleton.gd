@@ -9,6 +9,11 @@ var bone_attachments: Array[BoneAttachment3D]
 var mesh_instances: Array[MeshInstance3D]
 var unique_skins: Array[Skin]
 
+# Prevent duplicate NOTIFICATION_UPDATE_SKELETON (can infinite loop)
+var last_pose_positions: PackedVector3Array
+var last_pose_rotations: Array[Quaternion]
+var last_pose_scales: PackedVector3Array
+
 signal updated_skeleton_pose
 
 
@@ -302,6 +307,23 @@ func update_skin_poses():
 
 	if target_skel == null:
 		return
+	var changed: bool = false
+	last_pose_positions.resize(get_bone_count())
+	last_pose_rotations.resize(get_bone_count())
+	last_pose_scales.resize(get_bone_count())
+	for i in range(get_bone_count()):
+		if (last_pose_positions[i] != get_bone_pose_position(i) or
+				last_pose_rotations[i] != get_bone_pose_rotation(i) or
+				last_pose_scales[i] != get_bone_pose_scale(i)):
+			changed = true
+			last_pose_positions[i] = get_bone_pose_position(i)
+			last_pose_rotations[i] = get_bone_pose_rotation(i)
+			last_pose_scales[i] = get_bone_pose_scale(i)
+	# Godot may infinite loop if two NOTIFICATION_UPDATE_SKELETON somehow get deferred and we then
+	# perform anything that hits the dirty flag (such as set_bone_pose_position or skin changes)
+	# To prevent this, we have to abort early to prevent queuing another NOTIFICIATION_UPDATE_SKELETON.
+	if not changed:
+		return
 	# Calculate global_bone_pose
 	var my_poses: Array[Transform3D]
 	my_poses.resize(get_bone_count())
@@ -401,3 +423,105 @@ func _notification(what):
 			pass
 		NOTIFICATION_PREDELETE:
 			detach_skeleton()
+
+
+static func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_name: String, relative_to_bone: String):
+	var bone_idx := skel.find_bone(bone_name)
+	var idx := skel.find_bone(relative_to_bone)
+	if bone_idx == -1 or idx == -1:
+		return
+	var chest_pose := Transform3D.IDENTITY
+	while idx != -1:
+		chest_pose = skel.get_bone_pose(idx) * chest_pose
+		idx = skel.get_bone_parent(idx)
+	idx = bone_idx
+	var hips_pose := Transform3D.IDENTITY
+	while idx != -1:
+		hips_pose = skel.get_bone_pose(idx) * hips_pose
+		idx = skel.get_bone_parent(idx)
+	var hips_to_chest_distance: float = hips_pose.origin.distance_to(chest_pose.origin)
+	print("bone " + str(bone_idx) + " at " + str(hips_pose.origin) + " rel " + str(relative_to_bone) + " at " + str(chest_pose.origin) + " length " + str(hips_to_chest_distance))
+
+	var target_position := target_skel.get_bone_global_pose(target_skel.find_bone(bone_name)).origin
+	print("Target position ")
+	var target_chest_position := target_skel.get_bone_global_pose(target_skel.find_bone(relative_to_bone)).origin
+	var target_hips_to_chest_distance: float = target_position.distance_to(target_chest_position)
+	print("target bone " + str(bone_name) + " at " + str(target_position) + " rel " + str(relative_to_bone) + " at " + str(target_chest_position) + " length " + str(target_hips_to_chest_distance))
+
+	var hips_scale_ratio: float = clampf(target_hips_to_chest_distance / hips_to_chest_distance, 0.5, 2.0)
+	var final_scale: Vector3 = hips_scale_ratio * skel.get_bone_pose_scale(bone_idx) # * get_bone_pose_scale(bone_idx) / hips_pose.basis.get_scale()
+	print("RATIO: " + str(hips_scale_ratio) + " orig " + str(skel.get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
+	skel.set_bone_pose_scale(bone_idx, final_scale)
+
+
+static func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D):
+	target_skel.reset_bone_poses()
+	skel.reset_bone_poses()
+	const BONE_TO_PARENT := {
+		# "Chest": "Hips",
+		"LeftLowerLeg": "LeftUpperLeg",
+		"LeftFoot": "LeftLowerLeg",
+		"RightLowerLeg": "RightUpperLeg",
+		"RightFoot": "RightLowerLeg",
+		"LeftLowerArm": "LeftUpperArm",
+		"LeftHand": "LeftLowerArm",
+		"RightLowerArm": "RightUpperArm",
+		"RightHand": "RightLowerArm",
+	}
+	const PRESERVE_POSITION_BONES := {
+		"Hips": "Root",
+		"Head": "Hips",
+		"LeftShoulder": "Hips",
+		"RightShoulder": "Hips",
+		"LeftUpperLeg": "Hips",
+		"RightUpperLeg": "Hips",
+	}
+	for bone in PRESERVE_POSITION_BONES:
+		var my_idx: int = skel.find_bone(bone)
+		var relative_bone_name: String = PRESERVE_POSITION_BONES[bone]
+		if my_idx == -1:
+			continue
+		var target_bone_idx := target_skel.find_bone(bone)
+		var target_pose := target_skel.get_bone_global_pose(target_bone_idx)
+		#var target_relative_bone_idx := target_skel.find_bone(relative_bone_name)
+		#var target_relative_pose := target_skel.get_bone_global_pose(target_relative_bone_idx)
+		var my_parent_idx := skel.get_bone_parent(my_idx)
+		var parent_to_relative_bone_pose := Transform3D.IDENTITY
+		while my_parent_idx != -1: # and get_bone_name(my_parent_idx) != relative_bone_name:
+			parent_to_relative_bone_pose = skel.get_bone_pose(my_parent_idx) * parent_to_relative_bone_pose
+			my_parent_idx = skel.get_bone_parent(my_parent_idx)
+		# var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_relative_pose.affine_inverse() * target_pose
+		var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_pose
+		skel.set_bone_pose_position(my_idx, combined_pose.origin)
+		print("Bone " + str(bone) + " set position to " + str(combined_pose.origin))
+		if bone == "Hips":
+			if skel.find_bone("Head") != -1:
+				adjust_bone_scale(skel, target_skel, "Hips", "Head")
+			else:
+				adjust_bone_scale(skel, target_skel, "Hips", "Chest")
+
+	for bone in BONE_TO_PARENT:
+		var parent_bone_name: String = BONE_TO_PARENT[bone]
+		adjust_bone_scale(skel, target_skel, parent_bone_name, bone)
+
+
+static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D):
+	for bone in target_skel.get_bone_count():
+		var my_bone = skel.find_bone(target_skel.get_bone_name(bone))
+		if my_bone != null:
+			var pose_adj: Quaternion = Quaternion.IDENTITY
+			if not target_skel.show_rest_only:
+				pose_adj = target_skel.get_bone_rest(bone).basis.get_rotation_quaternion() * target_skel.get_bone_pose_rotation(bone).inverse()
+			if skel.show_rest_only:
+				pose_adj *= skel.get_bone_rest(my_bone).basis.get_rotation_quaternion()
+			else:
+				pose_adj *= skel.get_bone_pose_rotation(my_bone)
+			skel.set_bone_pose_rotation(my_bone, pose_adj)
+			var position_adj: Vector3 = Vector3.ZERO
+			if not target_skel.show_rest_only:
+				position_adj = target_skel.get_bone_rest(bone).origin - target_skel.get_bone_pose_position(bone)
+			if skel.show_rest_only:
+				position_adj += skel.get_bone_rest(my_bone).origin
+			else:
+				position_adj += skel.get_bone_pose_position(my_bone)
+			skel.set_bone_pose_position(my_bone, position_adj)
