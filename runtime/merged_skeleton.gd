@@ -514,8 +514,8 @@ static func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D):
 
 static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D):
 	for bone in target_skel.get_bone_count():
-		var my_bone = skel.find_bone(target_skel.get_bone_name(bone))
-		if my_bone != null:
+		var my_bone: int = skel.find_bone(target_skel.get_bone_name(bone))
+		if my_bone != -1:
 			var pose_adj: Quaternion = Quaternion.IDENTITY
 			if not target_skel.show_rest_only:
 				pose_adj = target_skel.get_bone_rest(bone).basis.get_rotation_quaternion() * target_skel.get_bone_pose_rotation(bone).inverse()

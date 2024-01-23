@@ -474,13 +474,13 @@ func set_selected_joint_name(bone_name: String, from_undo: bool = false):
 	rename_bone_dropdown.selected = 0
 	selected_bone_idx = selected_skel.find_bone(selected_bone_name)
 	# print("Selected bone " + str(selected_bone_name) + " index " + str(selected_bone_idx))
+	if lock_bone_mode:
+		record_locked_bone_transforms()
 	if mirror_bone_mode:
 		if from_undo:
 			set_mirror_bone_mode(selected_bone_idx, true, selected_skel)
 		else:
 			mirror_pose_button_toggled(true)
-	if lock_bone_mode:
-		record_locked_bone_transforms()
 
 
 func bone_name_changed(idx):
@@ -543,7 +543,8 @@ func rename_bone_name(new_name: String):
 
 
 # Mirror mode and bone child locking implementation:
-func perform_bone_mirror(changed_indices: PackedInt32Array):
+func perform_bone_mirror(changed_indices: PackedInt32Array) -> PackedInt32Array:
+	var new_changed: PackedInt32Array
 	for bone_idx in changed_indices:
 		var mirrored_bone_name = get_mirrored_bone_name(selected_skel.get_bone_name(bone_idx))
 		if mirrored_bone_name.is_empty():
@@ -566,6 +567,8 @@ func perform_bone_mirror(changed_indices: PackedInt32Array):
 			selected_skel.set_bone_pose_position(mirrored_bone_idx, pos)
 			selected_skel.set_bone_pose_rotation(mirrored_bone_idx, quat)
 			selected_skel.set_bone_pose_scale(mirrored_bone_idx, scale)
+			new_changed.append(mirrored_bone_idx)
+	return new_changed
 
 
 func perform_bone_lock(changed_indices: PackedInt32Array):
@@ -607,36 +610,28 @@ func perform_bone_lock(changed_indices: PackedInt32Array):
 
 
 func on_skeleton_poses_changed(force_mirror: bool = false):
-	var changed: bool = false
-	last_pose_positions.resize(selected_skel.get_bone_count())
-	last_pose_rotations.resize(selected_skel.get_bone_count())
-	last_pose_scales.resize(selected_skel.get_bone_count())
-	for i in range(selected_skel.get_bone_count()):
-		if (last_pose_positions[i] != selected_skel.get_bone_pose_position(i) or
-				last_pose_rotations[i] != selected_skel.get_bone_pose_rotation(i) or
-				last_pose_scales[i] != selected_skel.get_bone_pose_scale(i)):
-			changed = true
-			last_pose_positions[i] = selected_skel.get_bone_pose_position(i)
-			last_pose_rotations[i] = selected_skel.get_bone_pose_rotation(i)
-			last_pose_scales[i] = selected_skel.get_bone_pose_scale(i)
+	var changed_indices: PackedInt32Array
+	if lock_bone_mode or mirror_bone_mode:
+		last_pose_positions.resize(selected_skel.get_bone_count())
+		last_pose_rotations.resize(selected_skel.get_bone_count())
+		last_pose_scales.resize(selected_skel.get_bone_count())
+		for i in range(selected_skel.get_bone_count()):
+			if (last_pose_positions[i] != selected_skel.get_bone_pose_position(i) or
+					last_pose_rotations[i] != selected_skel.get_bone_pose_rotation(i) or
+					last_pose_scales[i] != selected_skel.get_bone_pose_scale(i)):
+				changed_indices.append(i)
 	# Godot may infinite loop if two NOTIFICATION_UPDATE_SKELETON somehow get deferred and we then
 	# perform anything that hits the dirty flag (such as set_bone_pose_position or skin changes)
 	# To prevent this, we have to abort early to prevent queuing another NOTIFICIATION_UPDATE_SKELETON.
-	if disable_next_update or not changed:
+	if not force_mirror and (disable_next_update or changed_indices.is_empty()):
 		disable_next_update = false
 		return
 	if mirror_bone_mode:
 		if force_mirror or not (last_pose_positions[last_mirror_bone_idx].is_equal_approx(selected_skel.get_bone_pose_position(last_mirror_bone_idx)) and
 				last_pose_rotations[last_mirror_bone_idx].is_equal_approx(selected_skel.get_bone_pose_rotation(last_mirror_bone_idx)) and
 				last_pose_scales[last_mirror_bone_idx].is_equal_approx(selected_skel.get_bone_pose_scale(last_mirror_bone_idx))):
-			perform_bone_mirror(PackedInt32Array([last_mirror_bone_idx]))
+			changed_indices.append_array(perform_bone_mirror(PackedInt32Array([last_mirror_bone_idx])))
 	if lock_bone_mode or mirror_bone_mode:
-		var changed_indices: PackedInt32Array
-		for i in range(selected_skel.get_bone_count()):
-			if not (last_pose_positions[i].is_equal_approx(selected_skel.get_bone_pose_position(i)) and
-					last_pose_rotations[i].is_equal_approx(selected_skel.get_bone_pose_rotation(i)) and
-					last_pose_scales[i].is_equal_approx(selected_skel.get_bone_pose_scale(i))):
-				changed_indices.append(i)
 		if lock_bone_mode:
 			perform_bone_lock(changed_indices)
 		for i in range(selected_skel.get_bone_count()):
