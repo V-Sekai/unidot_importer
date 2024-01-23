@@ -456,11 +456,20 @@ func override_resource(fileID: int, name: String, godot_resource: Resource):
 # We cannot store an external resource reference because
 # Godot will fail to load the entire database if a single file is missing.
 func insert_resource(fileID: int, godot_resource: Resource):
+	if godot_resource == null:
+		log_fail(fileID, "Unable to insert null resource!")
+		return
+	if godot_resource.resource_path.is_empty() or godot_resource.resource_path == "res://" or godot_resource.resource_path.contains("::"):
+		log_fail(fileID, "Unable to insert " + str(godot_resource.get_class()) + " resource " + str(godot_resource.resource_name) + " at invalid path " + str(godot_resource.resource_path))
+		return
 	godot_resources[fileID] = str(godot_resource.resource_path)
 
 
 # Another version, passing in the path directly.
 func insert_resource_path(fileID: int, godot_resource_path: String):
+	if godot_resource_path.is_empty() or godot_resource_path == "res://" or godot_resource_path.contains("::"):
+		log_fail(fileID, "Unable to insert resource at invalid path " + str(godot_resource_path))
+		return
 	godot_resources[fileID] = str(godot_resource_path)
 
 
@@ -642,6 +651,10 @@ func get_godot_resource(unidot_ref: Array, silent: bool = false) -> Resource:
 	if found_meta.godot_resources.has(local_id):
 		var ret: Variant = found_meta.godot_resources.get(local_id, null)
 		if typeof(ret) != TYPE_OBJECT and typeof(ret) != TYPE_NIL:
+			if ret.is_empty() or ret == "res://" or ret.contains("::"):
+				found_meta.log_fail(local_id, "Unable to load resource for " + str(found_meta.path) + " at invalid path " + str(ret))
+				return
+
 			return load(ret)
 		else:
 			return ret

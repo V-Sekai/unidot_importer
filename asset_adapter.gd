@@ -494,10 +494,11 @@ class YamlHandler:
 		for extra_asset_fileid in extra_resources:
 			var file_ext: String = pkgasset.parsed_meta.fixup_godot_extension(extra_resources.get(extra_asset_fileid))
 			var created_res: Resource = main_asset.get_extra_resource(extra_asset_fileid)
-			pkgasset.log_debug("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(pkgasset.pathname.get_basename() + file_ext))
+			var basename: String = pkgasset.pathname.trim_suffix(".res").trim_suffix(".tres").get_basename()
+			pkgasset.log_debug("Creating " + str(extra_asset_fileid) + " is " + str(created_res) + " at " + str(basename + file_ext))
 			if created_res != null:
-				var new_pathname: String = "res://" + pkgasset.orig_pathname.get_basename() + file_ext  # ".skin.tres"
-				created_res.resource_name = pkgasset.orig_pathname.get_basename().get_file()
+				var new_pathname: String = "res://" + basename + file_ext  # ".skin.tres"
+				created_res.resource_name = basename.get_file() + file_ext
 				unidot_utils.save_resource(created_res, new_pathname)
 				#created_res = load(new_pathname)
 				pkgasset.parsed_meta.insert_resource(extra_asset_fileid, created_res)

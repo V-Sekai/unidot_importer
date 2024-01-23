@@ -6304,6 +6304,9 @@ class UnidotAnimator:
 			main_library = meta.get_godot_resource(lib_ref)
 		for libname in anim_player.get_animation_library_list():
 			anim_player.remove_animation_library(StringName(libname))
+		if anim_player.has_animation_library(&""):
+			# Imported models such as prefabs may come with a library, but we need to use our own.
+			anim_player.remove_animation_library(&"")
 		anim_player.add_animation_library(&"", main_library)
 		if base_library != null:
 			anim_player.add_animation_library(&"base", base_library)

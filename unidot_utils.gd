@@ -11,6 +11,12 @@ func save_resource(created_res: Resource, new_pathname: String):
 	var existed: bool = FileAccess.file_exists(new_pathname)
 	if not new_pathname.begins_with("res://"):
 		new_pathname = "res://" + new_pathname
+	if created_res == null:
+		push_error("Unidot attempted to save null resource to path " + str(new_pathname))
+		return
+	if new_pathname == "res://":
+		push_error("Unidot attempted to save " + str(created_res.get_class()) + " with empty pathname!")
+		return
 	if existed:
 		created_res.take_over_path(new_pathname)
 	elif new_pathname.ends_with(".tscn"):
