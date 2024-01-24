@@ -307,6 +307,9 @@ func detach_skeleton():
 		target_skel = null
 		unique_skins.clear()
 		print(str(name) + " detached from parent skeleton")
+	last_pose_positions.resize(0)
+	last_pose_rotations.resize(0)
+	last_pose_scales.resize(0)
 
 
 func update_skin_poses():
