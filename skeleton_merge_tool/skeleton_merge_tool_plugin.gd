@@ -33,7 +33,7 @@ var locked_bone_bunny_positions: PackedVector3Array
 var locked_bone_bunny_rotations: Array[Quaternion]
 var locked_bone_bunny_rot_scales: Array[Basis]
 
-const merged_skeleton_script := preload("runtime/merged_skeleton.gd")
+const merged_skeleton_script := preload("merged_skeleton.gd")
 
 
 func _enter_tree():
