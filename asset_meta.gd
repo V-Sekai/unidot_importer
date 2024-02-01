@@ -231,6 +231,10 @@ func fixup_godot_extension(godot_extn: String) -> String:
 	return godot_extn
 
 
+func get_enabled_plugins() -> Array[RefCounted]:
+	return log_database_holder.database.get_enabled_plugins()
+
+
 func is_silhouette_fix_disabled() -> bool:
 	return log_database_holder.database.debug_disable_silhouette_fix
 

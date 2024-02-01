@@ -27,6 +27,7 @@ var num_skels: int = 0
 
 var active_avatars: Array[AvatarState]
 var prefab_state: PrefabState = null
+var extra_data: Dictionary # used by plugins
 
 # State shared across recursive instances of scene_node_state.
 class PrefabState:
@@ -50,6 +51,7 @@ class PrefabState:
 	var animator_node_to_object: Dictionary = {}.duplicate()
 
 	var lod_groups: Array = [].duplicate()
+	var extra_data: Dictionary # used by plugins
 
 #var root_nodepath: Nodepath = Nodepath("/")
 
@@ -64,6 +66,7 @@ class AvatarState:
 	var humanoid_skeleton_hip_position: Vector3 = Vector3(0.0, 1.0, 0.0)
 	var hips_fileid: int
 	var reserved_bone_names: Dictionary
+	var extra_data: Dictionary # used by plugins
 
 
 
@@ -184,6 +187,7 @@ class Skelley:
 	var skeleton_profile_humanoid := SkeletonProfileHumanoid.new()
 	var skeleton_profile_humanoid_bones: Dictionary
 	var humanoid_avatar_meta: Resource = null
+	var extra_data: Dictionary # used by plugins
 
 	func _init():
 		for bone_idx in range(skeleton_profile_humanoid.bone_size):
@@ -495,6 +499,8 @@ func duplicate() -> RefCounted:
 	state.prefab_state = prefab_state
 	state.active_avatars = active_avatars
 	state.scene_contents = scene_contents
+	for key in extra_data:
+		state.extra_data[key] = extra_data[key].duplicate()
 
 	return state
 
@@ -866,6 +872,9 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnidotTransform
 				this_skelley = add_bone_to_skelley(this_skelley, bone_obj)
+
+	for plugin in meta.get_enabled_plugins():
+		plugin.initialize_skelleys(self, assets, is_prefab)
 
 	var skelleys_with_no_parent = [].duplicate()
 

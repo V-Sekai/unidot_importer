@@ -343,6 +343,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					if mono.keys.get("isGlobal", 0) == 1 and mono.keys.get("weight", 0) > 0.0:
 						mono.log_debug("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
 
+	for plugin in pkgasset.parsed_meta.get_enabled_plugins():
+		plugin.setup_post_scene(pkgasset, arr, skelleys_with_no_parent, node_state, scene_contents)
+
 	var light_probes: Array[Node] = scene_contents.find_children("*", "LightmapProbe")
 	var heights = []
 

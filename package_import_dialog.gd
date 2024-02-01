@@ -86,6 +86,7 @@ var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
 var force_humanoid_checkbox: CheckBox
 var enable_verbose_log_checkbox: CheckBox
+var enable_vrm_spring_bones_checkbox: CheckBox
 
 var batch_import_list_widget: ItemList
 var batch_import_add_button: Button
@@ -782,6 +783,8 @@ func _selected_package(p_path: String) -> void:
 	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
 	enable_verbose_log_checkbox = _add_checkbox_option(options_vbox, "Enable verbose logs", true if asset_database.enable_verbose_logs else false)
 	enable_verbose_log_checkbox.toggled.connect(self._enable_verbose_log_changed)
+	enable_vrm_spring_bones_checkbox = _add_checkbox_option(options_vbox, "Convert dynamic bones to VRM springbone", true if asset_database.vrm_spring_bones else false)
+	enable_vrm_spring_bones_checkbox.toggled.connect(self._enable_vrm_spring_bones_changed)
 
 	batch_import_list_widget = ItemList.new()
 	batch_import_list_widget.item_activated.connect(self._batch_import_list_widget_activated)
@@ -997,6 +1000,9 @@ func _force_humanoid_changed(val: bool):
 
 func _enable_verbose_log_changed(val: bool):
 	asset_database.enable_verbose_logs = val
+
+func _enable_vrm_spring_bones_changed(val: bool):
+	asset_database.vrm_spring_bones = val
 
 func _add_batch_import():
 	if file_dialog:

@@ -3994,6 +3994,8 @@ class UnidotGameObject:
 			ret.queue_free()
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
+		for plugin in meta.get_enabled_plugins():
+			plugin.setup_post_children(self, state, ret, null)
 		for animtree in animator_node_to_object:
 			var obj: RefCounted = animator_node_to_object[animtree]
 			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
@@ -4120,6 +4122,9 @@ class UnidotGameObject:
 
 		state.prefab_state.gameobject_name_map[self.fileID] = name_map
 		state.prefab_state.prefab_gameobject_name_map[self.fileID] = prefab_name_map
+		for plugin in meta.get_enabled_plugins():
+			plugin.setup_post_children(self, state, ret, this_avatar_meta)
+
 		for animtree in animator_node_to_object:
 			var obj: RefCounted = animator_node_to_object[animtree]
 			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
@@ -4721,6 +4726,8 @@ class UnidotPrefabInstance:
 			var smrnode: Node = smr.create_skinned_mesh(state)
 			if smrnode != null:
 				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into prefabbed Skeleton " + str(state.owner.get_path_to(smrnode)))
+		for plugin in meta.get_enabled_plugins():
+			plugin.setup_post_prefab(self, state, instanced_scene)
 		for animtree in animator_node_to_object:
 			var obj: RefCounted = animator_node_to_object[animtree]
 			# var controller_object = pkgasset.parsed_meta.lookup(obj.keys["m_Controller"])
@@ -6191,8 +6198,22 @@ class UnidotMonoBehaviour:
 	func get_godot_type() -> String:
 		return "GDScript"
 
+	func create_godot_node(state: RefCounted, new_parent: Node3D) -> Node:
+		var ret: Node = null
+		for plugin in meta.get_enabled_plugins():
+			var this_ret = plugin.handle_monobehaviour(self, state, new_parent, ret)
+			if this_ret != null:
+				ret = this_ret
+		if ret != null:
+			return ret
+		return super.create_godot_node(state, new_parent)
+
 	# No need yet to override create_godot_node...
 	func create_godot_resource() -> Resource:
+		for plugin in meta.get_enabled_plugins():
+			var ret: Resource = plugin.handle_scripted_object(self)
+			if ret != null:
+				return ret
 		if monoscript[1] == 11500000:
 			if monoscript[2] == "8e6292b2c06870d4495f009f912b9600":
 				return create_post_processing_profile()
