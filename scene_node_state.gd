@@ -16,10 +16,13 @@ var database: Resource = null  # asset_database instance
 var meta: Resource = null  # asset_database.AssetMeta instance
 var env: Environment = null
 
-# Dictionary from parent_transform fileID -> array of convert_scene.Skelley
+# Dictionary from parent_transform fileID -> convert_scene.Skelley
 var skelley_parents: Dictionary
 # Dictionary from any transform fileID -> convert_scene.Skelley
 var fileID_to_skelley: Dictionary
+var skelleys: Dictionary
+var skel_ids: Dictionary
+var num_skels: int = 0
 
 var active_avatars: Array[AvatarState]
 var prefab_state: PrefabState = null
@@ -168,6 +171,7 @@ class Skelley:
 	var fileID_to_bone: Dictionary
 	var godot_skeleton: Skeleton3D = Skeleton3D.new()
 	var skinned_mesh_renderers: Array[RefCounted] # UnidotSkinnedMehsRenderer objects.
+	var is_prefabbed_skeleton: bool
 
 	# Temporary private storage:
 	var intermediate_bones: Array[RefCounted]
@@ -177,7 +181,13 @@ class Skelley:
 	var found_prefab_instance: RefCounted = null  # UnidotPrefabInstance
 
 	var skeleton_profile_humanoid := SkeletonProfileHumanoid.new()
+	var skeleton_profile_humanoid_bones: Dictionary
 	var humanoid_avatar_meta: Resource = null
+
+	func _init():
+		for bone_idx in range(skeleton_profile_humanoid.bone_size):
+			skeleton_profile_humanoid_bones[skeleton_profile_humanoid.get_bone_name(bone_idx)] = bone_idx
+
 
 	func initialize(bone0: RefCounted):  # UnidotTransform
 		var current_parent: RefCounted = bone0  # UnidotTransform or UnidotPrefabInstance
@@ -345,9 +355,18 @@ class Skelley:
 				# We do not know yet the full extent of the skeleton
 				fileID_to_bone[bone.fileID] = -1
 				bone.log_debug("bone " + str(bone) + " is stripped " + str(bone.is_stripped) + " or prefab instance. CLEARING SKELETON")
+				is_prefabbed_skeleton = true
 				contains_stripped_bones = true
-				godot_skeleton = null
+				if godot_skeleton != null:
+					godot_skeleton.queue_free()
+					godot_skeleton = null
 				continue
+			if bone.parent_no_stripped.is_stripped_or_prefab_instance():
+				is_prefabbed_skeleton = true
+				contains_stripped_bones = true
+				if godot_skeleton != null:
+					godot_skeleton.queue_free()
+					godot_skeleton = null
 			fileID_to_bone[bone.fileID] = idx
 			bone.skeleton_bone_index = idx
 			var go: Object = bone.get_gameObject()
@@ -394,6 +413,72 @@ class Skelley:
 	# Root bone will be added as parent to common ancestor of all bones
 	# Found parent transforms of each skeleton.
 	# Found a list of bones in each skeleton.
+
+	func merge_independent_sibling_skelley(other: Skelley, state: RefCounted):
+		other.bones[0].log_debug("Merging independent skelley " + str(self) + "@" + str(self.id) + " with " + str(other) + "@" + str(other.id))
+		for bone in other.root_bones:
+			if not bones_set.has(bone.fileID):
+				root_bones.append(bone)
+		for bone in other.intermediate_bones:
+			if not bones_set.has(bone.fileID):
+				intermediate_bones.append(bone)
+		for bone in other.bones:
+			if not bones_set.has(bone.fileID):
+				bones.append(bone)
+		for fileID in other.bones_set:
+			if not bones_set.has(fileID):
+				bones_set[fileID] = other.bones_set[fileID]
+		for other_fileID in other.fileID_to_orig_name:
+			fileID_to_orig_name[other_fileID] = other.fileID_to_orig_name[other_fileID]
+			state.fileID_to_skelley[other_fileID] = self
+			state.skel_ids[other_fileID] = id
+		for fileID in other.fileID_to_bone:
+			state.fileID_to_skelley[fileID] = self
+		var my_bone_count: int = godot_skeleton.get_bone_count()
+		var existing_bone_idx: Dictionary
+		var new_bone_to_fileid: Dictionary
+		if other.godot_skeleton != null:
+			for fileID in other.fileID_to_bone:
+				if fileID_to_bone.has(fileID):
+					existing_bone_idx[other.fileID_to_bone[fileID]] = fileID_to_bone[fileID]
+					other.bones[0].log_debug("Fileid to bone " + str(fileID) + " " + str(fileID_to_bone[fileID]) + " => " + str(other.fileID_to_bone[fileID]))
+				else:
+					new_bone_to_fileid[other.fileID_to_bone[fileID]] = fileID
+					other.bones[0].log_debug("new_bone_to_fileid[" + str(other.fileID_to_bone[fileID]) + "] = " + str(fileID))
+			var num_added_bones: int = 0
+			for other_bone_idx in range(other.godot_skeleton.get_bone_count()):
+				if not existing_bone_idx.has(other_bone_idx):
+					godot_skeleton.add_bone(other.godot_skeleton.get_bone_name(other_bone_idx))
+					other.bones[0].log_debug("bone " + str(other.godot_skeleton.get_bone_name(other_bone_idx)) + " new_bone_to_fileid[" + str(other_bone_idx) + "] = " + str(new_bone_to_fileid.get(other_bone_idx, "NONE")) + " => " + str(num_added_bones + my_bone_count))
+					continue
+					fileID_to_bone[new_bone_to_fileid[other_bone_idx]] = num_added_bones + my_bone_count
+					var other_parent: int = other.godot_skeleton.get_bone_parent(other_bone_idx)
+					if other_parent != -1:
+						if existing_bone_idx.has(other_parent):
+							godot_skeleton.set_bone_parent(my_bone_count + num_added_bones, existing_bone_idx[other_parent])
+						else:
+							godot_skeleton.set_bone_parent(my_bone_count + num_added_bones, my_bone_count + other_parent)
+					if other.godot_bone_idx_to_orig_name.has(other_bone_idx):
+						godot_bone_idx_to_orig_name[my_bone_count + num_added_bones] = other.godot_bone_idx_to_orig_name[other_bone_idx]
+					num_added_bones += 1
+		skinned_mesh_renderers.append_array(other.skinned_mesh_renderers)
+		for bone in other.intermediates:
+			intermediates[bone] = other.intermediates[bone]
+		if other.humanoid_avatar_meta and not humanoid_avatar_meta:
+			humanoid_avatar_meta = other.humanoid_avatar_meta
+		if other.godot_skeleton != null:
+			other.godot_skeleton.queue_free()
+		state.skelleys.erase(other.id)
+		is_prefabbed_skeleton = is_prefabbed_skeleton or other.is_prefabbed_skeleton
+		if other.parent_prefab != null:
+			var uk: int = other.parent_prefab.fileID
+			if state.prefab_state.skelleys_by_parented_prefab.has(uk):
+				state.prefab_state.skelleys_by_parented_prefab[uk].erase(other)
+		if other.parent_transform != null:
+			var fileID = other.parent_transform.fileID
+			if state.skelley_parents[fileID] == other:
+				state.skelley_parents[fileID] = self
+		assert(found_prefab_instance == other.found_prefab_instance)
 
 
 func _init(database: Resource, meta: Resource, root_node: Node3D):
@@ -587,6 +672,10 @@ func consume_avatar_bone(orig_bone_name: String, godot_bone_name: String, fileid
 					if avatar.humanoid_bone_map_dict.has("Root"):
 						name_to_return = "Root"
 						avatar.humanoid_bone_map_dict.erase("Root")
+	if skelley.is_prefabbed_skeleton:
+		# It is expected that all avatar bones are in the parent scene.
+		# Avatar state is not preserved across scenes leading us to re-consume a bone and rename an inherited bone to "Hips 1" for example.
+		name_to_return = ""
 	return name_to_return
 
 func consume_root(fileid: int) -> bool:
@@ -628,10 +717,48 @@ func state_with_owner(new_owner: Node3D) -> RefCounted:
 #	return state
 
 
+func add_bone_to_skelley(this_skelley: Skelley, bone_obj: RefCounted) -> Skelley:
+	var added_bones = this_skelley.add_bone(bone_obj)
+	var this_id: int = this_skelley.id
+
+	# asset.log_debug("Told skelley " + str(this_id) + " to add bone " + str(bone_obj) + ": " + str(added_bones))
+	for added_bone in added_bones:
+		var fileID: int = added_bone.fileID
+		if skel_ids.get(fileID, this_id) != this_id:
+			# We found a match! Let's merge the Skelley objects.
+			var new_id: int = skel_ids[fileID]
+			# asset.log_debug("migrating from " + str(skelleys[this_id].bones))
+			for inst in skelleys[this_id].bones:
+				# asset.log_debug("Loop " + str(inst.fileID) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.fileID, -1)))
+				if skel_ids.get(inst.fileID, -1) == this_id:  # FIXME: This seems to be missing??
+					# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + str(inst))
+					if not skelleys.has(new_id):
+						bone_obj.log_fail("Skelleys missing " + str(new_id) + " from " + str(inst) + " thisid " + str(this_id))
+					skelleys[new_id].add_bone(inst)
+			if skelleys[new_id].humanoid_avatar_meta == null:
+				skelleys[new_id].humanoid_avatar_meta = skelleys[this_id].humanoid_avatar_meta
+			for i in skel_ids:
+				if skel_ids.get(i) == this_id:
+					skel_ids[i] = new_id
+			skelleys.erase(this_id)  # We merged two skeletons.
+			this_id = new_id
+			this_skelley = skelleys[this_id]
+		skel_ids[fileID] = this_id
+		# asset.log_debug("Skel ids now " + str(skel_ids))
+	return this_skelley
+
+
+func create_skelley(bone0_obj: RefCounted) -> Skelley:
+	var this_id: int = num_skels
+	var this_skelley := Skelley.new()
+	this_skelley.initialize(bone0_obj)
+	bone0_obj.log_debug("Initialized Skelley at bone " + str(bone0_obj))
+	this_skelley.id = this_id
+	skelleys[this_id] = this_skelley
+	num_skels += 1
+	return this_skelley
+
 func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
-	var skelleys: Dictionary = {}.duplicate()
-	var skel_ids: Dictionary = {}.duplicate()
-	var num_skels = 0
 
 	var child_transforms_by_stripped_id: Dictionary = prefab_state.child_transforms_by_stripped_id
 
@@ -672,12 +799,7 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 				this_id = skel_ids[bone0_obj.fileID]
 				this_skelley = skelleys[this_id]
 			else:
-				this_skelley = Skelley.new()
-				this_skelley.initialize(bone0_obj)
-				asset.log_debug("Initialized Skelley at bone " + str(bone0_obj))
-				this_skelley.id = this_id
-				skelleys[this_id] = this_skelley
-				num_skels += 1
+				this_skelley = create_skelley(bone0_obj)
 
 			var mesh_ref = asset.get_mesh()
 			var mesh_meta = asset.meta.lookup_meta(mesh_ref)
@@ -736,36 +858,12 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 				find_animator_obj = find_animator_obj.parent
 			for bone in bones:
 				var bone_obj: RefCounted = asset.meta.lookup(bone)  # UnidotTransform
-				var added_bones = this_skelley.add_bone(bone_obj)
-				# asset.log_debug("Told skelley " + str(this_id) + " to add bone " + str(bone_obj) + ": " + str(added_bones))
-				for added_bone in added_bones:
-					var fileID: int = added_bone.fileID
-					if skel_ids.get(fileID, this_id) != this_id:
-						# We found a match! Let's merge the Skelley objects.
-						var new_id: int = skel_ids[fileID]
-						# asset.log_debug("migrating from " + str(skelleys[this_id].bones))
-						for inst in skelleys[this_id].bones:
-							# asset.log_debug("Loop " + str(inst.fileID) + " skelley " + str(this_id) + " -> " + str(skel_ids.get(inst.fileID, -1)))
-							if skel_ids.get(inst.fileID, -1) == this_id:  # FIXME: This seems to be missing??
-								# asset.log_debug("Telling skelley " + str(new_id) + " to merge bone " + str(inst))
-								if not skelleys.has(new_id):
-									asset.log_fail("Skelleys missing " + str(new_id) + " from " + str(inst) + " thisid " + str(this_id))
-								skelleys[new_id].add_bone(inst)
-						if skelleys[new_id].humanoid_avatar_meta == null:
-							skelleys[new_id].humanoid_avatar_meta = skelleys[this_id].humanoid_avatar_meta
-						for i in skel_ids:
-							if skel_ids.get(i) == this_id:
-								skel_ids[i] = new_id
-						skelleys.erase(this_id)  # We merged two skeletons.
-						this_id = new_id
-						this_skelley = skelleys[this_id]
-					skel_ids[fileID] = this_id
-					# asset.log_debug("Skel ids now " + str(skel_ids))
+				this_skelley = add_bone_to_skelley(this_skelley, bone_obj)
 
 	var skelleys_with_no_parent = [].duplicate()
 
 	# If skelley_parents contains your node, add Skelley.skeleton as a child to it for each item in the list.
-	for skel_id in skelleys:
+	for skel_id in PackedInt32Array(skelleys.keys()):
 		var skelley: Skelley = skelleys[skel_id]
 		var par_transform: RefCounted = skelley.parent_transform  # UnidotTransform or UnidotPrefabInstance
 		var i = 0
@@ -784,12 +882,14 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 				prefab_state.skelleys_by_parented_prefab[uk].push_back(skelley)
 		else:
 			var fileID = skelley.parent_transform.fileID
-			if not skelley_parents.has(fileID):
-				skelley_parents[fileID] = [].duplicate()
-			skelley_parents[fileID].push_back(skelley)
+			if skelley_parents.has(fileID):
+				skelley_parents[fileID].merge_independent_sibling_skelley(skelley, self)
+			else:
+				skelley_parents[fileID] = skelley
 
 	for skel_id in skelleys:
 		var skelley: Skelley = skelleys[skel_id]
+		meta.log_debug(0, "Construct final bone list " + str(skelleys[skel_id]) + " " + str(child_transforms_by_stripped_id))
 		skelley.construct_final_bone_list(skelley_parents, child_transforms_by_stripped_id)
 		for fileID in skelley.fileID_to_bone:
 			fileID_to_skelley[fileID] = skelley
@@ -798,12 +898,106 @@ func initialize_skelleys(assets: Array, is_prefab: bool) -> Array:
 	return skelleys_with_no_parent
 
 
+func lookup_or_virtual_transform(fileID: int, target_prefab_meta: Resource, target_fileID: int):
+	var calculated_fileid: int = meta.xor_or_stripped(target_fileID, fileID)
+	var ret: RefCounted = meta.lookup([null, calculated_fileid, "", 0], true)
+	if ret != null:
+		return ret
+	ret = object_adapter_class_inst.instantiate_unidot_object(meta, calculated_fileid, 4, "Transform")
+	ret.is_stripped = true
+	ret.keys["m_PrefabInstance"] = [null, fileID, "", 0]
+	ret.keys["m_CorrespondingSourceObject"] = [null, target_fileID, target_prefab_meta.guid, 0]
+	return ret
+
+
 func add_bones_to_prefabbed_skeletons(fileID: int, target_prefab_meta: Resource, instanced_scene: Node3D):
+	meta.log_debug(fileID, "Add bones to prefabbed skeletons")
 	var fileid_to_added_bone: Dictionary = {}.duplicate()
 	var fileid_to_skeleton_nodepath: Dictionary = {}.duplicate()
 	var fileid_to_bone_name: Dictionary = {}.duplicate()
 
+	var existing_skeletons: Dictionary
+	var added_skeletons: Dictionary
 	for skelley in prefab_state.skelleys_by_parented_prefab.get(fileID, []):
+		if skelley.godot_skeleton != null:
+			existing_skeletons[skelley.godot_skeleton] = true
+	for bone_fileid in target_prefab_meta.prefab_fileid_to_skeleton_bone:
+		var skel_bone: String = target_prefab_meta.prefab_fileid_to_skeleton_bone[bone_fileid]
+		if skel_bone.is_empty():
+			continue
+		if target_prefab_meta.prefab_fileid_to_utype[bone_fileid] != 4:
+			continue
+		var skel_nodepath: NodePath = target_prefab_meta.prefab_fileid_to_nodepath[bone_fileid]
+		var godot_skel: Skeleton3D = instanced_scene.get_node_or_null(skel_nodepath) as Skeleton3D
+		if added_skeletons.has(skel_nodepath):
+			continue
+		var skelley: Skelley
+		var virtual_obj = lookup_or_virtual_transform(fileID, target_prefab_meta, bone_fileid)
+		if existing_skeletons.has(godot_skel):
+			skelley = existing_skeletons[godot_skel]
+		else:
+			skelley = create_skelley(virtual_obj)
+			if skelley.godot_skeleton != null:
+				skelley.godot_skeleton.queue_free()
+			skelley.godot_skeleton = godot_skel
+			existing_skeletons[godot_skel] = skelley
+		added_skeletons[skel_nodepath] = skelley
+		skelley.is_prefabbed_skeleton = true
+		if not prefab_state.skelleys_by_parented_prefab.has(fileID):
+			prefab_state.skelleys_by_parented_prefab[fileID] = []
+		prefab_state.skelleys_by_parented_prefab[fileID].append(skelley)
+		meta.log_debug(fileID, "Adding skelley " + str(skelley) + " from bone " + str(skel_bone))
+
+	for bone_fileid in target_prefab_meta.fileid_to_skeleton_bone:
+		var skel_bone: String = target_prefab_meta.fileid_to_skeleton_bone[bone_fileid]
+		if skel_bone.is_empty():
+			continue
+		if target_prefab_meta.fileid_to_utype[bone_fileid] != 4:
+			continue
+		var skel_nodepath: NodePath = target_prefab_meta.fileid_to_nodepath[bone_fileid]
+		var godot_skel: Skeleton3D = instanced_scene.get_node_or_null(skel_nodepath) as Skeleton3D
+		if added_skeletons.has(skel_nodepath):
+			continue
+		var skelley: Skelley
+		var virtual_obj = lookup_or_virtual_transform(fileID, target_prefab_meta, bone_fileid)
+		if existing_skeletons.has(godot_skel):
+			skelley = existing_skeletons[godot_skel]
+		else:
+			skelley = create_skelley(virtual_obj)
+			if skelley.godot_skeleton != null:
+				skelley.godot_skeleton.queue_free()
+			skelley.godot_skeleton = godot_skel
+			existing_skeletons[godot_skel] = skelley
+		added_skeletons[skel_nodepath] = skelley
+		if not prefab_state.skelleys_by_parented_prefab.has(fileID):
+			prefab_state.skelleys_by_parented_prefab[fileID] = []
+		prefab_state.skelleys_by_parented_prefab[fileID].append(skelley)
+		meta.log_debug(fileID, "Adding skelley " + str(skelley))
+	# TODO: for each Skeleton3D node in the instanced, scene, create a Skelley object for each so it can be properly merged.
+
+	var skelley_list: Array = prefab_state.skelleys_by_parented_prefab.get(fileID, []).duplicate()
+	meta.log_debug(fileID, "merging prefabbed skeletons from " + str(skelley_list))
+	if len(skelley_list) > 1:
+		var orig_skel: Skelley = null
+		var exclude_skel: Dictionary
+		for skelley in skelley_list:
+			meta.log_debug(fileID, str(skelley))
+			if skelley.godot_skeleton != null and skelley.godot_skeleton.get_parent() != null:
+				meta.log_debug(fileID, "Found a parentless skel")
+				if orig_skel == null:
+					orig_skel = skelley
+				exclude_skel[skelley] = true
+		if orig_skel == null:
+			orig_skel = skelley_list[0]
+		for skelley in prefab_state.skelleys_by_parented_prefab.get(fileID, []):
+			meta.log_debug(fileID, "Try " + str(skelley))
+			if not exclude_skel.has(skelley):
+				meta.log_debug(fileID, "not excluded")
+				orig_skel.merge_independent_sibling_skelley(skelley, self)
+	meta.log_debug(fileID, "Done merging prefab skeletons")
+
+	for skelley in prefab_state.skelleys_by_parented_prefab.get(fileID, []):
+		meta.log_debug(fileID, "Fixing skelley from parent prefab " + str(skelley))
 		var godot_skeleton_nodepath = NodePath()
 		for bone in skelley.bones:  # skelley.root_bones:
 			if not bone.is_prefab_reference:

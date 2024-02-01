@@ -1380,6 +1380,9 @@ class FbxHandler:
 				var is_translation: bool = node_name.begins_with(TRANSLATION_PFX)
 				if is_translation:
 					node_name = node_name.substr(len(TRANSLATION_PFX))
+				if not node_names_to_index.has(node_name):
+					pkgasset.log_fail("node_names_to_index is missing " + str(node_name))
+					continue
 				var node_idx: int = node_names_to_index[node_name]
 				# pkgasset.log_debug("anim " + str(anim.get("name", "")) + " : Adding missing track " + str(node_name) + " node_idx " + str(node_idx) + " @" + str(len(glb_bin)))
 				var json_node: Dictionary = json["nodes"][node_idx]

@@ -131,7 +131,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			ps.non_stripped_prefab_references[prefab_instance_id].push_back(asset)
 		elif asset.type == "Transform" or asset.type == "PrefabInstance":
 			parent = asset.parent
-			if parent != null and parent.is_prefab_reference:
+			if parent != null and parent.is_prefab_reference and (asset.type == "PrefabInstance" or not asset.is_prefab_reference):
 				var prefab_instance_id: int = parent.prefab_instance[1]
 				var prefab_source_object: int = parent.prefab_source_object[1]
 				if not ps.transforms_by_parented_prefab.has(prefab_instance_id):

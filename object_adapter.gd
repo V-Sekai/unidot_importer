@@ -3847,6 +3847,7 @@ class UnidotGameObject:
 		var transform: UnidotTransform = self.transform
 		var skeleton_bone_index: int = transform.skeleton_bone_index
 		var skeleton_bone_name: String = godot_skeleton.get_bone_name(skeleton_bone_index)
+		log_debug("create_skeleton_bone skelley " + str(skelley) + "/" + str(skeleton_bone_index) + "/" + str(skeleton_bone_name) + " owner " + str(godot_skeleton.owner.scene_file_path))
 		var ret: Node3D = null
 		var animator = GetComponent("Animator")
 		var sub_avatar_meta: RefCounted
@@ -3866,7 +3867,9 @@ class UnidotGameObject:
 			if conflicting_bone != -1:
 				while godot_skeleton.find_bone(avatar_bone_name + " " + str(dedupe)) != -1:
 					dedupe += 1
+				log_debug("BONE RENAMING AVATAR CASE FOR " + str(skeleton_bone_index) + " RENAMING " + str(conflicting_bone) + " TO " + str(avatar_bone_name + " " + str(dedupe)))
 				godot_skeleton.set_bone_name(conflicting_bone, avatar_bone_name + " " + str(dedupe))
+			log_debug("BONE RENAMING STEALING AVATAR CASE " + str(skeleton_bone_index) + " TO " + str(avatar_bone_name))
 			godot_skeleton.set_bone_name(skeleton_bone_index, avatar_bone_name)
 			skeleton_bone_name = avatar_bone_name
 			if avatar_bone_name == "Hips":
@@ -3876,6 +3879,7 @@ class UnidotGameObject:
 					if conflicting_bone != -1:
 						while godot_skeleton.find_bone("Root " + str(dedupe)) != -1:
 							dedupe += 1
+						log_debug("BONE RENAMING ROOT CASE FOR " + str(skeleton_bone_index) + " RENAMING " + str(conflicting_bone) + " TO " + str("Root " + str(dedupe)))
 						godot_skeleton.set_bone_name(conflicting_bone, "Root " + str(dedupe))
 					var root_idx = godot_skeleton.get_bone_count()
 					godot_skeleton.add_bone("Root") # identity transform 0,0,0 is ok
@@ -3886,6 +3890,7 @@ class UnidotGameObject:
 			var dedupe := 1
 			while godot_skeleton.find_bone(skeleton_bone_name + " " + str(dedupe)) != -1:
 				dedupe += 1
+			log_debug("BONE RENAMING RESERVED CASE " + str(skeleton_bone_index) + " TO " + str(skeleton_bone_name + " " + str(dedupe)))
 			godot_skeleton.set_bone_name(skeleton_bone_index, skeleton_bone_name + " " + str(dedupe))
 			skeleton_bone_name = skeleton_bone_name + " " + str(dedupe)
 		var rigidbody = GetComponent("Rigidbody")
@@ -3914,7 +3919,7 @@ class UnidotGameObject:
 		var rest_bone_pose := godot_skeleton.get_bone_pose(skeleton_bone_index)
 		if avatar_bone_name == "Root":
 			rest_bone_pose = Transform3D()
-		if not avatar_bone_name.is_empty():
+		if not avatar_bone_name.is_empty() and skelley.skeleton_profile_humanoid_bones.has(avatar_bone_name):
 			var sph : SkeletonProfileHumanoid = skelley.skeleton_profile_humanoid
 			rest_bone_pose.basis = Basis(sph.get_reference_pose(sph.find_bone(avatar_bone_name)).basis.get_rotation_quaternion()).scaled(rest_bone_pose.basis.get_scale())
 			if avatar_bone_name == "Hips":
@@ -3923,8 +3928,8 @@ class UnidotGameObject:
 		godot_skeleton.set_bone_rest(skeleton_bone_index, rest_bone_pose)
 		var smrs: Array[UnidotSkinnedMeshRenderer]
 		if ret != null:
-			var list_of_skelleys: Array = state.skelley_parents.get(transform.fileID, [])
-			for new_skelley in list_of_skelleys:
+			var new_skelley: RefCounted = state.skelley_parents.get(transform.fileID, null)
+			if new_skelley != null:
 				ret.add_child(godot_skeleton, true)
 				godot_skeleton.owner = state.owner
 				for smr in new_skelley.skinned_mesh_renderers:
@@ -4033,12 +4038,11 @@ class UnidotGameObject:
 				sub_avatar_meta = component.get_avatar_meta()
 				if sub_avatar_meta != null:
 					state = state.state_with_avatar_meta(sub_avatar_meta)
-		var list_of_skelleys: Array = state.skelley_parents.get(transform.fileID, [])
-		for new_skelley in list_of_skelleys:
+		var new_skelley: RefCounted = state.skelley_parents.get(transform.fileID, null)
+		if new_skelley != null:
 			if new_skelley.humanoid_avatar_meta != null and new_skelley.humanoid_avatar_meta != sub_avatar_meta:
 				sub_avatar_meta = new_skelley.humanoid_avatar_meta
 				state = state.state_with_avatar_meta(sub_avatar_meta)
-				break
 		var this_avatar_meta = sub_avatar_meta
 		if state.owner == null or ret == state.owner:
 			sub_avatar_meta = null
@@ -4084,7 +4088,7 @@ class UnidotGameObject:
 					name_map[component_key] = component.fileID
 
 		var smrs: Array[UnidotSkinnedMeshRenderer]
-		for new_skelley in list_of_skelleys:
+		if new_skelley != null:
 			if not new_skelley.godot_skeleton:
 				log_fail("Skelley " + str(new_skelley) + " is missing a godot_skeleton")
 			else:
@@ -4679,11 +4683,10 @@ class UnidotPrefabInstance:
 					log_debug("Made a new attachment! " + str(target_skel_bone))
 					state.add_child(attachment, godot_skeleton, transform_asset)
 
-			var list_of_skelleys: Array = state.skelley_parents.get(transform_asset.fileID, [])
-			if not list_of_skelleys.is_empty():
+			var new_skelley: RefCounted = state.skelley_parents.get(transform_asset.fileID, null)
+			if new_skelley != null:
 				log_debug("It's Peanut Butter Skelley time: " + str(transform_asset))
-			for new_skelley in list_of_skelleys:
-				if new_skelley.godot_skeleton != null:
+				if new_skelley.godot_skeleton != null and new_skelley.godot_skeleton.get_parent() == null:
 					if not state.active_avatars.is_empty():
 						new_skelley.godot_skeleton.name = "GeneralSkeleton"
 					attachment.add_child(new_skelley.godot_skeleton, true)
@@ -4700,6 +4703,7 @@ class UnidotPrefabInstance:
 				# child_transform usually Transform; occasionally can be PrefabInstance
 				if attachment == null:
 					log_fail("Unable to recurse to child_transform " + str(child_transform) + " on null bone attachment", "children", self)
+				log_debug("Attempting to recurse to transform " + str(child_transform))
 				var prefab_data: Array = recurse_to_child_transform(state, child_transform, attachment)
 				if child_transform.gameObject != null:
 					name_map[child_transform.gameObject.name] = child_transform.gameObject.fileID
