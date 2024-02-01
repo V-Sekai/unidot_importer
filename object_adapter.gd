@@ -4668,10 +4668,10 @@ class UnidotPrefabInstance:
 				state.body = gameobject_fileid_to_body.get(gameobject_asset.fileID, state.body)
 			if gameobject_asset != null and gameobject_fileid_to_attachment.has(gameobject_asset.fileID):
 				log_debug("We already got one! " + str(gameobject_asset.fileID) + " " + str(target_skel_bone))
-				attachment = state.owner.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
+				attachment = state.scene_contents.get_node(state.fileid_to_nodepath.get(gameobject_asset.fileID))
 				state.add_fileID(attachment, transform_asset)
 				already_has_attachment = true
-			elif !already_has_attachment and (not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D):  # and len(state.skelley_parents.get(transform_asset.uniq_key, [])) >= 1):
+			elif !already_has_attachment and (not target_skel_bone.is_empty() or target_parent_obj is BoneAttachment3D):
 				var godot_skeleton: Node3D = target_parent_obj
 				if target_parent_obj is BoneAttachment3D:
 					attachment = target_parent_obj
@@ -5684,7 +5684,7 @@ class UnidotCloth:
 		var target_nodepath: NodePath = meta.fileid_to_nodepath.get(fileID, meta.prefab_fileid_to_nodepath.get(fileID, NodePath()))
 		var ret: Node3D = skel
 		if target_nodepath != NodePath():
-			ret = state.owner.get_node(target_nodepath)
+			ret = state.scene_contents.get_node(target_nodepath)
 		if ret is Skeleton3D:
 			ret = BoneAttachment3D.new()
 			ret.name = skel.get_bone_name(bone_transform.skeleton_bone_index)  # target_skel_bone

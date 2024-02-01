@@ -11,6 +11,7 @@ var object_adapter_class_inst = object_adapter_class.new()
 # NOTE: All new member variables must be copied/added to `func duplicate()`
 
 var owner: Node = null
+var scene_contents: Node = null
 var body: CollisionObject3D = null
 var database: Resource = null  # asset_database instance
 var meta: Resource = null  # asset_database.AssetMeta instance
@@ -99,7 +100,7 @@ func get_godot_node(uo: RefCounted) -> Node:
 		np = meta.prefab_fileid_to_nodepath.get(uo.fileID, NodePath())
 		if np == NodePath():
 			return null
-	return owner.get_node(np)
+	return scene_contents.get_node(np)
 
 
 func get_object(fileid: int) -> RefCounted:
@@ -117,7 +118,7 @@ func get_object(fileid: int) -> RefCounted:
 		np = meta.prefab_fileid_to_nodepath.get(fileid, NodePath())
 		if np == NodePath():
 			return ret
-	var node: Node = owner.get_node(np)
+	var node: Node = scene_contents.get_node(np)
 	if node == null:
 		return ret
 	meta.log_warn(fileid, "Attempting to access unidot_keys of node " + str(node.name))
@@ -493,6 +494,7 @@ func duplicate() -> RefCounted:
 	state.fileID_to_skelley = fileID_to_skelley
 	state.prefab_state = prefab_state
 	state.active_avatars = active_avatars
+	state.scene_contents = scene_contents
 
 	return state
 
@@ -508,7 +510,9 @@ func add_child(child: Node, new_parent: Node3D, obj: RefCounted):
 	if new_parent == null:
 		assert(owner == null)
 		# We are the root (of a Prefab). Become the owner.
-		self.owner = child
+		owner = child
+		if scene_contents == null:
+			scene_contents = child
 	else:
 		assert(owner != null)
 	if obj != null and obj.fileID != 0:
@@ -526,7 +530,7 @@ func remove_fileID_to_skeleton_bone(fileID: int):
 func add_fileID(child: Node, obj: RefCounted):
 	if owner != null:
 		obj.log_debug("Add fileID " + str(obj.fileID) + " '" + str(obj.get_debug_name()) + "' type " + str(obj.utype) + " " + str(owner.name) + " to " + str(child.name))
-		meta.fileid_to_nodepath[obj.fileID] = owner.get_path_to(child)
+		meta.fileid_to_nodepath[obj.fileID] = scene_contents.get_path_to(child)
 	# FIXME??
 	#else:
 	#	meta.fileid_to_nodepath[fileID] = root_nodepath
@@ -536,6 +540,7 @@ func init_node_state(database: Resource, meta: Resource, root_node: Node3D) -> R
 	self.database = database
 	self.meta = meta
 	self.owner = root_node
+	self.scene_contents = root_node
 	self.prefab_state = PrefabState.new()
 	return self
 
@@ -708,6 +713,8 @@ func state_with_meta(new_meta: Resource) -> RefCounted:
 func state_with_owner(new_owner: Node3D) -> RefCounted:
 	var state = duplicate()
 	state.owner = new_owner
+	if state.scene_contents == null:
+		state.scene_contents = new_owner
 	return state
 
 
