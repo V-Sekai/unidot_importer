@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/V-Sekai/godot-skeleton-merge-tool.git
+	branch = main
+	commit = bffdc5a9b2f0d270d5d407794ea9ed265f30aaae
+	parent = 0da28bb28f0afeb48fd74a9e8106da1389be129f
+	method = merge
+	cmdver = 0.4.6
