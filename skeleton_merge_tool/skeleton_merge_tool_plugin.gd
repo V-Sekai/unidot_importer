@@ -33,7 +33,7 @@ var locked_bone_bunny_positions: PackedVector3Array
 var locked_bone_bunny_rotations: Array[Quaternion]
 var locked_bone_bunny_rot_scales: Array[Basis]
 
-const merged_skeleton_script := preload("merged_skeleton.gd")
+const merged_skeleton_script := preload("./merged_skeleton.gd")
 
 
 func _enter_tree():
@@ -216,10 +216,13 @@ func align_reset_armature_button_clicked():
 			par = par.get_parent_node_3d()
 		if par != null:
 			var target_skel := par as Skeleton3D
+			var orig_scale: Vector3 = skel.get_bone_pose_scale(skel.get_parentless_bones()[0])
 			skel.reset_bone_poses()
 			play_all_reset_animations(skel, target_skel)
 			target_skel.reset_bone_poses()
 			play_all_reset_animations(target_skel, target_skel.owner)
+			for bone in skel.get_parentless_bones():
+				skel.set_bone_pose_scale(bone, orig_scale)
 			merged_skeleton_script.preserve_pose(skel, target_skel)
 
 func play_all_reset_animations(node: Node3D, toplevel_node: Node):
@@ -539,6 +542,9 @@ func rename_bone_name(new_name: String):
 					bn = selected_skel.get_bone_name(bb)
 				if bn == selected_bone_name:
 					skin.set_bind_name(i, new_name)
+	# Force an update of our state.
+	selected_skel.set("last_pose_positions", PackedVector3Array())
+	last_pose_positions = PackedVector3Array()
 	selected_skel.propagate_notification(Skeleton3D.NOTIFICATION_UPDATE_SKELETON)
 
 
