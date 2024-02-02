@@ -108,7 +108,7 @@ func _enter_tree():
 	add_tool_menu_item("Reimport extracted .unitypackage...", self.show_reimport)
 	add_tool_menu_item("Show last Unidot import logs", self.show_importer_logs)
 	#add_tool_menu_item("Debug Anim", self.anim_import)
-	var skeleton_merge_tool_class = load(get_script().resource_path.get_base_dir().path_join("skeleton_merge_tool_plugin.gd"))
+	var skeleton_merge_tool_class = load(get_script().resource_path.get_base_dir().path_join("skeleton_merge_tool/skeleton_merge_tool_plugin.gd"))
 	if skeleton_merge_tool_class != null:
 		skeleton_merge_tool_plugin = skeleton_merge_tool_class.new()
 		add_child(skeleton_merge_tool_plugin)

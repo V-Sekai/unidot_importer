@@ -412,7 +412,7 @@ func initialize_skelleys(state: RefCounted, objs: Array, is_prefab: bool):
 					state.add_bone_to_skelley(new_skelley, transform_obj)
 					obj.log_debug(str(new_skelley.parent_transform) + " - " + str(transform_obj))
 					var x: RefCounted = new_skelley.parent_transform
-					if x.is_prefab_reference:
+					if x != null and x.is_prefab_reference:
 						var prefab_id = x.prefab_instance[1]
 						if not state.prefab_state.skelleys_by_parented_prefab.has(prefab_id):
 							state.prefab_state.skelleys_by_parented_prefab[prefab_id] = [].duplicate()
