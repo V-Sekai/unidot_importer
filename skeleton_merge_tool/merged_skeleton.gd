@@ -4,6 +4,9 @@ extends Skeleton3D
 const DEBUG_SKEL_ERRORS: bool = false
 
 var target_skel: Skeleton3D
+var target_parent: Node
+var target_secondary: Node
+var secondary: Node
 var my_path_from_skel: String
 var bone_attachments: Array[BoneAttachment3D]
 var mesh_instances: Array[MeshInstance3D]
@@ -195,6 +198,42 @@ func attach_skeleton(skel_arg: Skeleton3D):
 			mesh_inst.set_skeleton_path(mesh_inst.get_path_to(target_skel))
 	print(str(name) + " Merging Mesh Instances: " + str(mesh_instances))
 
+	var cur: Node = get_parent()
+	while cur != null and cur != target_skel:
+		if cur.get_script() != null:
+			secondary = cur.get_node_or_null(^"secondary")
+			if secondary != null and secondary.get_script() != null:
+				target_parent = target_skel.get_parent()
+				if target_skel.owner.get_node_or_null("%GeneralSkeleton") == target_skel:
+					target_parent = target_skel.owner
+				else:
+					if target_parent == null:
+						break
+					var target_grandparent: Node = target_parent.get_parent()
+					if target_grandparent != null and target_grandparent.get_node_or_null("secondary") != null:
+						if target_grandparent.get_node_or_null("secondary").get_script() == secondary.get_script():
+							target_parent = target_grandparent
+				target_secondary = target_parent.get_node_or_null("secondary")
+				if target_secondary == null:
+					target_secondary = Node3D.new()
+					target_secondary.name = "secondary"
+					target_parent.add_child(target_secondary)
+					target_secondary.owner = target_skel.owner
+				if target_secondary.get_script() == null:
+					target_secondary.set_script(secondary.get_script())
+				assert(target_secondary.get_script() == secondary.get_script())
+				for bone in secondary.spring_bones:
+					target_secondary.spring_bones.append(bone)
+				for bone in secondary.collider_groups:
+					target_secondary.collider_groups.append(bone)
+				target_secondary.skeleton = target_secondary.get_path_to(target_skel)
+				if target_parent.get_script() == null:
+					target_parent.set_script(cur.get_script())
+				assert(target_parent.get_script() == cur.get_script())
+		cur = cur.get_parent()
+	if target_secondary != null:
+		target_secondary._ready()
+
 
 func detach_skeleton():
 	#var target_skel := find_ancestor_skeleton()
@@ -209,6 +248,31 @@ func detach_skeleton():
 		#set_bone_pose_scale(bone, Vector3.ONE)
 	print(str(name) + "Detaching Bone Attachments: " + str(bone_attachments))
 	print(str(name) + "Detaching Mesh Instances: " + str(mesh_instances))
+
+	if secondary != null and target_secondary != null:
+		var sb_set: Dictionary
+		for bone in secondary.spring_bones:
+			sb_set[bone] = true
+		var cg_set: Dictionary
+		for cg in secondary.collider_groups:
+			cg_set[cg] = true
+
+		var old_list = target_secondary.spring_bones.duplicate()
+		target_secondary.spring_bones.clear()
+		for bone in old_list:
+			if not sb_set.has(bone):
+				target_secondary.spring_bones.append(bone)
+				sb_set[bone] = true
+		old_list = target_secondary.collider_groups.duplicate()
+		target_secondary.collider_groups.clear()
+		for cg in old_list:
+			if not cg_set.has(cg):
+				cg_set[cg] = true
+				target_secondary.collider_groups.append(cg)
+	if target_secondary != null:
+		target_skel.clear_bones_global_pose_override()
+		target_secondary._ready()
+
 	#push_warning("Before bone attachments")
 	for attachment in bone_attachments:
 		if attachment.get_parent() == self:
