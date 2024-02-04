@@ -458,48 +458,35 @@ func update_skin_poses():
 			skin.set_bind_pose(bind_idx, relative_transform * orig_skin.get_bind_pose(bind_idx))
 
 
+var is_entered_tree: bool
 func _init():
 	if Engine.is_editor_hint():
 		if is_inside_tree():
-			self.attach_skeleton.call_deferred(find_ancestor_skeleton())
-		script_changed.connect(self.detach_skeleton)
+			is_entered_tree = true
+			self.attach_skeleton(find_ancestor_skeleton())
 	else:
 		set_script(null)
 
 
 func _enter_tree():
-	if not Engine.is_editor_hint():
-		return
-	#print("enter tree")
-
-	attach_skeleton.call_deferred(find_ancestor_skeleton())
-	#print("done enter tree")
-
-
-func _exit_tree():
-	if not Engine.is_editor_hint():
-		return
-	#print("exit tree")
-
-	detach_skeleton.call_deferred()
-	#print("done exit tree")
+	if Engine.is_editor_hint():
+		if not is_entered_tree:
+			is_entered_tree = true
+			self.attach_skeleton.call_deferred(find_ancestor_skeleton())
+	else:
+		set_script(null)
 
 
 func _notification(what):
-	#if what != NOTIFICATION_INTERNAL_PHYSICS_PROCESS:
-		#print(what)
 	if not Engine.is_editor_hint():
 		return
 	match what:
 		NOTIFICATION_UPDATE_SKELETON:
-			# update_skin_poses.call_deferred()
 			update_skin_poses()
 			pass
-		NOTIFICATION_PREDELETE:
-			detach_skeleton()
 
 
-static func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_name: String, relative_to_bone: String):
+static func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_name: String, relative_to_bone: String, undoredo = null):
 	var bone_idx := skel.find_bone(bone_name)
 	var idx := skel.find_bone(relative_to_bone)
 	if bone_idx == -1 or idx == -1:
@@ -526,9 +513,25 @@ static func adjust_bone_scale(skel: Skeleton3D, target_skel: Skeleton3D, bone_na
 	var final_scale: Vector3 = hips_scale_ratio * skel.get_bone_pose_scale(bone_idx) # * get_bone_pose_scale(bone_idx) / hips_pose.basis.get_scale()
 	# print("RATIO: " + str(hips_scale_ratio) + " orig " + str(skel.get_bone_pose_scale(bone_idx)) + " scale " + str(hips_pose.basis.get_scale()) + " final " + str(final_scale))
 	skel.set_bone_pose_scale(bone_idx, final_scale)
+	if undoredo != null:
+		undoredo.add_do_method(skel, &"set_bone_pose_scale", bone_idx, final_scale)
 
 
-static func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D):
+static func perform_undoable_reset_bone_poses(undoredo, skel: Skeleton3D, record_all: bool):
+	undoredo.add_do_method(skel, &"reset_bone_poses")
+	for bone_idx in skel.get_bone_count():
+		if record_all or not skel.get_bone_pose_position(bone_idx).is_equal_approx(skel.get_bone_rest(bone_idx).origin):
+			undoredo.add_undo_method(skel, &"set_bone_pose_position", bone_idx, skel.get_bone_pose_position(bone_idx))
+		if record_all or not skel.get_bone_pose_rotation(bone_idx).is_equal_approx(skel.get_bone_rest(bone_idx).basis.get_rotation_quaternion()):
+			undoredo.add_undo_method(skel, &"set_bone_pose_rotation", bone_idx, skel.get_bone_pose_rotation(bone_idx))
+		if record_all or not skel.get_bone_pose_scale(bone_idx).is_equal_approx(skel.get_bone_rest(bone_idx).basis.get_scale()):
+			undoredo.add_undo_method(skel, &"set_bone_pose_scale", bone_idx, skel.get_bone_pose_scale(bone_idx))
+
+
+static func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D, undoredo = null):
+	if undoredo != null:
+		perform_undoable_reset_bone_poses(undoredo, skel, true)
+		perform_undoable_reset_bone_poses(undoredo, target_skel, false)
 	target_skel.reset_bone_poses()
 	skel.reset_bone_poses()
 	const BONE_TO_PARENT := {
@@ -567,19 +570,21 @@ static func adjust_pose(skel: Skeleton3D, target_skel: Skeleton3D):
 		# var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_relative_pose.affine_inverse() * target_pose
 		var combined_pose := parent_to_relative_bone_pose.affine_inverse() * target_pose
 		skel.set_bone_pose_position(my_idx, combined_pose.origin)
+		if undoredo != null:
+			undoredo.add_do_method(skel, &"set_bone_pose_position", my_idx, combined_pose.origin)
 		print("Bone " + str(bone) + " set position to " + str(combined_pose.origin))
 		if bone == "Hips":
 			if skel.find_bone("Head") != -1:
-				adjust_bone_scale(skel, target_skel, "Hips", "Head")
+				adjust_bone_scale(skel, target_skel, "Hips", "Head", undoredo)
 			else:
-				adjust_bone_scale(skel, target_skel, "Hips", "Chest")
+				adjust_bone_scale(skel, target_skel, "Hips", "Chest", undoredo)
 
 	for bone in BONE_TO_PARENT:
 		var parent_bone_name: String = BONE_TO_PARENT[bone]
-		adjust_bone_scale(skel, target_skel, parent_bone_name, bone)
+		adjust_bone_scale(skel, target_skel, parent_bone_name, bone, undoredo)
 
 
-static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D):
+static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D, undoredo = null):
 	for bone in target_skel.get_bone_count():
 		var my_bone: int = skel.find_bone(target_skel.get_bone_name(bone))
 		if my_bone != -1:
@@ -590,6 +595,10 @@ static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D):
 				pose_adj *= skel.get_bone_rest(my_bone).basis.get_rotation_quaternion()
 			else:
 				pose_adj *= skel.get_bone_pose_rotation(my_bone)
+			if undoredo != null:
+				undoredo.add_undo_method(skel, &"set_bone_pose_rotation", my_bone, skel.get_bone_pose_rotation(my_bone))
+				undoredo.add_do_method(skel, &"set_bone_pose_rotation", my_bone, pose_adj)
+				print("set rot " + str(skel) + " - " + str(my_bone) + " " + str(pose_adj))
 			skel.set_bone_pose_rotation(my_bone, pose_adj)
 			var position_adj: Vector3 = Vector3.ZERO
 			if not target_skel.show_rest_only:
@@ -598,4 +607,7 @@ static func preserve_pose(skel: Skeleton3D, target_skel: Skeleton3D):
 				position_adj += skel.get_bone_rest(my_bone).origin
 			else:
 				position_adj += skel.get_bone_pose_position(my_bone)
+			if undoredo != null:
+				undoredo.add_undo_method(skel, &"set_bone_pose_position", my_bone, skel.get_bone_pose_position(my_bone))
+				undoredo.add_do_method(skel, &"set_bone_pose_position", my_bone, position_adj)
 			skel.set_bone_pose_position(my_bone, position_adj)

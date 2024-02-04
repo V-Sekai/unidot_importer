@@ -4,16 +4,22 @@ extends EditorPlugin
 
 var skeleton_editor: VBoxContainer
 var controls : HBoxContainer
-var merge_armature_button: Button
+var auto_scale_tpose_button: Button
 var unmerge_armature_button: Button
-var merge_armature_preserve_pose_button: Button
+var preserve_pose_button: Button
+var apply_motion_scale_button: Button
+var merge_compatible_armature_button: Button
 var align_reset_armature_button: Button
 var mirror_pose_button: Button
 var lock_bone_button: Button
 var rename_bone_button: Button
 var rename_bone_dropdown: OptionButton
+# Set when the user has clicked a Skeleton3D node
 var selected_skel: Skeleton3D
+# Set when the user has clicked a Node3D which has a child Skeleton3D and an ancestor Skeleton3D:
 var merge_armature_selected_node: Node3D
+var merge_armature_selected_skel: Skeleton3D
+var merge_armature_selected_target_skel: Skeleton3D
 
 
 # Bone locking and bone mirror state code
@@ -39,26 +45,36 @@ const merged_skeleton_script := preload("./merged_skeleton.gd")
 func _enter_tree():
 	# Initialization of the plugin goes here.
 	controls = HBoxContainer.new()
-	merge_armature_button = Button.new()
-	merge_armature_button.text = "Auto Scale to T-Pose"
-	merge_armature_button.hide()
-	merge_armature_button.pressed.connect(align_armature_button_clicked)
-	controls.add_child(merge_armature_button)
-	align_reset_armature_button = Button.new()
-	align_reset_armature_button.text = "Align to RESET Pose"
-	align_reset_armature_button.hide()
-	align_reset_armature_button.pressed.connect(align_reset_armature_button_clicked)
-	controls.add_child(align_reset_armature_button)
 	unmerge_armature_button = Button.new()
 	unmerge_armature_button.text = "Unmerge Armature"
 	unmerge_armature_button.hide()
 	unmerge_armature_button.pressed.connect(unmerge_armature_button_clicked)
 	controls.add_child(unmerge_armature_button)
-	merge_armature_preserve_pose_button = Button.new()
-	merge_armature_preserve_pose_button.text = "Merge Parent Armature"
-	merge_armature_preserve_pose_button.hide()
-	merge_armature_preserve_pose_button.pressed.connect(merge_armature_button_clicked)
-	controls.add_child(merge_armature_preserve_pose_button)
+	preserve_pose_button = Button.new()
+	preserve_pose_button.text = "Align to Pose"
+	preserve_pose_button.hide()
+	preserve_pose_button.pressed.connect(preserve_pose_button_clicked)
+	controls.add_child(preserve_pose_button)
+	auto_scale_tpose_button = Button.new()
+	auto_scale_tpose_button.text = "Auto Scale to T-Pose"
+	auto_scale_tpose_button.hide()
+	auto_scale_tpose_button.pressed.connect(auto_scale_tpose_button_clicked)
+	controls.add_child(auto_scale_tpose_button)
+	apply_motion_scale_button = Button.new()
+	apply_motion_scale_button.text = "Apply Motion Scale"
+	apply_motion_scale_button.hide()
+	apply_motion_scale_button.pressed.connect(apply_motion_scale_button_clicked)
+	controls.add_child(apply_motion_scale_button)
+	align_reset_armature_button = Button.new()
+	align_reset_armature_button.text = "Align to RESET Pose"
+	align_reset_armature_button.hide()
+	align_reset_armature_button.pressed.connect(align_reset_armature_button_clicked)
+	controls.add_child(align_reset_armature_button)
+	merge_compatible_armature_button = Button.new()
+	merge_compatible_armature_button.text = "Merge Armature"
+	merge_compatible_armature_button.hide()
+	merge_compatible_armature_button.pressed.connect(merge_compatible_armature_button_clicked)
+	controls.add_child(merge_compatible_armature_button)
 
 	mirror_pose_button = Button.new()
 	mirror_pose_button.toggle_mode = true
@@ -129,25 +145,41 @@ func _handles(p_object: Variant) -> bool:
 			for i in range(3):
 				par = par.get_parent()
 				if par == null: break
-				if par is Skeleton3D and par.name == "GeneralSkeleton" and par != skel:
+				if par is Skeleton3D and par != skel:
 					merge_armature_selected_node = node
-					if skel.get_script() == null:
-						show_control(merge_armature_preserve_pose_button)
-						hide_control(align_reset_armature_button)
-						hide_control(merge_armature_button)
-						hide_control(unmerge_armature_button)
-					elif skel is merged_skeleton_script:
-						show_control(merge_armature_button)
-						show_control(align_reset_armature_button)
-						show_control(unmerge_armature_button)
-						hide_control(merge_armature_preserve_pose_button)
+					merge_armature_selected_skel = skel
+					merge_armature_selected_target_skel = par
+					update_buttons_for_selected_node()
 					return false # We don't use _edit
 	merge_armature_selected_node = null
-	hide_control(merge_armature_button)
-	hide_control(unmerge_armature_button)
-	hide_control(align_reset_armature_button)
-	hide_control(merge_armature_preserve_pose_button)
+	merge_armature_selected_skel = null
+	merge_armature_selected_target_skel = null
+	update_buttons_for_selected_node()
 	return false
+
+
+func update_buttons_for_selected_node():
+	if merge_armature_selected_skel != null and merge_armature_selected_skel.get_script() == null:
+		show_control(merge_compatible_armature_button)
+		if (merge_armature_selected_skel.motion_scale != 0 and merge_armature_selected_target_skel.motion_scale != 0 and
+			not is_equal_approx(merge_armature_selected_skel.motion_scale, merge_armature_selected_target_skel.motion_scale)):
+			apply_motion_scale_button.text = "Scale %.3f" % (merge_armature_selected_target_skel.motion_scale / merge_armature_selected_skel.motion_scale)
+			show_control(apply_motion_scale_button)
+		else:
+			hide_control(apply_motion_scale_button)
+	else:
+		hide_control(merge_compatible_armature_button)
+		hide_control(apply_motion_scale_button)
+	if merge_armature_selected_skel != null and merge_armature_selected_skel is merged_skeleton_script:
+		show_control(auto_scale_tpose_button)
+		show_control(align_reset_armature_button)
+		show_control(preserve_pose_button)
+		show_control(unmerge_armature_button)
+	else:
+		hide_control(auto_scale_tpose_button)
+		hide_control(unmerge_armature_button)
+		hide_control(align_reset_armature_button)
+		hide_control(preserve_pose_button)
 
 
 func show_control(control):
@@ -171,22 +203,30 @@ func unmerge_armature_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
+	var undoredo := get_undo_redo()
+	var created_act: bool = false
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
 		if skel == null or not skel.has_method(&"detach_skeleton"):
 			continue
-		skel.detach_skeleton()
-		skel.set_script(null)
-		hide_control(merge_armature_button)
-		hide_control(unmerge_armature_button)
-		hide_control(align_reset_armature_button)
-		show_control(merge_armature_preserve_pose_button)
+		if not created_act:
+			undoredo.create_action(&"Unerge armatures", UndoRedo.MERGE_ALL, skel)
+			created_act = true
+		undoredo.add_undo_method(skel, &"set_script", merged_skeleton_script)
+		undoredo.add_do_method(skel, &"detach_skeleton")
+		undoredo.add_do_method(skel, &"set_script", null)
+		undoredo.add_undo_method(self, &"update_buttons_for_selected_node")
+		undoredo.add_do_method(self, &"update_buttons_for_selected_node")
+	if created_act:
+		undoredo.commit_action()
 
 
-func align_armature_button_clicked():
+func auto_scale_tpose_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
+	var created_act: bool = false
+	var undoredo := get_undo_redo()
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
 		if skel == null:
@@ -197,14 +237,55 @@ func align_armature_button_clicked():
 				break
 			par = par.get_parent_node_3d()
 		if par != null:
+			# No undoredo yet.
 			var target_skel := par as Skeleton3D
-			merged_skeleton_script.adjust_pose(skel, target_skel)
+			if not created_act:
+				undoredo.create_action(&"Reset armature poses", UndoRedo.MERGE_ALL, skel)
+				created_act = true
+			merged_skeleton_script.adjust_pose(skel, target_skel, undoredo)
+	if created_act:
+		undoredo.commit_action(false) # adjust_pose applies as it goes
 
 
 func align_reset_armature_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
+	var created_act: bool = false
+	var undoredo := get_undo_redo()
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		if skel == null:
+			continue
+		var par: Node3D = skel.get_parent_node_3d()
+		while par != null:
+			if par is Skeleton3D:
+				break
+			par = par.get_parent_node_3d()
+		if par != null:
+			# This one is difficult to implement undoredo support for, due to playing an animation
+			var target_skel := par as Skeleton3D
+			if not created_act:
+				undoredo.create_action(&"Reset armature poses", UndoRedo.MERGE_ALL, skel)
+				created_act = true
+			merged_skeleton_script.perform_undoable_reset_bone_poses(undoredo, skel, false)
+			play_all_reset_animations(undoredo, skel, target_skel)
+			merged_skeleton_script.perform_undoable_reset_bone_poses(undoredo, target_skel, false)
+			play_all_reset_animations(undoredo, target_skel, target_skel.owner)
+			for bone in skel.get_parentless_bones():
+				undoredo.add_undo_method(skel, &"set_bone_pose_scale", bone, skel.get_bone_pose_scale(bone))
+				undoredo.add_do_method(skel, &"set_bone_pose_scale", bone, skel.get_bone_pose_scale(bone))
+			merged_skeleton_script.preserve_pose(skel, target_skel, undoredo)
+	if created_act:
+		undoredo.commit_action(true)
+
+
+func preserve_pose_button_clicked():
+	if merge_armature_selected_node == null:
+		return
+	var new_child: Node3D = merge_armature_selected_node
+	var created_act: bool = false
+	var undoredo := get_undo_redo()
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
 		if skel == null:
@@ -216,38 +297,118 @@ func align_reset_armature_button_clicked():
 			par = par.get_parent_node_3d()
 		if par != null:
 			var target_skel := par as Skeleton3D
-			var orig_scale: Vector3 = skel.get_bone_pose_scale(skel.get_parentless_bones()[0])
-			skel.reset_bone_poses()
-			play_all_reset_animations(skel, target_skel)
-			target_skel.reset_bone_poses()
-			play_all_reset_animations(target_skel, target_skel.owner)
-			for bone in skel.get_parentless_bones():
-				skel.set_bone_pose_scale(bone, orig_scale)
-			merged_skeleton_script.preserve_pose(skel, target_skel)
+			if not created_act:
+				undoredo.create_action(&"Preserve skeleton pose", UndoRedo.MERGE_ALL, skel)
+				created_act = true
+			merged_skeleton_script.preserve_pose(skel, target_skel, undoredo)
+	if created_act:
+		undoredo.commit_action(true)
 
-func play_all_reset_animations(node: Node3D, toplevel_node: Node):
+
+func record_animation_transforms(root_node: Node, undoredo: EditorUndoRedoManager, reset_anim: Animation):
+	for i in range(reset_anim.get_track_count()):
+		var path: NodePath = reset_anim.track_get_path(i)
+		var bone_name: String = path.get_concatenated_subnames()
+		var bone_idx: int = -1
+		var node: Node = root_node.get_node(NodePath(str(path.get_concatenated_names()))) as Node
+		var node3d: Node3D = node as Node3D
+		var skeleton: Skeleton3D = node as Skeleton3D
+		if skeleton != null:
+			bone_idx = skeleton.find_bone(bone_name)
+		match reset_anim.track_get_type(i):
+			Animation.TYPE_POSITION_3D:
+				var pos: Vector3 = reset_anim.position_track_interpolate(i, 0.0)
+				if node3d != null:
+					if bone_name.is_empty():
+						undoredo.add_undo_property(node3d, &"position", node3d.position)
+						undoredo.add_do_property(node3d, &"position", pos)
+					elif skeleton != null:
+						undoredo.add_undo_method(skeleton, &"set_bone_pose_position", bone_idx, skeleton.get_bone_pose_position(bone_idx))
+						undoredo.add_do_method(skeleton, &"set_bone_pose_position", bone_idx, skeleton.motion_scale * pos)
+			Animation.TYPE_ROTATION_3D:
+				var quat: Quaternion = reset_anim.rotation_track_interpolate(i, 0.0)
+				if node3d != null:
+					if bone_name.is_empty():
+						undoredo.add_undo_property(node3d, &"quaternion", node3d.quaternion)
+						undoredo.add_do_property(node3d, &"quaternion", quat)
+					elif skeleton != null:
+						undoredo.add_undo_method(skeleton, &"set_bone_pose_rotation", bone_idx, skeleton.get_bone_pose_rotation(bone_idx))
+						undoredo.add_do_method(skeleton, &"set_bone_pose_rotation", bone_idx, quat)
+			Animation.TYPE_SCALE_3D:
+				var scl: Vector3 = reset_anim.scale_track_interpolate(i, 0.0)
+				if node3d != null:
+					if bone_name.is_empty():
+						undoredo.add_undo_property(node3d, &"scale", node3d.scale)
+						undoredo.add_do_property(node3d, &"scale", scl)
+					elif skeleton != null:
+						undoredo.add_undo_method(skeleton, &"set_bone_pose_scale", bone_idx, skeleton.get_bone_pose_scale(bone_idx))
+						undoredo.add_do_method(skeleton, &"set_bone_pose_scale", bone_idx, scl)
+			Animation.TYPE_BLEND_SHAPE:
+				var bs: float = reset_anim.blend_shape_track_interpolate(i, 0.0)
+				var mesh: MeshInstance3D = node as MeshInstance3D
+				if mesh != null and not bone_name.is_empty():
+					var prop := StringName("blend_shapes/" + bone_name)
+					var cur_val: Variant = mesh.get(prop)
+					if typeof(cur_val) == TYPE_FLOAT:
+						undoredo.add_undo_property(mesh, prop, cur_val)
+						undoredo.add_do_property(node3d, prop, bs)
+					else:
+						push_warning("Blend Shape property " + str(path) + " is not float: " + str(cur_val))
+
+
+func play_all_reset_animations(undoredo: EditorUndoRedoManager, node: Node3D, toplevel_node: Node):
 	while node != null:
 		for anim_player in node.find_children("*", "AnimationPlayer", false, true):
 			if anim_player.has_animation(&"RESET"):
 				var root_node: Node = anim_player.get_node(anim_player.root_node)
 				var reset_anim: Animation = anim_player.get_animation(&"RESET")
 				if reset_anim != null and root_node != null:
-					# Copied from AnimationMixer::reset()
-					var aux_player := AnimationPlayer.new()
-					root_node.add_child(aux_player)
-					aux_player.reset_on_save = false
-					var al := AnimationLibrary.new()
-					al.add_animation(&"RESET", reset_anim)
-					aux_player.add_animation_library(&"", al)
-					aux_player.assigned_animation = &"RESET"
-					aux_player.seek(0.0, true)
-					root_node.remove_child(aux_player)
-					aux_player.queue_free()
+					record_animation_transforms(root_node, undoredo, reset_anim)
 		if node == toplevel_node:
 			break
 		node = node.get_parent_node_3d()
 
-func merge_armature_button_clicked():
+
+func apply_motion_scale_button_clicked():
+	if merge_armature_selected_node == null:
+		return
+	var new_child: Node3D = merge_armature_selected_node
+	var created_act: bool = false
+	var undoredo := get_undo_redo()
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		if skel == null:
+			continue
+		var par: Node3D = skel.get_parent_node_3d()
+		while par != null:
+			if par is Skeleton3D:
+				break
+			par = par.get_parent_node_3d()
+		var target_skel := par as Skeleton3D
+		if target_skel != null:
+			if skel.motion_scale != 0 and target_skel.motion_scale != 0 and not is_equal_approx(skel.motion_scale, target_skel.motion_scale):
+				if not created_act:
+					undoredo.create_action(&"Apply motion scale", UndoRedo.MERGE_ALL, skel)
+					created_act = true
+				var scale_ratio: float = target_skel.motion_scale / skel.motion_scale
+				undoredo.add_undo_property(skel, &"motion_scale", skel.motion_scale)
+				undoredo.add_do_property(skel, &"motion_scale", target_skel.motion_scale)
+				undoredo.add_undo_method(self, &"update_buttons_for_selected_node")
+				undoredo.add_do_method(self, &"update_buttons_for_selected_node")
+				for bone in skel.get_parentless_bones():
+					var new_scale: Vector3 = skel.get_bone_pose_scale(bone) * scale_ratio
+					undoredo.add_undo_method(skel, &"set_bone_pose_scale", bone, skel.get_bone_pose_scale(bone))
+					undoredo.add_do_method(skel, &"set_bone_pose_scale", bone, new_scale)
+					var rest_mat: Transform3D = skel.get_bone_rest(bone)
+					undoredo.add_undo_method(skel, &"set_bone_rest", bone, rest_mat)
+					rest_mat.basis = rest_mat.basis.scaled(Vector3.ONE * scale_ratio)
+					undoredo.add_do_method(skel, &"set_bone_rest", bone, rest_mat)
+	if created_act:
+		undoredo.commit_action(true)
+	hide_control(apply_motion_scale_button)
+
+
+func merge_compatible_armature_button_clicked():
 	if merge_armature_selected_node == null:
 		return
 	var new_child: Node3D = merge_armature_selected_node
@@ -265,6 +426,8 @@ func merge_armature_button_clicked():
 		anim.set("reset_on_save", false)
 		anim.set("active", false)
 
+	var created_act := false
+	var undoredo := get_undo_redo()
 	for skel_node in new_child.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
 		if skel == null:
@@ -278,25 +441,33 @@ func merge_armature_button_clicked():
 				par = par.get_parent_node_3d()
 			if par != null:
 				var target_skel := par as Skeleton3D
-				if skel.motion_scale != 0 and target_skel.motion_scale != 0:
-					var rel_scale := Vector3.ONE
-					var scale_par: Node3D = skel.get_parent()
-					while scale_par != target_skel:
-						scale_par.transform = Transform3D.IDENTITY
-						rel_scale *= scale_par.scale
-						scale_par = scale_par.get_parent()
-					var scale_ratio: float = sqrt(3) / rel_scale.length()
-					skel.transform = Transform3D.IDENTITY
-					# print(target_skel.motion_scale / motion_scale)
-					scale_ratio = target_skel.motion_scale / skel.motion_scale / scale_ratio
-					for bone in skel.get_parentless_bones():
-						skel.set_bone_pose_scale(bone, skel.get_bone_pose_scale(bone) * scale_ratio)
-				merged_skeleton_script.preserve_pose(skel, target_skel)
-				skel.set_script(merged_skeleton_script)
-				show_control(merge_armature_button)
-				show_control(align_reset_armature_button)
-				show_control(unmerge_armature_button)
-				hide_control(merge_armature_preserve_pose_button)
+				if not created_act:
+					created_act = true
+					undoredo.create_action(&"Merge armatures", UndoRedo.MERGE_DISABLE, skel)
+				var rel_scale := Vector3.ONE
+				var scale_par: Node3D = skel.get_parent()
+				while scale_par != target_skel:
+					undoredo.add_undo_property(scale_par, &"transform", scale_par.transform)
+					undoredo.add_do_property(scale_par, &"transform", Transform3D.IDENTITY)
+					rel_scale *= scale_par.scale
+					scale_par = scale_par.get_parent()
+				var scale_ratio: float = sqrt(3) / rel_scale.length()
+				undoredo.add_undo_property(skel, &"transform", skel.transform)
+				undoredo.add_do_property(skel, &"transform", Transform3D.IDENTITY)
+				# Clear out any motion scale difference.
+				undoredo.add_undo_property(skel, &"motion_scale", skel.motion_scale)
+				undoredo.add_do_property(skel, &"motion_scale", target_skel.motion_scale)
+				for bone in skel.get_parentless_bones():
+					var new_scale: Vector3 = skel.get_bone_pose_scale(bone) / scale_ratio
+					undoredo.add_undo_method(skel, &"set_bone_pose_scale", bone, skel.get_bone_pose_scale(bone))
+					undoredo.add_do_method(skel, &"set_bone_pose_scale", bone, new_scale)
+				undoredo.add_undo_method(skel, &"detach_skeleton")
+				undoredo.add_undo_method(skel, &"set_script", skel.get_script())
+				undoredo.add_do_method(skel, &"set_script", merged_skeleton_script)
+				undoredo.add_undo_method(self, &"update_buttons_for_selected_node")
+				undoredo.add_do_method(self, &"update_buttons_for_selected_node")
+	if created_act:
+		undoredo.commit_action()
 
 
 func get_mirrored_bone_name(bone_name: String) -> String:
@@ -388,7 +559,7 @@ func record_locked_bone_transforms():
 
 
 func disconn_possibly_freed():
-	if selected_skel != null and selected_skel.has_signal(&"updated_skeleton_pose"):
+	if selected_skel != null and is_instance_valid(selected_skel) and selected_skel.has_signal(&"updated_skeleton_pose"):
 		selected_skel.updated_skeleton_pose.disconnect(on_skeleton_poses_changed)
 
 
@@ -451,7 +622,8 @@ func set_selected_skel(skel: Variant):
 		last_pose_positions[i] = selected_skel.get_bone_pose_position(i)
 		last_pose_rotations[i] = selected_skel.get_bone_pose_rotation(i)
 		last_pose_scales[i] = selected_skel.get_bone_pose_scale(i)
-	selected_skel.updated_skeleton_pose.connect(on_skeleton_poses_changed, CONNECT_DEFERRED)
+	if not selected_skel.updated_skeleton_pose.is_connected(on_skeleton_poses_changed):
+		selected_skel.updated_skeleton_pose.connect(on_skeleton_poses_changed, CONNECT_DEFERRED)
 	if lock_bone_mode:
 		record_locked_bone_transforms()
 
