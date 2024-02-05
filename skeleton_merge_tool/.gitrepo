@@ -6,7 +6,7 @@
 [subrepo]
 	remote = https://github.com/V-Sekai/godot-skeleton-merge-tool.git
 	branch = main
-	commit = edac214a63dd1e845cf17b062a0431c5e77c5f61
-	parent = 172c62d6ced8a453cc9f245d4fbb53fddea00f06
+	commit = 5a2d02712fe82d78056640ebdce9c1bbd3946fa5
+	parent = baa4481cd18f5b74dcf0c9b525269f89cbf278b2
 	method = merge
 	cmdver = 0.4.6
