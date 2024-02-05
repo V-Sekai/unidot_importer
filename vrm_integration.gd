@@ -38,7 +38,7 @@ func detect_spring_bone_collider(obj: RefCounted, state: RefCounted):
 	var colliders: Array
 	if typeof(obj.keys.get("Colliders", null)) == TYPE_ARRAY:
 		colliders = obj.keys["Colliders"]
-	if not colliders:
+	if colliders.is_empty():
 		colliders = [obj.keys]
 
 	var root_obj: RefCounted = obj
@@ -52,13 +52,13 @@ func detect_spring_bone_collider(obj: RefCounted, state: RefCounted):
 		var vrm_collider: Resource = vrm_collider_class.new()
 		vrm_collider_group.colliders.append(vrm_collider)
 		matched = find_key(collider, {"radius": 0}, TYPE_FLOAT)
-		if not matched:
+		if matched.is_empty():
 			obj.log_debug("vrm collider missing radius")
 			return # wrong format
 		var radius := float(matched[0])
 		vrm_collider.radius = radius
 		matched = find_key(collider, {"offset": 0, "center": 0, "position": 0}, TYPE_VECTOR3)
-		if not matched:
+		if matched.is_empty():
 			obj.log_debug("vrm collider missing offset")
 			return
 		var offset: Vector3 = matched[0]
@@ -72,7 +72,7 @@ func detect_spring_bone_collider(obj: RefCounted, state: RefCounted):
 			tail = matched[0]
 		else:
 			matched = find_key(collider, {"shapetype": 0}, TYPE_INT)
-			if not matched or matched[0] == 1:
+			if matched.is_empty() or matched[0] == 1:
 				matched = find_key(collider, {"height": 0}, TYPE_FLOAT)
 				if matched:
 					var height := float(matched[0])
@@ -106,15 +106,15 @@ func detect_spring_bone(obj: RefCounted, state: RefCounted):
 	var matched: Array
 	var root_obj: RefCounted = obj
 	matched = find_key(obj.keys, {"rootbones": 0}, TYPE_ARRAY)
-	if not matched:
+	if matched.is_empty():
 		matched = find_key(obj.keys, {"transform": 0, "root": 0}, -1)
-		if not matched:
+		if matched.is_empty():
 			return # wrong format
 	matched = find_key(obj.keys, {"drag": 0, "damp": 0, "spring": func(x): return 1 - x}, TYPE_FLOAT)
-	if not matched:
+	if matched.is_empty():
 		return # wrong format
 	matched = find_key(obj.keys, {"stiff": 0, "elastic": func(x): return 4.0 * x, "pull": func(x): return 4.0 * x}, TYPE_FLOAT)
-	if not matched:
+	if matched.is_empty():
 		return # wrong format
 	if "vrm_spring_bone_components" not in state.prefab_state.extra_data:
 		state.prefab_state.extra_data["vrm_spring_bone_components"] = []
@@ -142,7 +142,7 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 	else:
 		matched = find_key(obj.keys, {"transform": 0, "root": 0}, -1)
 		# TODO: VRMSpringBone (old 0x0) is TYPE_ARRAY of transform
-		if not matched:
+		if matched.is_empty():
 			obj.log_debug("Failed to match springbone")
 			return [] # wrong format
 		my_fileid = matched[0][1] # always a Transform object
@@ -166,12 +166,12 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 		return []
 
 	matched = find_key(obj.keys, {"drag": 0, "damp": 0, "spring": func(x): return 1 - x}, TYPE_FLOAT)
-	if not matched:
+	if matched.is_empty():
 		obj.log_fail("springbone component missing drag")
 		return [] # wrong format
 	var drag: float = matched[0]
 	matched = find_key(obj.keys, {"stiff": 0, "elastic": func(x): return 4.0 * x, "pull": func(x): return 4.0 * x}, TYPE_FLOAT)
-	if not matched:
+	if matched.is_empty():
 		obj.log_fail("springbone component missing stiff")
 		return [] # wrong format
 

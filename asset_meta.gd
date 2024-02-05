@@ -244,9 +244,9 @@ func is_force_humanoid() -> bool:
 
 
 func is_humanoid() -> bool:
-	if not transform_fileid_to_rotation_delta:
+	if transform_fileid_to_rotation_delta.is_empty():
 		return false
-	if not autodetected_bone_map_dict and not humanoid_bone_map_dict and not humanoid_bone_map_crc32_dict:
+	if autodetected_bone_map_dict.is_empty() and humanoid_bone_map_dict.is_empty() and humanoid_bone_map_crc32_dict.is_empty():
 		return false
 	return true
 

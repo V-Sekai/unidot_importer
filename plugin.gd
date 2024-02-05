@@ -125,5 +125,5 @@ func _exit_tree():
 		remove_child(skeleton_merge_tool_plugin)
 		skeleton_merge_tool_plugin.queue_free()
 
-func _handles(p_object: Variant) -> bool:
+func _handles(p_object) -> bool:
 	return skeleton_merge_tool_plugin._handles(p_object)

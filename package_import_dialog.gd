@@ -1197,7 +1197,8 @@ func on_import_fully_completed():
 	if not _keep_open_on_import:
 		if main_dialog:
 			main_dialog.hide()
-	ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
+	if typeof(ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")) != TYPE_NIL:
+		ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
 
 	if not batch_import_file_list.is_empty():
 		var rc = RefCounted.new()
@@ -1768,8 +1769,9 @@ func _asset_tree_window_confirmed():
 	abort_button.pressed.connect(self._abort_clicked)
 	abort_button.visible = false
 	pause_button.add_sibling(abort_button)
-	if ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb") != 1022:
-		asset_database.orig_max_size_mb = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
+	var max_queue_size_mb: Variant = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
+	if typeof(max_queue_size_mb) != TYPE_NIL and max_queue_size_mb != 1022:
+		asset_database.orig_max_size_mb = max_queue_size_mb
 		if asset_database.orig_max_size_mb < 1022:
 			ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", 1022)
 	main_dialog_tree.columns = 5

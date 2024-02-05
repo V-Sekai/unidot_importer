@@ -128,7 +128,7 @@ func connect_skeleton_tree_signal():
 				joint_tree.connect("item_selected", joint_selected.bind(joint_tree))
 
 
-func _handles(p_object: Variant) -> bool:
+func _handles(p_object) -> bool:
 	var node: Node3D = p_object as Node3D
 	if node != null:
 		if node is Skeleton3D:
@@ -630,9 +630,10 @@ func set_selected_skel(skel: Variant):
 
 func joint_selected(joint_tree: Tree):
 	selected_bone_name = str(joint_tree.get_selected().get_text(0))
-	var edited_object := get_editor_interface().get_inspector().get_edited_object()
-	if edited_object != null and edited_object is Skeleton3D and edited_object != selected_skel:
-		select_skeleton(edited_object as Skeleton3D)
+	if get_editor_interface().get_inspector().has_method(&"get_edited_object"):
+		var edited_object = get_editor_interface().get_inspector().get_edited_object()
+		if edited_object != null and edited_object is Skeleton3D and edited_object != selected_skel:
+			select_skeleton(edited_object as Skeleton3D)
 	rename_bone_dropdown.size = Vector2(50, 0)
 	show_control(rename_bone_dropdown)
 	set_selected_joint_name(selected_bone_name)
