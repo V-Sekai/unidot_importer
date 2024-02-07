@@ -61,7 +61,7 @@ func detect_spring_bone_collider(obj: RefCounted, state: RefCounted):
 		if matched.is_empty():
 			obj.log_debug("vrm collider missing offset")
 			return
-		var offset: Vector3 = matched[0]
+		var offset: Vector3 = matched[0] * Vector3(-1, 1, 1)
 		matched = find_key(collider, {"insidebound": 0, "m_bound": 0}, TYPE_INT)
 		if matched and matched[0]:
 			obj.log_warn("Ignoring inside collider " + str(root_obj.gameObject) + " radius=" + str(radius) + " offset=" + str(offset))
@@ -69,7 +69,7 @@ func detect_spring_bone_collider(obj: RefCounted, state: RefCounted):
 		matched = find_key(collider, {"tail":0}, TYPE_VECTOR3)
 		var tail: Vector3 = offset
 		if matched:
-			tail = matched[0]
+			tail = matched[0] * Vector3(-1, 1, 1)
 		else:
 			matched = find_key(collider, {"shapetype": 0}, TYPE_INT)
 			if matched.is_empty() or matched[0] == 1:
@@ -191,6 +191,8 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 	matched = find_key(obj.keys, {"radius": 0}, TYPE_FLOAT)
 	if matched:
 		radius = matched[0]
+		var transform_delta: Transform3D = obj.meta.transform_fileid_to_rotation_delta.get(my_fileid, obj.meta.prefab_transform_fileid_to_rotation_delta.get(my_fileid, Transform3D.IDENTITY))
+		radius = transform_delta.basis.get_scale().length() / sqrt(3) * radius
 
 	var add_end_bone: bool = not is_equal_approx(end_length, 0.0) or not end_offset.is_equal_approx(Vector3.ZERO)
 	obj.log_debug("Creating springbone from " + str(type) + " format: drag=" + str(drag) + " stiff=" + str(stiffness) + " radius=" + str(radius) + " gravity=" + str(gravity_multiplier * gravity_direction) + " endbone=" + str(add_end_bone))
@@ -221,6 +223,7 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 				if go_fileid == 0:
 					go_fileid = monobehaviour.keys.get("m_GameObject")[1]
 				transform_fileid = monobehaviour.meta.prefab_gameobject_name_to_fileid_and_children.get(go_fileid, monobehaviour.meta.gameobject_name_to_fileid_and_children.get(go_fileid, {})).get(4, go_fileid)
+				var transform_delta: Transform3D = monobehaviour.meta.transform_fileid_to_rotation_delta.get(transform_fileid, monobehaviour.meta.prefab_transform_fileid_to_rotation_delta.get(transform_fileid, Transform3D.IDENTITY))
 				var bone: String = monobehaviour.meta.fileid_to_skeleton_bone.get(transform_fileid, monobehaviour.meta.prefab_fileid_to_skeleton_bone.get(transform_fileid, ''))
 				var nodepath: NodePath = monobehaviour.meta.fileid_to_nodepath.get(transform_fileid, monobehaviour.meta.prefab_fileid_to_nodepath.get(transform_fileid, NodePath()))
 				obj.meta.log_debug(transform_fileid, "Transform for bone " + str(bone) + " / " + str(nodepath) + " from " + str(go_fileid))
@@ -232,6 +235,10 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 				var resource_name: String
 				for collider in vrm_collider_group.colliders:
 					collider.resource_name = nodepath.get_name(nodepath.get_name_count() - 1) if collider.bone.is_empty() else collider.bone
+					if collider.bone.is_empty() and collider.node_path == NodePath():
+						collider.radius = transform_delta.basis.get_scale().length() / sqrt(3) * collider.radius
+						collider.offset = transform_delta.basis * collider.offset
+						collider.tail = transform_delta.basis * collider.tail
 					collider.bone = bone
 					collider.node_path = nodepath
 				obj.log_debug("Collider " + str(vrm_collider_group) + " created at " + str(nodepath) + " bone=" + str(bone))
@@ -279,13 +286,22 @@ func convert_spring_bone(obj: RefCounted, state: RefCounted) -> Array:
 			# We don't want jiggly head bones and so on.
 			vrm_spring_bone.joint_nodes.remove_at(0)
 		vrm_spring_bone.resource_name = vrm_spring_bone.joint_nodes[0]
-
-		for joint_idx in range(len(vrm_spring_bone.joint_nodes)):
-			vrm_spring_bone.stiffness_force.append(stiffness)
-			vrm_spring_bone.drag_force.append(drag)
-			vrm_spring_bone.hit_radius.append(radius)
-			vrm_spring_bone.gravity_power.append(gravity_multiplier)
-			vrm_spring_bone.gravity_dir.append(gravity_direction)
+		# FIXME: We do not currently support parsing Curve, so we treat all bone as constant. This might cause issues with radius, for example.
+		if typeof(vrm_spring_bone.get(&"gravity_dir_default")) == TYPE_VECTOR3:
+			# New system is property + optional array of points.
+			# TODO: Parse Curve objects and convert to Godot curve, then put these in the vector, or maybe add support for Curve in godot-vrm
+			vrm_spring_bone.stiffness_scale = stiffness
+			vrm_spring_bone.drag_force_scale = drag
+			vrm_spring_bone.hit_radius_scale = radius
+			vrm_spring_bone.gravity_scale = gravity_multiplier
+			vrm_spring_bone.gravity_dir_default = gravity_direction
+		else:
+			for joint_idx in range(len(vrm_spring_bone.joint_nodes)):
+				vrm_spring_bone.stiffness_force.append(stiffness)
+				vrm_spring_bone.drag_force.append(drag)
+				vrm_spring_bone.hit_radius.append(radius)
+				vrm_spring_bone.gravity_power.append(gravity_multiplier)
+				vrm_spring_bone.gravity_dir.append(gravity_direction)
 		obj.log_debug("Created springbone with joints " + str(vrm_spring_bone.joint_nodes))
 		for vrm_collider_group in collider_groups:
 			vrm_spring_bone.collider_groups.append(vrm_collider_group)
@@ -348,10 +364,9 @@ func post_process_avatar(obj: RefCounted, state: RefCounted, node: Node, this_av
 			obj.log_fail("Incorrect script at secondary")
 			return []
 		secondary_node.skeleton = NodePath("../" + str(skelley.godot_skeleton.name))
+		skelley_to_vrm_spring_bones[skelley].sort_custom(func(a, b): return a.resource_name < b.resource_name)
 		for res in skelley_to_vrm_spring_bones[skelley]:
 			secondary_node.spring_bones.append(res)
-		for res in skelley_to_vrm_collider_groups_used[skelley].keys():
-			secondary_node.collider_groups.append(res)
 
 
 func setup_post_children(game_object: RefCounted, state: RefCounted, node: Node, this_avatar_meta: RefCounted):
