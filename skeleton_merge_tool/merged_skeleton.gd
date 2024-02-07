@@ -90,6 +90,27 @@ func uniqify_skins(mesh_instances: Array[MeshInstance3D]) -> Array[Skin]:
 	return unique_skins
 
 
+func fill_global_rests(skel: Skeleton3D, bone_rests: Array[Transform3D], filled_bone_rests: Array[bool], bone_idx: int):
+	filled_bone_rests[bone_idx] = true
+	var parent_idx: int = skel.get_bone_parent(bone_idx)
+	if parent_idx == -1:
+		bone_rests[bone_idx] = skel.get_bone_rest(bone_idx)
+	else:
+		if not filled_bone_rests[parent_idx]:
+			fill_global_rests(skel, bone_rests, filled_bone_rests, parent_idx)
+		bone_rests[bone_idx] = bone_rests[parent_idx] * skel.get_bone_rest(bone_idx)
+
+func get_all_global_rests(skel: Skeleton3D) -> Array[Transform3D]:
+	var this_global_rests: Array[Transform3D]
+	var this_filled_rests: Array[bool]
+	this_global_rests.resize(skel.get_bone_count())
+	this_filled_rests.resize(skel.get_bone_count())
+	for bone_idx in range(skel.get_bone_count()):
+		if not this_filled_rests[bone_idx]:
+			fill_global_rests(skel, this_global_rests, this_filled_rests, bone_idx)
+	return this_global_rests
+
+
 func attach_skeleton(skel_arg: Skeleton3D):
 	target_skel = skel_arg
 	if target_skel == null:
@@ -132,6 +153,17 @@ func attach_skeleton(skel_arg: Skeleton3D):
 	var bone_owners: Dictionary = target_skel.get_meta(&"merged_skeleton_bone_owners")
 	var added_to_owners: Dictionary
 	# var prof := SkeletonProfileHumanoid.new()
+	var bones_added: Dictionary
+
+	var target_global_rests: Array[Transform3D] = get_all_global_rests(target_skel)
+	var my_global_rests: Array[Transform3D] = get_all_global_rests(self)
+	var my_global_rests_by_target_idx: Array[Transform3D]
+	for bone_idx in range(target_skel.get_bone_count()):
+		var my_bone_idx = find_bone(target_skel.get_bone_name(bone_idx))
+		if my_bone_idx == -1:
+			my_global_rests_by_target_idx.append(target_global_rests[bone_idx])
+		else:
+			my_global_rests_by_target_idx.append(my_global_rests[my_bone_idx])
 
 	for bone_key in required_bones:
 		var bone := bone_key as String
@@ -163,20 +195,29 @@ func attach_skeleton(skel_arg: Skeleton3D):
 		bone_chain_to_add.reverse()
 		if DEBUG_SKEL_ERRORS: push_warning("get_bone_name " + str(bone_idx))
 		if DEBUG_SKEL_ERRORS: push_warning("ts find_bone " + str(get_bone_name(bone_idx)))
-		var target_parent_bone_idx: int = target_skel.find_bone(get_bone_name(bone_idx)) 
+		var target_parent_bone_idx: int = target_skel.find_bone(get_bone_name(bone_idx))
+		var par_global_rest = my_global_rests_by_target_idx[target_parent_bone_idx]
 		for chain_bone_idx in bone_chain_to_add:
 			var target_bone_idx: int = target_skel.get_bone_count()
 			if DEBUG_SKEL_ERRORS: push_warning("get_bone_name " + str(chain_bone_idx))
 			target_skel.add_bone(get_bone_name(chain_bone_idx))
+			bones_added[get_bone_name(chain_bone_idx)] = target_bone_idx
 			if target_parent_bone_idx != -1:
 				if DEBUG_SKEL_ERRORS: push_warning("ts set_bone_parent " + str(target_bone_idx) + " " + str(target_parent_bone_idx))
 				target_skel.set_bone_parent(target_bone_idx, target_parent_bone_idx)
 			if DEBUG_SKEL_ERRORS: push_warning("ts set_bone_pose " + str(target_bone_idx))
-			target_skel.set_bone_pose_position(target_bone_idx, get_bone_pose_position(chain_bone_idx))
-			target_skel.set_bone_pose_rotation(target_bone_idx, get_bone_pose_rotation(chain_bone_idx))
-			target_skel.set_bone_pose_scale(target_bone_idx, get_bone_pose_scale(chain_bone_idx))
-			target_skel.set_bone_rest(target_bone_idx, get_bone_rest(chain_bone_idx))
+			var this_global_rest = par_global_rest * get_bone_rest(chain_bone_idx)
+			#target_global_poses
+			target_skel.set_bone_pose_position(target_bone_idx, par_global_rest.orthonormalized().affine_inverse() * this_global_rest.origin) # par_global_pose.orthonormalized().affine_inverse() * this_global_pose.origin)
+			target_skel.set_bone_pose_rotation(target_bone_idx, target_global_rests[target_parent_bone_idx].basis.get_rotation_quaternion().inverse() * this_global_rest.basis.get_rotation_quaternion()) # * get_bone_pose_rotation(chain_bone_idx))
+			# target_skel.set_bone_pose_scale(target_bone_idx, get_bone_pose_scale(chain_bone_idx))
+			target_skel.set_bone_rest(target_bone_idx, Transform3D(
+				Basis(target_global_rests[target_parent_bone_idx].basis.get_rotation_quaternion().inverse() * this_global_rest.basis.get_rotation_quaternion()),
+				par_global_rest.orthonormalized().affine_inverse() * this_global_rest.origin)) # get_bone_rest(chain_bone_idx))
+			target_global_rests.append(target_global_rests[target_parent_bone_idx] * target_skel.get_bone_rest(target_bone_idx))
+			my_global_rests_by_target_idx.append(this_global_rest)
 			target_parent_bone_idx = target_bone_idx
+			par_global_rest = this_global_rest
 
 	target_skel.show_rest_only = old_rest
 
@@ -197,6 +238,9 @@ func attach_skeleton(skel_arg: Skeleton3D):
 		if mesh_inst.get_node_or_null(mesh_inst.get_skeleton_path()) != target_skel:
 			mesh_inst.set_skeleton_path(mesh_inst.get_path_to(target_skel))
 	print(str(name) + " Merging Mesh Instances: " + str(mesh_instances))
+
+	var source_collider_to_target: Dictionary
+	var source_collider_group_to_target: Dictionary
 
 	var cur: Node = get_parent()
 	while cur != null and cur != target_skel:
@@ -223,9 +267,45 @@ func attach_skeleton(skel_arg: Skeleton3D):
 					target_secondary.set_script(secondary.get_script())
 				assert(target_secondary.get_script() == secondary.get_script())
 				for bone in secondary.spring_bones:
+					var is_novel_bone: bool = false
+					for bone_name in bone.joint_nodes:
+						if bones_added.has(bone_name):
+							is_novel_bone = true
+					# As a policy, we only add spring bones if new bones were added.
+					# This way, we avoid duplication of spring bones.
+					if not is_novel_bone:
+						continue
+					bone = bone.duplicate()
+					for cg_i in range(len(bone.collider_groups)):
+						var cg = bone.collider_groups[cg_i]
+						if source_collider_group_to_target.has(cg):
+							cg = source_collider_group_to_target[cg]
+						else:
+							cg = cg.duplicate()
+							source_collider_group_to_target[bone.collider_groups[cg_i]] = cg
+							for col_i in range(len(cg.colliders)):
+								var col = cg.colliders[col_i]
+								if source_collider_to_target.has(col):
+									col = source_collider_to_target[col]
+								else:
+									col = col.duplicate()
+									var target_bone_idx: int = target_skel.find_bone(col.bone)
+									if target_bone_idx != -1:
+										col.offset = target_global_rests[target_bone_idx].basis.inverse() * my_global_rests_by_target_idx[target_bone_idx].basis * col.offset
+										col.tail = target_global_rests[target_bone_idx].basis.inverse() * my_global_rests_by_target_idx[target_bone_idx].basis * col.offset
+										col.radius = (target_global_rests[target_bone_idx].basis.inverse() * my_global_rests_by_target_idx[target_bone_idx].basis).get_scale().length() / sqrt(3) * col.radius
+									source_collider_to_target[cg.colliders[col_i]] = col
+								cg.colliders[col_i] = col
+						bone.collider_groups[cg_i] = cg
+						var target_bone_idx: int = target_skel.find_bone(bone.joint_nodes[0])
+						if target_bone_idx != -1:
+							var mul: float = (target_global_rests[target_bone_idx].basis.inverse() * my_global_rests_by_target_idx[target_bone_idx].basis).get_scale().length() / sqrt(3)
+							if false and typeof(bone.get(&"hit_radius_scale")) == TYPE_FLOAT:
+								bone.hit_radius_scale = mul * bone.hit_radius_scale
+							else:
+								for bone_i in range(len(bone.hit_radius)):
+									bone.hit_radius[bone_i] = mul * bone.hit_radius[bone_i]
 					target_secondary.spring_bones.append(bone)
-				for bone in secondary.collider_groups:
-					target_secondary.collider_groups.append(bone)
 				target_secondary.skeleton = target_secondary.get_path_to(target_skel)
 				if target_parent.get_script() == null:
 					target_parent.set_script(cur.get_script())
@@ -248,30 +328,6 @@ func detach_skeleton():
 		#set_bone_pose_scale(bone, Vector3.ONE)
 	print(str(name) + "Detaching Bone Attachments: " + str(bone_attachments))
 	print(str(name) + "Detaching Mesh Instances: " + str(mesh_instances))
-
-	if secondary != null and target_secondary != null:
-		var sb_set: Dictionary
-		for bone in secondary.spring_bones:
-			sb_set[bone] = true
-		var cg_set: Dictionary
-		for cg in secondary.collider_groups:
-			cg_set[cg] = true
-
-		var old_list = target_secondary.spring_bones.duplicate()
-		target_secondary.spring_bones.clear()
-		for bone in old_list:
-			if not sb_set.has(bone):
-				target_secondary.spring_bones.append(bone)
-				sb_set[bone] = true
-		old_list = target_secondary.collider_groups.duplicate()
-		target_secondary.collider_groups.clear()
-		for cg in old_list:
-			if not cg_set.has(cg):
-				cg_set[cg] = true
-				target_secondary.collider_groups.append(cg)
-	if target_secondary != null:
-		target_skel.clear_bones_global_pose_override()
-		target_secondary._ready()
 
 	#push_warning("Before bone attachments")
 	for attachment in bone_attachments:
@@ -324,7 +380,26 @@ func detach_skeleton():
 		else:
 			bone_owners[bone_name].erase(my_path_from_skel)
 	print("Removing bones from parent skeleton: " + str(bones_to_erase))
+
 	if not bones_to_erase.is_empty():
+		if secondary != null and target_secondary != null:
+			var sb_set: Dictionary
+			for bone in target_secondary.spring_bones:
+				# We only delete bones which are attached to new joints we are removing.
+				for bone_name in bone.joint_nodes:
+					if bones_to_erase.has(bone_name):
+						sb_set[bone] = true
+
+			var old_list = target_secondary.spring_bones.duplicate()
+			target_secondary.spring_bones.clear()
+			for bone in old_list:
+				if not sb_set.has(bone):
+					target_secondary.spring_bones.append(bone)
+					sb_set[bone] = true
+		if target_secondary != null:
+			target_skel.clear_bones_global_pose_override()
+			target_secondary._ready()
+
 		for bone_name in bones_to_erase:
 			bone_owners.erase(bone_name)
 		#push_warning("Cleared bone owners")
@@ -482,6 +557,7 @@ func _notification(what):
 		return
 	match what:
 		NOTIFICATION_UPDATE_SKELETON:
+			print("GOT A BAD UPDATE SKELELEY")
 			update_skin_poses()
 			pass
 
