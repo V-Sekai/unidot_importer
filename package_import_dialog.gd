@@ -97,6 +97,10 @@ var batch_import_types: Dictionary
 var progress_bar : ProgressBar
 var status_bar : Label
 var options_vbox : VBoxContainer
+var show_advanced_options: CheckButton
+var advanced_options_container: Container
+var advanced_options_hbox : HBoxContainer
+var advanced_options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
 var global_logs_tree_item: TreeItem
@@ -177,7 +181,7 @@ func _set_indeterminate_up_recursively(ti: TreeItem, is_checked: bool):
 			ti.set_checked(0, false)
 			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
 			if ti == select_by_type_items.get(ti.get_text(0)):
-				batch_import_types[ti.get_text(0)] = true
+				batch_import_types[ti.get_text(0)] = false
 	else:
 		if not ti.is_indeterminate(0):
 			ti.set_checked(0, false)
@@ -763,28 +767,35 @@ func _selected_package(p_path: String) -> void:
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 
-	dont_auto_select_dependencies_checkbox = _add_checkbox_option(options_vbox, "Hold shift to select dependencies", false if asset_database.auto_select_dependencies else true)
+	dont_auto_select_dependencies_checkbox = _add_checkbox_option("Hold shift to select dependencies", false if asset_database.auto_select_dependencies else true)
 	dont_auto_select_dependencies_checkbox.toggled.connect(self._dont_auto_select_dependencies_checkbox_changed)
-	save_text_resources = _add_checkbox_option(options_vbox, "Save resources as text .tres (slow)", true if asset_database.use_text_resources else false)
+	save_text_resources = _add_advanced_checkbox_option("Save resources as text .tres (slow)", true if asset_database.use_text_resources else false)
 	save_text_resources.toggled.connect(self._save_text_resources_changed)
-	save_text_scenes = _add_checkbox_option(options_vbox, "Save scenes as text .tscn (slow)", true if asset_database.use_text_scenes else false)
+	save_text_scenes = _add_advanced_checkbox_option("Save scenes as text .tscn (slow)", true if asset_database.use_text_scenes else false)
 	save_text_scenes.toggled.connect(self._save_text_scenes_changed)
-	skip_reimport_models_checkbox = _add_checkbox_option(options_vbox, "Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
+	skip_reimport_models_checkbox = _add_advanced_checkbox_option("Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
 	skip_reimport_models_checkbox.toggled.connect(self._skip_reimport_models_checkbox_changed)
-	set_animation_trees_active_checkbox = _add_checkbox_option(options_vbox, "Allow active AnimationTrees (animate in editor)", true if asset_database.set_animation_trees_active else false)
+	set_animation_trees_active_checkbox = _add_checkbox_option("Import active AnimationTrees (animate in editor)", true if asset_database.set_animation_trees_active else false)
 	set_animation_trees_active_checkbox.toggled.connect(self._set_animation_trees_active_changed)
-	enable_unidot_keys_checkbox = _add_checkbox_option(options_vbox, "Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
+	enable_unidot_keys_checkbox = _add_advanced_checkbox_option("Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
 	enable_unidot_keys_checkbox.toggled.connect(self._enable_unidot_keys_changed)
-	add_unsupported_components_checkbox = _add_checkbox_option(options_vbox, "Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
+	add_unsupported_components_checkbox = _add_advanced_checkbox_option("Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
 	add_unsupported_components_checkbox.toggled.connect(self._add_unsupported_components_changed)
-	debug_disable_silhouette_fix_checkbox = _add_checkbox_option(options_vbox, "Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
+	debug_disable_silhouette_fix_checkbox = _add_advanced_checkbox_option("Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
 	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
-	force_humanoid_checkbox = _add_checkbox_option(options_vbox, "Force humanoid import of all FBX", true if asset_database.force_humanoid else false)
-	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
-	enable_verbose_log_checkbox = _add_checkbox_option(options_vbox, "Enable verbose logs", true if asset_database.enable_verbose_logs else false)
+	enable_verbose_log_checkbox = _add_advanced_checkbox_option("Enable verbose logs", true if asset_database.enable_verbose_logs else false)
 	enable_verbose_log_checkbox.toggled.connect(self._enable_verbose_log_changed)
-	enable_vrm_spring_bones_checkbox = _add_checkbox_option(options_vbox, "Convert dynamic bones to VRM springbone", true if asset_database.vrm_spring_bones else false)
+	enable_vrm_spring_bones_checkbox = _add_checkbox_option("Convert dynamic bones to VRM springbone", true if asset_database.vrm_spring_bones else false)
 	enable_vrm_spring_bones_checkbox.toggled.connect(self._enable_vrm_spring_bones_changed)
+	force_humanoid_checkbox = _add_checkbox_option("Import ALL scenes as humanoid retargeted skeletons", true if asset_database.force_humanoid else false)
+	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
+
+	var vspace := Control.new()
+	vspace.custom_minimum_size = Vector2(0, 16)
+	vspace.size = Vector2(0, 16)
+	options_vbox.add_child(vspace)
+	options_vbox.add_child(advanced_options_container)
+	options_vbox.add_child(vspace.duplicate())
 
 	batch_import_list_widget = ItemList.new()
 	batch_import_list_widget.item_activated.connect(self._batch_import_list_widget_activated)
@@ -957,15 +968,22 @@ func _auto_hide_toggled(is_on: bool) -> void:
 	_keep_open_on_import = not is_on
 
 
-func _add_checkbox_option(options_vbox: VBoxContainer, optname: String, defl: bool = false) -> CheckBox:
+func _add_checkbox_option(optname: String, defl: bool, this_options_vbox: VBoxContainer = null) -> CheckBox:
+	if this_options_vbox == null:
+		this_options_vbox = options_vbox
 	var checkbox := CheckBox.new()
 	checkbox.text = optname
 	checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
 	checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	checkbox.size_flags_stretch_ratio = 0.0
-	options_vbox.add_child(checkbox)
+	this_options_vbox.add_child(checkbox)
 	checkbox.button_pressed = defl
 	return checkbox
+
+func _add_advanced_checkbox_option(optname: String, defl: bool):
+	if defl and not show_advanced_options.button_pressed:
+		show_advanced_options.button_pressed = true
+	return _add_checkbox_option(optname, defl, advanced_options_vbox)
 
 
 func _save_text_resources_changed(val: bool):
@@ -1003,6 +1021,9 @@ func _enable_verbose_log_changed(val: bool):
 
 func _enable_vrm_spring_bones_changed(val: bool):
 	asset_database.vrm_spring_bones = val
+
+func _show_advanced_options_toggled(val: bool):
+	advanced_options_hbox.visible = val
 
 func _add_batch_import():
 	if file_dialog:
@@ -1109,6 +1130,33 @@ func _show_importer_common() -> void:
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	options_vbox = VBoxContainer.new()
+	show_advanced_options = CheckButton.new()
+	show_advanced_options.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	show_advanced_options.add_theme_icon_override(&"unchecked", base_control.get_theme_icon(&"arrow_collapsed", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"checked", base_control.get_theme_icon(&"arrow", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"unchecked_mirrored", base_control.get_theme_icon(&"arrow_collapsed_mirrored", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"checked_mirrored", base_control.get_theme_icon(&"arrow", &"Tree"))
+	show_advanced_options.text = "Advanced Settings"
+	show_advanced_options.toggled.connect(self._show_advanced_options_toggled)
+	advanced_options_hbox = HBoxContainer.new()
+	advanced_options_hbox.hide()
+	advanced_options_hbox.add_spacer(true).custom_minimum_size = Vector2(16, 0)
+	advanced_options_vbox = VBoxContainer.new()
+	advanced_options_hbox.add_child(advanced_options_vbox)
+	advanced_options_container = PanelContainer.new()
+	var new_stylebox_normal = advanced_options_container.get_theme_stylebox("panel").duplicate()
+	if not (new_stylebox_normal is StyleBoxFlat):
+		new_stylebox_normal = StyleBoxFlat.new()
+	new_stylebox_normal.set_border_width_all(2)
+	new_stylebox_normal.set_corner_radius_all(3)
+	new_stylebox_normal.set_expand_margin_all(4)
+	new_stylebox_normal.border_color = Color(0.5, 0.5, 0.5)
+	advanced_options_container.add_theme_stylebox_override("panel", new_stylebox_normal)
+	var adv_panel_inner_vbox := VBoxContainer.new()
+	advanced_options_container.add_child(adv_panel_inner_vbox)
+	adv_panel_inner_vbox.add_child(show_advanced_options)
+	adv_panel_inner_vbox.add_child(advanced_options_hbox)
+
 	hbox.size_flags_stretch_ratio = 1.0
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1212,6 +1260,7 @@ func on_import_fully_completed():
 		rc._selected_package(batch_import_file_list[0])
 		rc.batch_import_file_list = batch_import_file_list.slice(1)
 		rc.batch_import_types = batch_import_types
+		print(batch_import_types)
 		rc.auto_import = true
 		rc._keep_open_on_import = _keep_open_on_import
 		if rc.batch_import_list_widget != null:
@@ -1592,7 +1641,7 @@ func _asset_processing_finished(tw: Object):
 	if _currently_preprocessing_assets == 0:
 		if not _preprocessing_second_pass.is_empty():
 			_preprocess_second_pass()
-			status_bar.text = "Preprocessing humanoid FBX2glTF... " + str(_currently_preprocessing_assets) + " remaining."
+			status_bar.text = "Preprocessing humanoid or dependent fbx... " + str(_currently_preprocessing_assets) + " remaining."
 			_preprocessing_second_pass = [].duplicate()
 		else:
 			_done_preprocessing_assets()
