@@ -261,6 +261,7 @@ func attach_skeleton(skel_arg: Skeleton3D):
 				if target_secondary == null:
 					target_secondary = Node3D.new()
 					target_secondary.name = "secondary"
+					target_secondary.set_script(secondary.get_script())
 					target_parent.add_child(target_secondary)
 					target_secondary.owner = target_skel.owner
 				if target_secondary.get_script() == null:

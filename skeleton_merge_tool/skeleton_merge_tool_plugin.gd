@@ -426,9 +426,55 @@ func merge_compatible_armature_button_clicked():
 		anim.set("reset_on_save", false)
 		anim.set("active", false)
 
+	var showing_warning: bool = false
+	for skel_node in new_child.find_children("*", "Skeleton3D"):
+		var skel := skel_node as Skeleton3D
+		if skel == null:
+			continue
+		skel.set_display_folded(true)
+		if skel.get_script() == null:
+			var par: Node3D = skel.get_parent_node_3d()
+			while par != null:
+				if par is Skeleton3D:
+					break
+				par = par.get_parent_node_3d()
+			if par != null:
+				var relative_basis := Basis.IDENTITY
+				var tmpnode: Node3D = skel
+				while tmpnode != null and tmpnode != par:
+					relative_basis = tmpnode.basis * relative_basis
+					tmpnode = tmpnode.get_parent_node_3d()
+				print(relative_basis)
+				if not relative_basis.is_equal_approx(Basis.IDENTITY) and not showing_warning:
+					var cd := ConfirmationDialog.new()
+					print("DO SHOW A WARNING")
+					cd.title = "Merge Armature"
+					if relative_basis.get_rotation_quaternion().is_equal_approx(Quaternion.IDENTITY):
+						cd.dialog_text = (
+							"The skeleton you are merging has a non-identity scale.\n" +
+							"This may lead to glitches with additional bones and dynamics.\n\n" +
+							"It is recommended to enable humanoid retargeting on the Skeleton3D in the import settings."
+						)
+					else:
+						cd.dialog_text = (
+							"The skeleton you are merging has not been retargeted and is unsupported.\n" +
+							"Many features will function incorrectly.\n\n" +
+							"Please enable humanoid retargeting on the Skeleton3D in the import settings."
+						)
+					cd.ok_button_text = "Continue anyway"
+					cd.transient = true
+					cd.confirmed.connect(_confirmed_merge_armature)
+					add_child(cd)
+					cd.popup_centered()
+					showing_warning = true
+	if not showing_warning:
+		_confirmed_merge_armature()
+
+func _confirmed_merge_armature():
 	var created_act := false
 	var undoredo := get_undo_redo()
-	for skel_node in new_child.find_children("*", "Skeleton3D"):
+
+	for skel_node in merge_armature_selected_node.find_children("*", "Skeleton3D"):
 		var skel := skel_node as Skeleton3D
 		if skel == null:
 			continue
