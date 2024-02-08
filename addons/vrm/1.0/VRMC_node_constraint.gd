@@ -29,7 +29,7 @@ func _import_post_parse(gltf_state: GLTFState) -> Error:
 
 func _import_post(gltf_state: GLTFState, root: Node) -> Error:
 	# Add the constraint applier to the real root, next to the AnimationPlayer.
-	var applier: BoneNodeConstraintApplier = gltf_state.get_additional_data(&"BoneNodeConstraintApplier")
+	var applier: bone_node_constraint_applier = gltf_state.get_additional_data(&"BoneNodeConstraintApplier")
 	root.add_child(applier)
 	applier.owner = root
 	# Set up the constraints.
