@@ -1,11 +1,21 @@
 extends RefCounted
 
-var vrm_spring_bone_class = load("res://addons/vrm/vrm_spring_bone.gd")
-var vrm_collider_class = load("res://addons/vrm/vrm_collider.gd")
-var vrm_collider_group_class = load("res://addons/vrm/vrm_collider_group.gd")
-var vrm_meta_class = load("res://addons/vrm/vrm_meta.gd")
-var vrm_toplevel_class = load("res://addons/vrm/vrm_toplevel.gd")
-var vrm_secondary_class = load("res://addons/vrm/vrm_secondary.gd")
+var vrm_spring_bone_class
+var vrm_collider_class
+var vrm_collider_group_class
+var vrm_meta_class
+var vrm_toplevel_class
+var vrm_secondary_class
+
+func _init():
+	var da := DirAccess.open("res://")
+	if da.file_exists("res://addons/vrm/vrm_spring_bone.gd"):
+		vrm_spring_bone_class = load("res://addons/vrm/vrm_spring_bone.gd")
+		vrm_collider_class = load("res://addons/vrm/vrm_collider.gd")
+		vrm_collider_group_class = load("res://addons/vrm/vrm_collider_group.gd")
+		vrm_meta_class = load("res://addons/vrm/vrm_meta.gd")
+		vrm_toplevel_class = load("res://addons/vrm/vrm_toplevel.gd")
+		vrm_secondary_class = load("res://addons/vrm/vrm_secondary.gd")
 
 
 func find_key(keys: Dictionary, try_strings: Dictionary, type: int) -> Array:

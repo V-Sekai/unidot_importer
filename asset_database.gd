@@ -25,8 +25,8 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var force_humanoid: bool = false
 @export var enable_verbose_logs: bool = false
 @export var set_animation_trees_active: bool = true
-@export var vrm_spring_bones: bool = false
-var vrm_integration_plugin := vrm_integration_class.new()
+@export var vrm_spring_bones: bool = true
+var vrm_integration_plugin
 var log_limit_per_guid: int = 100000
 
 @export var global_log_count: int = 0
@@ -120,6 +120,8 @@ func log_fail(local_ref: Array, msg: String, field: String = "", remote_ref: Arr
 
 func get_enabled_plugins() -> Array[RefCounted]:
 	if vrm_spring_bones:
+		if vrm_integration_plugin == null:
+			vrm_integration_plugin = vrm_integration_class.new()
 		return [vrm_integration_plugin]
 	return []
 
