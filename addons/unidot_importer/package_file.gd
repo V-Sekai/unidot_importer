@@ -273,7 +273,7 @@ func get_all_files(path: String, file_ext: String, files: Array[String]):
 			if dir.current_is_dir():
 				get_all_files(dir.get_current_dir().path_join(file_name), file_ext, files)
 			else:
-				if file_ext and file_name.get_extension().to_lower() != file_ext:
+				if not file_ext.is_empty() and file_name.get_extension().to_lower() != file_ext:
 					file_name = dir.get_next()
 					continue
 				files.append(dir.get_current_dir().path_join(file_name))

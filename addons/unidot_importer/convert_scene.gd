@@ -131,7 +131,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			ps.non_stripped_prefab_references[prefab_instance_id].push_back(asset)
 		elif asset.type == "Transform" or asset.type == "PrefabInstance":
 			parent = asset.parent
-			if parent != null and parent.is_prefab_reference:
+			if parent != null and parent.is_prefab_reference and (asset.type == "PrefabInstance" or not asset.is_prefab_reference):
 				var prefab_instance_id: int = parent.prefab_instance[1]
 				var prefab_source_object: int = parent.prefab_source_object[1]
 				if not ps.transforms_by_parented_prefab.has(prefab_instance_id):
@@ -142,7 +142,7 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				#ps.transforms_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.child_transforms_by_stripped_id[parent.fileID].push_back(asset)
 			#elif parent != null and asset.type == "PrefabInstance":
-			#	var uk: String = asset.parent.uniq_key
+			#	var uk: String = asset.parent.fileID
 			#	if not ps.prefab_parents.has(uk):
 			#		ps.prefab_parents[uk] = []
 			#	ps.prefab_parents[uk].append(asset)
@@ -237,19 +237,17 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				#ps.gameobjects_by_parented_prefab_source_obj[str(prefab_instance_id) + "/" + str(prefab_source_object)] = parent
 				ps.components_by_stripped_id[parent.fileID].push_back(asset)
 
-	var skelleys_with_no_parent: Array = node_state.initialize_skelleys(pkgasset.parsed_asset.assets.values())
+	var skelleys_with_no_parent: Array = node_state.initialize_skelleys(pkgasset.parsed_asset.assets.values(), is_prefab)
 
-	if len(skelleys_with_no_parent) == 1:
-		scene_contents = skelleys_with_no_parent[0].godot_skeleton
-		scene_contents.name = "RootSkeleton"
-		node_state = node_state.state_with_owner(scene_contents)
-	elif len(skelleys_with_no_parent) > 1:
-		# assert(not is_prefab)
+	if len(skelleys_with_no_parent) >= 1:
 		if scene_contents == null:
-			pkgasset.log_fail("Not able to handle multiple skeletons with no parent in a prefab")
-		else:
-			for noparskel in skelleys_with_no_parent:
-				scene_contents.add_child(noparskel.godot_skeleton, true)
+			scene_contents = Node3D.new()
+			scene_contents.name = "RootNode3D"
+		node_state = node_state.state_with_owner(scene_contents)
+		for noparskel in skelleys_with_no_parent:
+			if noparskel.humanoid_avatar_meta != null:
+				node_state = node_state.state_with_avatar_meta(noparskel.humanoid_avatar_meta)
+			scene_contents.add_child(noparskel.godot_skeleton, true)
 	#var fileid_to_prefab_nodepath = {}.duplicate()
 	#var fileid_to_prefab_ref = {}.duplicate()
 	#pkgasset.parsed_meta.fileid_to_prefab_nodepath = {}
@@ -260,11 +258,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			var skelley: RefCounted = asset.get_skelley(node_state)
 			if skelley != null:
 				skelley.skinned_mesh_renderers.append(asset)
-	for skelley in skelleys_with_no_parent:
-		for smr in skelley.skinned_mesh_renderers:
-			var ret: Node = smr.create_skinned_mesh(node_state)
-			if ret != null:
-				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr.uniq_key) + " into top-level Skeleton " + str(scene_contents.get_path_to(ret)))
 
 	node_state.env = env
 	node_state.set_main_name_map(node_state.prefab_state.gameobject_name_map, node_state.prefab_state.prefab_gameobject_name_map)
@@ -276,9 +269,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 		var skel: RefCounted = null
 		# FIXME: PrefabInstances pointing to a scene whose root node is a Skeleton may not work.
 		if asset.transform != null:
-			skel = node_state.uniq_key_to_skelley.get(asset.transform.uniq_key, null)
+			skel = node_state.fileID_to_skelley.get(asset.transform.fileID, null)
 		if skel != null:
-			if len(skelleys_with_no_parent) > 1:
+			if len(skelleys_with_no_parent) >= 1:
 				# If a toplevel node is part of a skeleton, insert the skeleton between the actual root and the toplevel node.
 				scene_contents.add_child(skel.godot_skeleton, true)
 				skel.owner = scene_contents
@@ -297,6 +290,12 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 				# assert(not is_prefab)
 			if asset.type == "PrefabInstance":
 				node_state.add_prefab_to_parent_transform(0, asset.fileID)
+
+	for skelley in skelleys_with_no_parent:
+		for smr in skelley.skinned_mesh_renderers:
+			var ret: Node = smr.create_skinned_mesh(node_state)
+			if ret != null:
+				smr.log_debug("Finally added SkinnedMeshRenderer " + str(smr) + " into top-level Skeleton " + str(scene_contents.get_path_to(ret)))
 
 	# scene_contents = node_state.owner
 	if scene_contents == null:
@@ -344,6 +343,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 					if mono.keys.get("isGlobal", 0) == 1 and mono.keys.get("weight", 0) > 0.0:
 						mono.log_debug("Would merge PostProcessingVolume profile " + str(mono.keys.get("sharedProfile")))
 
+	for plugin in pkgasset.parsed_meta.get_enabled_plugins():
+		plugin.setup_post_scene(pkgasset, arr, skelleys_with_no_parent, node_state, scene_contents)
+
 	var light_probes: Array[Node] = scene_contents.find_children("*", "LightmapProbe")
 	var heights = []
 
@@ -387,15 +389,6 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 	packed_scene.pack(scene_contents)
 	pkgasset.log_debug("Finished packing " + pkgasset.pathname + " with " + str(scene_contents.get_child_count()) + " nodes.")
 	recursive_print(pkgasset, scene_contents)
-	var editable_hack: Dictionary = packed_scene._bundled
-	for ecpath in ps.prefab_instance_paths:
-		pkgasset.log_debug(str(editable_hack.keys()))
-		editable_hack.get("editable_instances").push_back(str(ecpath))
-	packed_scene._bundled = editable_hack
-	packed_scene.pack(scene_contents)
-	#pkgasset.log_debug(packed_scene)
-	#var pi = packed_scene.instance(PackedScene.GEN_EDIT_STATE_INSTANCE)
-	#pkgasset.log_debug(pi.get_child_count())
 	return packed_scene
 
 

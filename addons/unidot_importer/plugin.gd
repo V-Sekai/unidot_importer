@@ -12,6 +12,8 @@ var package_import_dialog: RefCounted = null
 var last_selected_dir: String = ""
 var file_dialog_mode := EditorFileDialog.DISPLAY_LIST
 
+var skeleton_merge_tool_plugin : EditorPlugin
+
 
 func recursive_print(node: Node, indent: String = ""):
 	var fnstr = "" if str(node.filename) == "" else (" (" + str(node.filename) + ")")
@@ -77,7 +79,7 @@ func anim_import():
 					nod.get_animation_library("").add_animation(anim_raw.objects[obj]["m_Name"], anim)
 
 func _enter_tree():
-	print("run enter tree")
+	# print("run enter tree")
 	var es = get_editor_interface().get_editor_settings()
 	var ep = get_editor_interface().get_editor_paths()
 	var data_parent = ep.get_data_dir().get_base_dir()
@@ -106,16 +108,22 @@ func _enter_tree():
 	add_tool_menu_item("Reimport extracted .unitypackage...", self.show_reimport)
 	add_tool_menu_item("Show last Unidot import logs", self.show_importer_logs)
 	#add_tool_menu_item("Debug Anim", self.anim_import)
-	#add_tool_menu_item("Queue Test...", self.queue_test)
-	#add_tool_menu_item("Print scene nodes with owner...", self.anim_import) # self.recursive_print_scene)
-
+	var skeleton_merge_tool_class = load(get_script().resource_path.get_base_dir().path_join("skeleton_merge_tool/skeleton_merge_tool_plugin.gd"))
+	if skeleton_merge_tool_class != null:
+		skeleton_merge_tool_plugin = skeleton_merge_tool_class.new()
+		add_child(skeleton_merge_tool_plugin)
 
 func _exit_tree():
-	print("run exit tree")
+	# print("run exit tree")
 	#remove_tool_menu_item("Print scene nodes with owner...")
 	#remove_tool_menu_item("Reimport previous files")
 	remove_tool_menu_item("Import .unitypackage or dir with Unidot...")
 	remove_tool_menu_item("Reimport extracted .unitypackage...")
 	remove_tool_menu_item("Show last Unidot import logs")
 	#remove_tool_menu_item("Debug Anim")
-	#remove_tool_menu_item("Queue Test...")
+	if skeleton_merge_tool_plugin != null:
+		remove_child(skeleton_merge_tool_plugin)
+		skeleton_merge_tool_plugin.queue_free()
+
+func _handles(p_object) -> bool:
+	return skeleton_merge_tool_plugin._handles(p_object)

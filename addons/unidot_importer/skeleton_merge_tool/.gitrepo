@@ -4,9 +4,9 @@
 ; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
 ;
 [subrepo]
-	remote = https://github.com/V-Sekai/unidot_importer
+	remote = https://github.com/V-Sekai/godot-skeleton-merge-tool.git
 	branch = main
-	commit = dfab16fa87a13fc9d084d6b5bd3660378e9f680a
-	parent = 446c0b5c7742ca5b67f2685e432611c1f2c5eaa1
+	commit = 90bd5d140887aa4bf359affa6ff76a807b7bd2ce
+	parent = 869d9148f1e071b53c25053d73c7f04333d8cdfa
 	method = merge
 	cmdver = 0.4.6

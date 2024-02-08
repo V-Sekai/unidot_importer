@@ -60,7 +60,6 @@ var checkbox_on_unicode: String = "\u2611"
 
 var tmpdir: String = ""
 var asset_database: asset_database_class = null
-
 var current_selected_package: String
 var tree_dialog_state: int = 0
 var path_to_tree_item: Dictionary
@@ -81,11 +80,13 @@ var dont_auto_select_dependencies_checkbox: CheckBox
 var save_text_resources: CheckBox
 var save_text_scenes: CheckBox
 var skip_reimport_models_checkbox: CheckBox = null
+var set_animation_trees_active_checkbox: CheckBox
 var enable_unidot_keys_checkbox: CheckBox
 var add_unsupported_components_checkbox: CheckBox
 var debug_disable_silhouette_fix_checkbox: CheckBox
 var force_humanoid_checkbox: CheckBox
 var enable_verbose_log_checkbox: CheckBox
+var enable_vrm_spring_bones_checkbox: CheckBox
 
 var batch_import_list_widget: ItemList
 var batch_import_add_button: Button
@@ -96,6 +97,10 @@ var batch_import_types: Dictionary
 var progress_bar : ProgressBar
 var status_bar : Label
 var options_vbox : VBoxContainer
+var show_advanced_options: CheckButton
+var advanced_options_container: Container
+var advanced_options_hbox : HBoxContainer
+var advanced_options_vbox : VBoxContainer
 var import_finished: bool = false
 var written_additional_textures: bool = false
 var global_logs_tree_item: TreeItem
@@ -119,6 +124,7 @@ var asset_scenes: Array = [].duplicate()
 
 var result_log_lineedit: TextEdit 
 
+var new_editor_plugin := EditorPlugin.new()
 var pkg: Object = null  # Type package_file, set in _selected_package
 
 func _resource_reimported(resources: PackedStringArray):
@@ -146,7 +152,7 @@ func _init():
 	import_worker2.stage2 = true
 	import_worker2.asset_processing_finished.connect(self._asset_processing_stage2_finished, CONNECT_DEFERRED)
 	tmpdir = asset_adapter.create_temp_dir()
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	editor_filesystem.resources_reimported.connect(self._resource_reimported)
 	editor_filesystem.resources_reload.connect(self._resource_reloaded)
 
@@ -175,7 +181,7 @@ func _set_indeterminate_up_recursively(ti: TreeItem, is_checked: bool):
 			ti.set_checked(0, false)
 			_set_indeterminate_up_recursively(ti.get_parent(), is_checked)
 			if ti == select_by_type_items.get(ti.get_text(0)):
-				batch_import_types[ti.get_text(0)] = true
+				batch_import_types[ti.get_text(0)] = false
 	else:
 		if not ti.is_indeterminate(0):
 			ti.set_checked(0, false)
@@ -266,6 +272,28 @@ func update_global_logs():
 		result_log_lineedit.text = '\n'.join(visible_log_lines)
 		result_log_lineedit.scroll_vertical = current_scroll
 
+
+func update_all_logs():
+	var root_ti: TreeItem = main_dialog_tree.get_root()
+	var current_scroll = result_log_lineedit.scroll_vertical
+	var child_list: Array[TreeItem]
+	_get_children_recursive(child_list, root_ti)
+	visible_log_lines.resize(0)
+	var filtered_msgs: PackedStringArray
+	for child_ti in child_list:
+		for sub_col in range(2, 5):
+			child_ti.set_metadata(sub_col, null)
+	for child_ti in child_list:
+		if child_ti.get_parent() == null:
+			continue
+		for sub_col in range(2, 5):
+			if child_ti.is_checked(sub_col):
+				if not child_ti.get_parent().is_checked(sub_col):
+					log_column_checked(child_ti, sub_col, true, false)
+				break
+	result_log_lineedit.text = '\n'.join(visible_log_lines)
+	result_log_lineedit.scroll_vertical = current_scroll
+	result_log_lineedit.visible = true
 
 class ErrorSyntaxHighlighter extends SyntaxHighlighter:
 	var fail_highlight: Dictionary
@@ -390,6 +418,10 @@ func _cell_selected() -> void:
 			_check_recursively(ti, new_checked, process_dependencies)
 	elif col >= 2:
 		ti.set_checked(col, not ti.is_checked(col))
+		log_column_checked(ti, col, ti.is_checked(col))
+
+func log_column_checked(ti: TreeItem, col: int, is_checked: bool, update_textbox: bool=true):
+	if col >= 2:
 		var current_scroll = result_log_lineedit.scroll_vertical
 		var child_list: Array[TreeItem]
 		_get_children_recursive(child_list, ti)
@@ -450,13 +482,10 @@ func _cell_selected() -> void:
 						child_ti.set_selectable(sub_col, true)
 		#print("Updating text " + str(ti.is_checked(col)))
 		#print(len(visible_log_lines))
-		result_log_lineedit.text = '\n'.join(visible_log_lines)
-		result_log_lineedit.scroll_vertical = current_scroll
-		main_dialog_tree.size_flags_stretch_ratio = 1.0
-		options_vbox.visible = false
-		result_log_lineedit.visible = true # not visible_log_lines.is_empty()
-		main_dialog.get_ok_button().visible = false
-		result_log_lineedit.size_flags_stretch_ratio = 1.0
+		if update_textbox:
+			result_log_lineedit.text = '\n'.join(visible_log_lines)
+			result_log_lineedit.scroll_vertical = current_scroll
+			result_log_lineedit.visible = true # not visible_log_lines.is_empty()
 
 const HUMAN_READABLE_NAMES: Dictionary = {
 	5866666021909216657: "Animator",
@@ -623,6 +652,27 @@ func _meta_completed(tw: Object):
 
 	if _meta_work_count <= 0:
 		if auto_import:
+			if preprocess_timer != null:
+				preprocess_timer.queue_free()
+			preprocess_timer = Timer.new()
+			preprocess_timer.wait_time = 0.1
+			preprocess_timer.autostart = true
+			preprocess_timer.process_callback = Timer.TIMER_PROCESS_IDLE
+			new_editor_plugin.get_editor_interface().get_base_control().add_child(preprocess_timer, true)
+			preprocess_timer.timeout.connect(self._auto_import_tick)
+
+var auto_clean_tick_count = 10
+
+func _auto_import_tick():
+	if new_editor_plugin.get_editor_interface().get_resource_filesystem().is_scanning():
+		auto_clean_tick_count = 10
+	else:
+		# Reduce chance of race condition with editor scanning / import
+		auto_clean_tick_count -= 1
+		if auto_clean_tick_count < 0:
+			preprocess_timer.timeout.disconnect(self._auto_import_tick)
+			preprocess_timer.queue_free()
+			preprocess_timer = null
 			_asset_tree_window_confirmed()
 
 
@@ -681,7 +731,7 @@ func _selected_package(p_path: String) -> void:
 	current_selected_package = p_path
 	main_dialog.title = "Select Assets to import from " + current_selected_package.get_file()
 	print(editor_plugin)
-	if editor_plugin != null:
+	if editor_plugin != null and file_dialog != null:
 		editor_plugin.last_selected_dir = file_dialog.current_dir
 		editor_plugin.file_dialog_mode = file_dialog.display_mode
 		print("CURRENT DIR " + file_dialog.current_dir)
@@ -717,24 +767,35 @@ func _selected_package(p_path: String) -> void:
 	asset_database.in_package_import = true
 	asset_database.log_debug([null, 0, "", 0], "Asset database object returned " + str(asset_database))
 
-	dont_auto_select_dependencies_checkbox = _add_checkbox_option(options_vbox, "Hold shift to select dependencies", false if asset_database.auto_select_dependencies else true)
+	dont_auto_select_dependencies_checkbox = _add_checkbox_option("Hold shift to select dependencies", false if asset_database.auto_select_dependencies else true)
 	dont_auto_select_dependencies_checkbox.toggled.connect(self._dont_auto_select_dependencies_checkbox_changed)
-	save_text_resources = _add_checkbox_option(options_vbox, "Save resources as text .tres (slow)", true if asset_database.use_text_resources else false)
+	save_text_resources = _add_advanced_checkbox_option("Save resources as text .tres (slow)", true if asset_database.use_text_resources else false)
 	save_text_resources.toggled.connect(self._save_text_resources_changed)
-	save_text_scenes = _add_checkbox_option(options_vbox, "Save scenes as text .tscn (slow)", true if asset_database.use_text_scenes else false)
+	save_text_scenes = _add_advanced_checkbox_option("Save scenes as text .tscn (slow)", true if asset_database.use_text_scenes else false)
 	save_text_scenes.toggled.connect(self._save_text_scenes_changed)
-	skip_reimport_models_checkbox = _add_checkbox_option(options_vbox, "Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
+	skip_reimport_models_checkbox = _add_advanced_checkbox_option("Skip already-imported fbx files", true if asset_database.skip_reimport_models else false)
 	skip_reimport_models_checkbox.toggled.connect(self._skip_reimport_models_checkbox_changed)
-	enable_unidot_keys_checkbox = _add_checkbox_option(options_vbox, "Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
+	set_animation_trees_active_checkbox = _add_checkbox_option("Import active AnimationTrees (animate in editor)", true if asset_database.set_animation_trees_active else false)
+	set_animation_trees_active_checkbox.toggled.connect(self._set_animation_trees_active_changed)
+	enable_unidot_keys_checkbox = _add_advanced_checkbox_option("Save yaml data in metadata/unidot_keys", true if asset_database.enable_unidot_keys else false)
 	enable_unidot_keys_checkbox.toggled.connect(self._enable_unidot_keys_changed)
-	add_unsupported_components_checkbox = _add_checkbox_option(options_vbox, "Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
+	add_unsupported_components_checkbox = _add_advanced_checkbox_option("Add empty MonoBehaviour/unsupported nodes", true if asset_database.add_unsupported_components else false)
 	add_unsupported_components_checkbox.toggled.connect(self._add_unsupported_components_changed)
-	debug_disable_silhouette_fix_checkbox = _add_checkbox_option(options_vbox, "Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
+	debug_disable_silhouette_fix_checkbox = _add_advanced_checkbox_option("Disable silhouette fix (DEBUG)", true if asset_database.debug_disable_silhouette_fix else false)
 	debug_disable_silhouette_fix_checkbox.toggled.connect(self._debug_disable_silhouette_fix_changed)
-	force_humanoid_checkbox = _add_checkbox_option(options_vbox, "Force humanoid import of all FBX", true if asset_database.force_humanoid else false)
-	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
-	enable_verbose_log_checkbox = _add_checkbox_option(options_vbox, "Enable verbose logs", true if asset_database.enable_verbose_logs else false)
+	enable_verbose_log_checkbox = _add_advanced_checkbox_option("Enable verbose logs", true if asset_database.enable_verbose_logs else false)
 	enable_verbose_log_checkbox.toggled.connect(self._enable_verbose_log_changed)
+	enable_vrm_spring_bones_checkbox = _add_checkbox_option("Convert dynamic bones to VRM springbone", true if asset_database.vrm_spring_bones else false)
+	enable_vrm_spring_bones_checkbox.toggled.connect(self._enable_vrm_spring_bones_changed)
+	force_humanoid_checkbox = _add_checkbox_option("Import ALL scenes as humanoid retargeted skeletons", true if asset_database.force_humanoid else false)
+	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
+
+	var vspace := Control.new()
+	vspace.custom_minimum_size = Vector2(0, 16)
+	vspace.size = Vector2(0, 16)
+	options_vbox.add_child(vspace)
+	options_vbox.add_child(advanced_options_container)
+	options_vbox.add_child(vspace.duplicate())
 
 	batch_import_list_widget = ItemList.new()
 	batch_import_list_widget.item_activated.connect(self._batch_import_list_widget_activated)
@@ -888,12 +949,12 @@ func show_importer(ep: EditorPlugin) -> void:
 
 func check_fbx2gltf():
 	var d = DirAccess.open("res://")
-	var addon_path: String = EditorPlugin.new().get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
+	var addon_path: String = new_editor_plugin.get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
 	if not addon_path.get_file().is_empty():
 		print(addon_path)
 		if not d.file_exists(addon_path):
 			var error_dialog := AcceptDialog.new()
-			EditorPlugin.new().get_editor_interface().get_base_control().add_child(error_dialog)
+			new_editor_plugin.get_editor_interface().get_base_control().add_child(error_dialog)
 			error_dialog.title = "Unidot Importer"
 			error_dialog.dialog_text = "FBX2glTF is not configured in Editor settings. This will cause corrupt imports!\nPlease install FBX2glTF in Editor Settings."
 			error_dialog.popup_centered()
@@ -907,15 +968,22 @@ func _auto_hide_toggled(is_on: bool) -> void:
 	_keep_open_on_import = not is_on
 
 
-func _add_checkbox_option(options_vbox: VBoxContainer, optname: String, defl: bool = false) -> CheckBox:
+func _add_checkbox_option(optname: String, defl: bool, this_options_vbox: VBoxContainer = null) -> CheckBox:
+	if this_options_vbox == null:
+		this_options_vbox = options_vbox
 	var checkbox := CheckBox.new()
 	checkbox.text = optname
 	checkbox.size_flags_vertical = Control.SIZE_SHRINK_END
 	checkbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	checkbox.size_flags_stretch_ratio = 0.0
-	options_vbox.add_child(checkbox)
+	this_options_vbox.add_child(checkbox)
 	checkbox.button_pressed = defl
 	return checkbox
+
+func _add_advanced_checkbox_option(optname: String, defl: bool):
+	if defl and not show_advanced_options.button_pressed:
+		show_advanced_options.button_pressed = true
+	return _add_checkbox_option(optname, defl, advanced_options_vbox)
 
 
 func _save_text_resources_changed(val: bool):
@@ -933,6 +1001,9 @@ func _dont_auto_select_dependencies_checkbox_changed(val: bool):
 func _skip_reimport_models_checkbox_changed(val: bool):
 	asset_database.skip_reimport_models = val
 
+func _set_animation_trees_active_changed(val: bool):
+	asset_database.set_animation_trees_active = val
+
 func _enable_unidot_keys_changed(val: bool):
 	asset_database.enable_unidot_keys = val
 
@@ -948,6 +1019,12 @@ func _force_humanoid_changed(val: bool):
 func _enable_verbose_log_changed(val: bool):
 	asset_database.enable_verbose_logs = val
 
+func _enable_vrm_spring_bones_changed(val: bool):
+	asset_database.vrm_spring_bones = val
+
+func _show_advanced_options_toggled(val: bool):
+	advanced_options_hbox.visible = val
+
 func _add_batch_import():
 	if file_dialog:
 		file_dialog.queue_free()
@@ -961,18 +1038,18 @@ func _add_batch_import():
 	file_dialog.set_title("Batch import additional .unitypackage archives...")
 	file_dialog.file_selected.connect(self._selected_batch_import_file)
 	file_dialog.files_selected.connect(self._selected_batch_import_files)
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(file_dialog, true)
-	if editor_plugin != null:
-		file_dialog.current_dir = editor_plugin.last_selected_dir
-		file_dialog.display_mode = editor_plugin.file_dialog_mode
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(file_dialog, true)
 	if file_dialog != null:
+		if editor_plugin != null:
+			file_dialog.current_dir = editor_plugin.last_selected_dir
+			file_dialog.display_mode = editor_plugin.file_dialog_mode
 		file_dialog.popup_centered_ratio()
 
 func _selected_batch_import_file(path: String):
 	_selected_batch_import_files(PackedStringArray([path]))
 
 func _selected_batch_import_files(paths: PackedStringArray):
-	if editor_plugin != null:
+	if editor_plugin != null and file_dialog != null:
 		editor_plugin.last_selected_dir = file_dialog.current_dir
 		editor_plugin.file_dialog_mode = file_dialog.display_mode
 	var cur_files: Dictionary
@@ -1002,7 +1079,9 @@ func _abort_clicked():
 
 
 func _show_importer_common() -> void:
-	base_control = EditorPlugin.new().get_editor_interface().get_base_control()
+	if editor_plugin != null:
+		editor_plugin.package_import_dialog = self
+	base_control = new_editor_plugin.get_editor_interface().get_base_control()
 	main_dialog = AcceptDialog.new()
 	main_dialog.title = "Select Assets to import"
 	main_dialog.dialog_hide_on_ok = false
@@ -1051,6 +1130,33 @@ func _show_importer_common() -> void:
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	options_vbox = VBoxContainer.new()
+	show_advanced_options = CheckButton.new()
+	show_advanced_options.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	show_advanced_options.add_theme_icon_override(&"unchecked", base_control.get_theme_icon(&"arrow_collapsed", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"checked", base_control.get_theme_icon(&"arrow", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"unchecked_mirrored", base_control.get_theme_icon(&"arrow_collapsed_mirrored", &"Tree"))
+	show_advanced_options.add_theme_icon_override(&"checked_mirrored", base_control.get_theme_icon(&"arrow", &"Tree"))
+	show_advanced_options.text = "Advanced Settings"
+	show_advanced_options.toggled.connect(self._show_advanced_options_toggled)
+	advanced_options_hbox = HBoxContainer.new()
+	advanced_options_hbox.hide()
+	advanced_options_hbox.add_spacer(true).custom_minimum_size = Vector2(16, 0)
+	advanced_options_vbox = VBoxContainer.new()
+	advanced_options_hbox.add_child(advanced_options_vbox)
+	advanced_options_container = PanelContainer.new()
+	var new_stylebox_normal = advanced_options_container.get_theme_stylebox("panel").duplicate()
+	if not (new_stylebox_normal is StyleBoxFlat):
+		new_stylebox_normal = StyleBoxFlat.new()
+	new_stylebox_normal.set_border_width_all(2)
+	new_stylebox_normal.set_corner_radius_all(3)
+	new_stylebox_normal.set_expand_margin_all(4)
+	new_stylebox_normal.border_color = Color(0.5, 0.5, 0.5)
+	advanced_options_container.add_theme_stylebox_override("panel", new_stylebox_normal)
+	var adv_panel_inner_vbox := VBoxContainer.new()
+	advanced_options_container.add_child(adv_panel_inner_vbox)
+	adv_panel_inner_vbox.add_child(show_advanced_options)
+	adv_panel_inner_vbox.add_child(advanced_options_hbox)
+
 	hbox.size_flags_stretch_ratio = 1.0
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1123,7 +1229,7 @@ func on_import_fully_completed():
 	print("Import is fully completed")
 	da.remove("res://_sentinel_file.png")
 	da.remove("res://_sentinel_file.png.import")
-	var ei = EditorPlugin.new().get_editor_interface()
+	var ei = new_editor_plugin.get_editor_interface()
 	if ei.has_method("save_all_scenes"):
 		ei.save_all_scenes()
 	else:
@@ -1139,11 +1245,13 @@ func on_import_fully_completed():
 	if not _keep_open_on_import:
 		if main_dialog:
 			main_dialog.hide()
-	ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
+	if typeof(ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")) != TYPE_NIL:
+		ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", asset_database.orig_max_size_mb)
 
 	if not batch_import_file_list.is_empty():
 		var rc = RefCounted.new()
 		rc.set_script(get_script())
+		rc.editor_plugin = editor_plugin
 		rc._show_importer_common()
 		rc.batch_import_file_list = batch_import_file_list.slice(1)
 		rc.batch_import_types = batch_import_types
@@ -1152,6 +1260,7 @@ func on_import_fully_completed():
 		rc._selected_package(batch_import_file_list[0])
 		rc.batch_import_file_list = batch_import_file_list.slice(1)
 		rc.batch_import_types = batch_import_types
+		print(batch_import_types)
 		rc.auto_import = true
 		rc._keep_open_on_import = _keep_open_on_import
 		if rc.batch_import_list_widget != null:
@@ -1163,17 +1272,21 @@ func on_import_fully_completed():
 func update_task_color(tw: RefCounted):
 	var ti: TreeItem = tw.extra
 	if tw.did_fail and tw.asset.parsed_meta == null:
+		asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " failed to parse meta. did_fail=" + str(tw.did_fail))
 		ti.set_icon(0, status_error_icon)
 		ti.set_custom_color(0, Color("#ffbb77"))
 	elif tw.asset.parsed_meta == null:
+		asset_database.log_debug([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " skipped import and succeeded")
 		ti.set_icon(0, status_success_icon)
 		ti.set_custom_color(0, Color("#ddffbb"))
 	else:
 		var holder: asset_meta_class.LogMessageHolder = tw.asset.parsed_meta.log_message_holder
 		if tw.did_fail:
+			asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " parsed meta but did_fail=" + str(tw.did_fail) + " is_loaded=" + str(tw.is_loaded))
 			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff7733"))
 		elif not tw.is_loaded:
+			asset_database.log_fail([null, 0, "", 0], "Pkgasset " + str(tw.asset.pathname) + " guid " + str(tw.asset.guid) + " could not be loaded.")
 			ti.set_icon(0, status_error_icon)
 			ti.set_custom_color(0, Color("#ff4422"))
 		elif holder.has_fails():
@@ -1224,14 +1337,12 @@ func do_import_step():
 	if _currently_preprocessing_assets != 0:
 		asset_database.log_fail([null, 0, "", 0], "Import step called during preprocess")
 		return
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 
 	for tw in asset_work_completed:
 		update_task_color(tw)
 
 	if tree_dialog_state >= STATE_DONE_IMPORT:
-		asset_database.save()
-		on_import_fully_completed()
 		if not paused:
 			status_bar.text = "Import complete."
 		return
@@ -1530,7 +1641,7 @@ func _asset_processing_finished(tw: Object):
 	if _currently_preprocessing_assets == 0:
 		if not _preprocessing_second_pass.is_empty():
 			_preprocess_second_pass()
-			status_bar.text = "Preprocessing humanoid FBX2glTF... " + str(_currently_preprocessing_assets) + " remaining."
+			status_bar.text = "Preprocessing humanoid or dependent fbx... " + str(_currently_preprocessing_assets) + " remaining."
 			_preprocessing_second_pass = [].duplicate()
 		else:
 			_done_preprocessing_assets()
@@ -1634,15 +1745,17 @@ func _do_import_step_tick():
 		asset_database.log_debug([null, 0, "", 0], "Saved database")
 		if not paused:
 			status_bar.text = "Import complete."
+		update_all_logs()
 		call_deferred(&"on_import_fully_completed")
-	#asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
-	update_global_logs()
+	else:
+		#asset_database.log_debug([null, 0, "", 0], "TICK RETURN ======= " + str(import_step_tick_count))
+		update_global_logs()
 	import_step_reentrant = false
 
 
 func _scan_sources_complete(useless: Variant = null):
 	update_progress_bar(5)
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	editor_filesystem.sources_changed.disconnect(self._scan_sources_complete)
 	asset_database.log_debug([null, 0, "", 0], "Reimporting sentinel to wait for import step to finish.")
 	editor_filesystem.reimport_files(PackedStringArray(["res://_sentinel_file.png"]))
@@ -1672,13 +1785,13 @@ func _scan_sources_complete(useless: Variant = null):
 	import_step_timer.wait_time = 0.1
 	import_step_timer.autostart = true
 	import_step_timer.process_callback = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(import_step_timer, true)
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(import_step_timer, true)
 	import_step_timer.timeout.connect(self._do_import_step_tick)
 
 
 func _preprocess_wait_tick():
 	update_global_logs()
-	var editor_filesystem: EditorFileSystem = EditorPlugin.new().get_editor_interface().get_resource_filesystem()
+	var editor_filesystem: EditorFileSystem = new_editor_plugin.get_editor_interface().get_resource_filesystem()
 	if _currently_preprocessing_assets == 0 and not editor_filesystem.is_scanning():
 		update_progress_bar(5)
 		asset_database.log_debug([null, 0, "", 0], "Done preprocessing. ready to trigger scan_sources!")
@@ -1705,8 +1818,9 @@ func _asset_tree_window_confirmed():
 	abort_button.pressed.connect(self._abort_clicked)
 	abort_button.visible = false
 	pause_button.add_sibling(abort_button)
-	if ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb") != 1022:
-		asset_database.orig_max_size_mb = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
+	var max_queue_size_mb: Variant = ProjectSettings.get_setting("memory/limits/message_queue/max_size_mb")
+	if typeof(max_queue_size_mb) != TYPE_NIL and max_queue_size_mb != 1022:
+		asset_database.orig_max_size_mb = max_queue_size_mb
 		if asset_database.orig_max_size_mb < 1022:
 			ProjectSettings.set_setting("memory/limits/message_queue/max_size_mb", 1022)
 	main_dialog_tree.columns = 5
@@ -1746,7 +1860,7 @@ func _asset_tree_window_confirmed():
 	main_dialog.get_ok_button().visible = false
 
 	global_logs_tree_item = root_item.create_child(0)
-	global_logs_tree_item.set_text(0, "Global Logs")
+	global_logs_tree_item.set_text(0, "Global import status messages")
 	global_logs_tree_item.set_text(1, " ")
 	var log_column = 2
 	if not asset_database.enable_verbose_logs:
@@ -1754,9 +1868,8 @@ func _asset_tree_window_confirmed():
 	global_logs_tree_item.set_cell_mode(log_column, TreeItem.CELL_MODE_CHECK)
 	global_logs_tree_item.set_checked(log_column, true)
 	global_logs_tree_item.set_text_alignment(log_column, HORIZONTAL_ALIGNMENT_RIGHT)
-	global_logs_tree_item.set_text(log_column, "Logs")
+	global_logs_tree_item.set_text(log_column, "Status")
 	global_logs_tree_item.set_selectable(log_column, true)
-	global_logs_tree_item.set_icon(log_column, log_icon)
 
 	asset_database.log_debug([null, 0, "", 0], "Finishing meta.")
 	meta_worker.stop_all_threads_and_wait()
@@ -1791,7 +1904,7 @@ func _asset_tree_window_confirmed():
 	preprocess_timer.wait_time = 0.1
 	preprocess_timer.autostart = true
 	preprocess_timer.process_callback = Timer.TIMER_PROCESS_IDLE
-	EditorPlugin.new().get_editor_interface().get_base_control().add_child(preprocess_timer, true)
+	new_editor_plugin.get_editor_interface().get_base_control().add_child(preprocess_timer, true)
 	preprocess_timer.timeout.connect(self._preprocess_wait_tick)
 	if num_processing == 0:
 		asset_database.log_debug([null, 0, "", 0], "No assets to process!")

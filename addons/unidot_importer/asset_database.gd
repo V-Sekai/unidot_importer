@@ -6,6 +6,7 @@ extends Resource
 
 const asset_meta_class: GDScript = preload("./asset_meta.gd")
 const object_adapter_class: GDScript = preload("./object_adapter.gd")
+const vrm_integration_class: GDScript = preload("./vrm_integration.gd")
 
 const ASSET_DATABASE_PATH: String = "res://unidot_asset_database.res"
 
@@ -17,12 +18,15 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var use_text_resources: bool = false
 @export var use_text_scenes: bool = false
 @export var auto_select_dependencies: bool = false
-@export var skip_reimport_models: bool = true
+@export var skip_reimport_models: bool = false
 @export var enable_unidot_keys: bool = false
 @export var add_unsupported_components: bool = false
 @export var debug_disable_silhouette_fix: bool = false
 @export var force_humanoid: bool = false
 @export var enable_verbose_logs: bool = false
+@export var set_animation_trees_active: bool = true
+@export var vrm_spring_bones: bool = true
+var vrm_integration_plugin
 var log_limit_per_guid: int = 100000
 
 @export var global_log_count: int = 0
@@ -112,6 +116,14 @@ func log_fail(local_ref: Array, msg: String, field: String = "", remote_ref: Arr
 		if remote_ref:
 			push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " -> " + str(remote_ref[2]) + ":" + str(remote_ref[1]) + " : " + msg)
 		push_error("!UNIDOT! " + str(local_ref[2]) + ":" + str(local_ref[1]) + fieldstr + " : " + msg)
+
+
+func get_enabled_plugins() -> Array[RefCounted]:
+	if vrm_spring_bones:
+		if vrm_integration_plugin == null:
+			vrm_integration_plugin = vrm_integration_class.new()
+		return [vrm_integration_plugin]
+	return []
 
 
 func insert_meta(meta: Resource):  # asset_meta

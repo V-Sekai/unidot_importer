@@ -192,8 +192,8 @@ class ParseState:
 	func get_materials_path(material_name: String, ext: String=".material") -> String:
 		return get_materials_path_base(material_name, source_file_path.get_base_dir(), ext)
 
-	func sanitize_filename(sanitized_name: String) -> String:
-		return sanitized_name.replace("/", "").replace(":", "").replace(".", "").replace("@", "").replace('"', "").replace("<", "").replace(">", "").replace("*", "").replace("|", "").replace("?", "")
+	func sanitize_filename(sanitized_name: String, repl: String="", include_dot: bool=true) -> String:
+		return sanitized_name.replace("/", repl).replace(":", repl).replace(".", repl).replace("@", repl).replace('"', repl).replace("<", repl).replace(">", repl).replace("*", repl).replace("|", repl).replace("?", repl)
 
 	func fold_root_transforms_into_only_child() -> bool:
 		# FIXME: Animations targeting the parent or the child might need to be adjusted.
@@ -303,14 +303,17 @@ class ParseState:
 		#	GodotHumanT = ParOrigT * GodotCorrectionT
 		#	We want to solve for X = GodotCorrectionT.inv
 		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
-		p_global_rest *= node.get_bone_rest(p_skel_bone)
 		if humanoid_original_transforms.has(bone_name):
-			p_pre_retarget_global_rest *= humanoid_original_transforms.get(bone_name)
+			p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(bone_name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.get_bone_rest(p_skel_bone).origin)
+			metaobj.log_debug(0, "Humanoid Bone " + str(bone_name) + ": " + str(humanoid_original_transforms.get(bone_name).basis.get_rotation_quaternion()))
 			if bone_name == "Hips":
 				humanoid_skeleton_hip_position = node.get_bone_rest(p_skel_bone).origin
 				humanoid_skeleton_hip_position.y = node.motion_scale
 		else:
 			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
+			# metaobj.log_debug(0, "Non-humanoid Bone " + str(bone_name) + ": " + str(node.get_bone_rest(p_skel_bone).basis.get_rotation_quaternion()))
+		p_global_rest *= node.get_bone_rest(p_skel_bone)
+		# metaobj.log_debug(0, "global rest " + str(bone_name) + ": " + str(node.get_bone_rest(p_skel_bone).basis.get_rotation_quaternion()))
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			# metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
@@ -429,13 +432,19 @@ class ParseState:
 				animplayer = child
 				break
 
-		if node is Node3D:
+		# Scene root may have the same node.name as another node, so we must ignore it!
+		if node is Node3D and node != scene:
 			# The only known case of non-Node3D is AnimationPlayer
-			p_global_rest *= node.transform
 			if humanoid_original_transforms.has(node.name):
-				p_pre_retarget_global_rest *= humanoid_original_transforms.get(node.name)
+				metaobj.log_warn(0, "Humanoid Node " + str(node.name) + ": " + str(humanoid_original_transforms.get(node.name).basis.get_rotation_quaternion()))
+				p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(node.name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.transform.origin)
 			else:
 				p_pre_retarget_global_rest *= node.transform
+				# metaobj.log_debug(0, "Non-humanoid Bone " + str(node.name) + ": " + str(node.transform.basis.get_rotation_quaternion()))
+			p_global_rest *= node.transform
+			# metaobj.log_debug(0, "global rest " + str(node.name) + ": " + str(node.transform.basis.get_rotation_quaternion()))
+
+		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 
 			# For the purpose of determining which coordinate are negative, treat 0 as positive
 			# Though Godot probably malfunctions in other ways if scale axes are 0, since it will lose the rotation.
@@ -634,11 +643,12 @@ class ParseState:
 						mat = new_mat
 						metaobj.log_debug(fileId, "External material object " + str(fileId) + "/" + str(mat_name) + " " + str(new_mat.resource_name) + "@" + str(new_mat.resource_path))
 					elif importMaterials and extractLegacyMaterials:
-						var legacy_material_name: String = godot_mat_name
+						# Exmaple [S*S]kitsune_men.material -> [S_S]kitsune_men.material
+						var legacy_material_name: String = sanitize_filename(godot_mat_name, "_") # It's unclear what should happen if this contains a "." character.
 						if legacy_material_name_setting == 0:
-							legacy_material_name = material_to_texture_name.get(godot_mat_name, godot_mat_name)
+							legacy_material_name = sanitize_filename(material_to_texture_name.get(godot_mat_name, godot_mat_name), "_")
 						if legacy_material_name_setting == 2:
-							legacy_material_name = source_file_path.get_file().get_basename() + "-" + godot_mat_name
+							legacy_material_name = sanitize_filename(source_file_path.get_file().get_basename() + "-" + godot_mat_name, "_")
 
 						metaobj.log_debug(fileId, "Extract legacy material " + mat_name + ": " + get_materials_path(legacy_material_name))
 						var d = DirAccess.open("res://")
@@ -671,7 +681,7 @@ class ParseState:
 							new_mat = mat
 						else:
 							metaobj.log_fail(fileId, "Material " + str(legacy_material_name) + " was not found. using default")
-					if new_mat == null:
+					if new_mat == null and mat != null:
 						var respath: String = get_resource_path(godot_mat_name, ".material")
 						metaobj.log_debug(fileId, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
 						if mat.albedo_texture != null:
@@ -767,7 +777,7 @@ func _post_import(p_scene: Node) -> Object:
 	ps.material_to_texture_name = metaobj.internal_data.get("material_to_texture_name", {})
 	ps.godot_sanitized_to_orig_remap = metaobj.internal_data.get("godot_sanitized_to_orig_remap", {})
 	ps.humanoid_original_transforms = metaobj.internal_data.get("humanoid_original_transforms", {})
-	if metaobj.importer.keys.get("animationType", 2) == 3:
+	if metaobj.is_force_humanoid() or metaobj.importer.keys.get("animationType", 2) == 3:
 		var bone_map: BoneMap = metaobj.importer.generate_bone_map_from_human()
 		var bone_map_dict: Dictionary = {}
 		for prop in bone_map.get_property_list():
