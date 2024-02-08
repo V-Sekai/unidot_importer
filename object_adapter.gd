@@ -5443,7 +5443,9 @@ class UnidotRenderer:
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_Layer"):
-			outdict["layers"] = (1 << uprops["m_Layer"])
+			var layer: int = uprops["m_Layer"]
+			# We exclude layers 24-31 from visibility masks because these layers are used by gizmos.
+			outdict["layers"] = (1 << layer) if layer < 24 else (1 << (layer - 8)) | (1 << layer)
 		if uprops.has("m_StaticEditorFlags"):
 			var flags_val: int = uprops.get("m_StaticEditorFlags", 0) # We copy this from the GameObject to the MeshRenderer.
 			var lightmap_static: bool = (flags_val & 1) != 0
@@ -6066,9 +6068,14 @@ class UnidotCamera:
 	func convert_properties(node: Node, uprops: Dictionary) -> Dictionary:
 		var outdict = self.convert_properties_component(node, uprops)
 		if uprops.has("m_CullingMask"):
-			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+			# Bits 24-31 seem to be reserved in Godot. Merge layers 24-31 into 16-23.
+			# Otherwise, reflection probes and lightmaps will see gizmos.
+			# If this is causing problems for you, submit an issue so we can figure out a good setting
+			var layer: int = uprops.get("m_CullingMask").get("m_Bits")
+			outdict["cull_mask"] = (layer & ~(255 << 24)) | ((layer >> 8) & (255 << 16))
 		elif uprops.has("m_CullingMask.m_Bits"):
-			outdict["cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+			var layer: int = uprops.get("m_CullingMask").get("m_Bits")
+			outdict["cull_mask"] = (layer & ~(255 << 24)) | ((layer >> 8) & (255 << 16))
 		if uprops.has("far clip plane"):
 			outdict["far"] = uprops.get("far clip plane")
 		if uprops.has("near clip plane"):
@@ -6136,9 +6143,14 @@ class UnidotReflectionProbe:
 		if uprops.has("m_BoxSize"):
 			outdict["size"] = uprops.get("m_BoxSize")
 		if uprops.has("m_CullingMask"):
-			outdict["cull_mask"] = uprops.get("m_CullingMask").get("m_Bits")
+			# Bits 24-31 seem to be reserved in Godot. Merge layers 24-31 into 16-23.
+			# Otherwise, reflection probes and lightmaps will see gizmos.
+			# If this is causing problems for you, submit an issue so we can figure out a good setting
+			var layer: int = uprops.get("m_CullingMask").get("m_Bits")
+			outdict["cull_mask"] = (layer & ~(255 << 24)) | ((layer >> 8) & (255 << 16))
 		elif uprops.has("m_CullingMask.m_Bits"):
-			outdict["cull_mask"] = uprops.get("m_CullingMask.m_Bits")
+			var layer: int = uprops.get("m_CullingMask.m_Bits")
+			outdict["cull_mask"] = (layer & ~(255 << 24)) | ((layer >> 8) & (255 << 16))
 		if uprops.has("m_FarClip"):
 			outdict["max_distance"] = uprops.get("m_FarClip")
 		if uprops.get("m_Mode", 0) == 0:
