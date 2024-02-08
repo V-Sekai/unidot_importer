@@ -558,7 +558,6 @@ func _notification(what):
 		return
 	match what:
 		NOTIFICATION_UPDATE_SKELETON:
-			print("GOT A BAD UPDATE SKELELEY")
 			update_skin_poses()
 			pass
 
