@@ -616,7 +616,7 @@ class ParseState:
 					continue
 				var godot_mat_name: String = mat.resource_name
 				var mat_name: String = get_orig_name("materials", godot_mat_name)
-				if mat_name == "DefaultMaterial":
+				if mat_name == "DefaultMaterial" or mat_name == "":
 					mat_name = "No Name"
 				if is_obj:
 					mat_name = default_obj_mesh_name + "Mat"  # obj files seem to use this rule
@@ -645,6 +645,8 @@ class ParseState:
 					elif importMaterials and extractLegacyMaterials:
 						# Exmaple [S*S]kitsune_men.material -> [S_S]kitsune_men.material
 						var legacy_material_name: String = sanitize_filename(godot_mat_name, "_") # It's unclear what should happen if this contains a "." character.
+						if legacy_material_name.is_empty():
+							legacy_material_name = "No Name"
 						if legacy_material_name_setting == 0:
 							legacy_material_name = sanitize_filename(material_to_texture_name.get(godot_mat_name, godot_mat_name), "_")
 						if legacy_material_name_setting == 2:
@@ -682,7 +684,11 @@ class ParseState:
 						else:
 							metaobj.log_fail(fileId, "Material " + str(legacy_material_name) + " was not found. using default")
 					if new_mat == null and mat != null:
-						var respath: String = get_resource_path(godot_mat_name, ".material")
+						var respath: String
+						if godot_mat_name.is_empty():
+							respath = get_resource_path("DefaultMaterial", ".material")
+						else:
+							respath = get_resource_path(godot_mat_name, ".material")
 						metaobj.log_debug(fileId, "Before save " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(respath) + " from " + str(mat.resource_path))
 						if mat.albedo_texture != null:
 							metaobj.log_debug(fileId, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))

@@ -23,7 +23,6 @@ const ASSET_TYPE_SCENE = 7
 const ASSET_TYPE_UNKNOWN = 8
 
 const SHOULD_CONVERT_TO_GLB: bool = false
-const USE_BUILTIN_FBX: bool = false # true
 
 const SILHOUETTE_FIX_THRESHOLD: float = 3.0 # 28.0
 
@@ -626,7 +625,7 @@ class BaseModelHandler:
 		cfile.set_value_compare("params", "meshes/create_shadow_meshes", false)  # Until visual artifacts with shadow meshes get fixed
 		cfile.set_value_compare("params", "nodes/root_scale", pkgasset.parsed_meta.internal_data.get("scale_correction_factor", 1.0))
 		cfile.set_value_compare("params", "nodes/apply_root_scale", true)
-		cfile.set_value_compare("params", "nodes/root_name", "Root Scene")
+		cfile.set_value_compare("params", "nodes/root_name", "")
 		# addCollider???? TODO
 
 		# ??? animation/optimizer setting seems to be missing?
@@ -640,8 +639,9 @@ class BaseModelHandler:
 
 		var fps_ratio: float = pkgasset.parsed_meta.internal_data.get("anim_frames_fps_ratio", 1.0)
 		var used_animation_names: Dictionary = pkgasset.parsed_meta.internal_data.get("used_animation_names", {})
+		var orig_to_godot_sanitized_anim_takes: Dictionary = pkgasset.parsed_meta.internal_data.get("orig_to_godot_sanitized_anim_takes", {})
 		for anim_clip in anim_clips:
-			var take_name = anim_clip["take_name"]
+			var take_name = orig_to_godot_sanitized_anim_takes.get(anim_clip["take_name"], anim_clip["take_name"])
 			if not used_animation_names.has(take_name):
 				for key in used_animation_names:
 					pkgasset.log_warn("Substituting requested takeName " + str(take_name) + " for first animation " + str(key))
@@ -748,6 +748,13 @@ class BaseModelHandler:
 				subresources["materials"][material_name] = {}
 			subresources["materials"][material_name]["use_external/enabled"] = true
 			subresources["materials"][material_name]["use_external/path"] = pkgasset.parsed_meta.imported_material_paths[material_name]
+		if pkgasset.parsed_meta.imported_material_paths.has(""):
+			for i in range(pkgasset.parsed_meta.internal_data.get("unnamed_material_count", 0)):
+				var material_name: String = "@MATERIAL:" + str(i)
+				if not (subresources["materials"].has(material_name)):
+					subresources["materials"][material_name] = {}
+				subresources["materials"][material_name]["use_external/enabled"] = true
+				subresources["materials"][material_name]["use_external/path"] = pkgasset.parsed_meta.imported_material_paths[""]
 		cfile.set_value("params", "_subresources", subresources)
 		#cfile.set_value_compare("params", "animation/optimizer/enabled", optim_setting.get("enabled"))
 		#cfile.set_value_compare("params", "animation/optimizer/max_linear_error", optim_setting.get("max_linear_error"))
@@ -757,7 +764,7 @@ class BaseModelHandler:
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
 		# super.write_godot_asset(pkgasset, temp_path)
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
-		if USE_BUILTIN_FBX or pkgasset.existing_data_md5 != pkgasset.data_md5:
+		if pkgasset.existing_data_md5 != pkgasset.data_md5:
 			var dres = DirAccess.open("res://")
 			pkgasset.log_debug("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
@@ -823,7 +830,8 @@ class FbxHandler:
 		var output_scale: float = desired_scale
 		# FBX2glTF does not implement scale correctly, so we must set it to 1.0 and correct it later
 		# Godot's new built-in FBX importer works correctly and does not need this correction.
-		output_scale = 1.0
+		if not pkgasset.parsed_meta.is_using_builtin_ufbx():
+			output_scale = 1.0
 		pkgasset.parsed_meta.internal_data["scale_correction_factor"] = desired_scale / output_scale
 		pkgasset.parsed_meta.internal_data["output_fbx_scale"] = output_scale
 		return output_scale
@@ -904,6 +912,49 @@ class FbxHandler:
 				pkgasset.log_warn("Failed to parse texture from " + buffer_as_ascii.substr(nextpos, newlinepos - nextpos))
 			else:
 				strlist.append(buffer_as_ascii.substr(nextpos + 1, lastquote - nextpos - 1))
+		return strlist
+
+	func _extract_fbx_objects_binary(obj_type: String, pkgasset: Object, fbx_file_binary: PackedByteArray) -> PackedStringArray:
+		var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+		spb.data_array = fbx_file_binary
+		spb.big_endian = false
+		var strlist: PackedStringArray = PackedStringArray()
+
+		# Binary FBX serializes ids such as Model::SomeNodeName as S__\x00\x00SomeNodeName\x00\x01Model
+		var modelname_needle_buf: PackedByteArray = (".\u0001" + obj_type).to_ascii_buffer()
+		modelname_needle_buf[0] = 0
+
+		var modelname_needle_pos: int = find_in_buffer(fbx_file_binary, modelname_needle_buf)
+		while modelname_needle_pos != -1:
+			var length_prefix_pos: int = modelname_needle_pos - 1
+			while fbx_file_binary[length_prefix_pos] != 0:
+				if length_prefix_pos < 4:
+					push_error("Failed to find beginning of Model name")
+					return strlist
+				length_prefix_pos -= 1
+			var nextpos: int = find_in_buffer(fbx_file_binary, modelname_needle_buf, modelname_needle_pos + 7)
+			spb.seek(length_prefix_pos - 3)
+			var strlen: int = spb.get_32()
+			#print(strlen + 1 + length_prefix_pos)
+			#print(modelname_needle_pos)
+			assert(strlen + 1 + length_prefix_pos == modelname_needle_pos + 2 + len(obj_type))
+			if strlen >= len(obj_type) + 2 and strlen < 1024:
+				var fn_utf8: PackedByteArray = spb.get_data(strlen - len(obj_type) - 2)[1]  # NOTE: Do we need to detect charset? FBX should be unicode
+				strlist.append(fn_utf8.get_string_from_utf8())
+			modelname_needle_pos = nextpos
+		return strlist
+
+	func _extract_fbx_objects_ascii(obj_type: String, pkgasset: Object, buffer_as_utf8: String) -> PackedStringArray:
+		var strlist: PackedStringArray = PackedStringArray()
+		var modelname_needle = '"' + obj_type + '::'
+		var modelname_needle_pos: int = buffer_as_utf8.find(modelname_needle)
+		while modelname_needle_pos != -1:
+			var modelname_needle_end: int = buffer_as_utf8.find('"', modelname_needle_pos + len(obj_type) + 3)
+			if modelname_needle_end == -1:
+				break
+			var str_utf8: String = buffer_as_utf8.substr(modelname_needle_pos + len(obj_type) + 3, modelname_needle_end - modelname_needle_pos - len(obj_type) - 3)
+			strlist.append(str_utf8) # str_ascii.to_ascii_buffer().get_string_from_utf8()
+			modelname_needle_pos = buffer_as_utf8.find(modelname_needle, modelname_needle_end)
 		return strlist
 
 	func _preprocess_fbx_scale_binary(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
@@ -1162,7 +1213,7 @@ class FbxHandler:
 		var full_tmpdir: String = tmpdir + "/" + thread_subdir
 		var input_path: String = thread_subdir + "/" + "input.fbx"
 		var temp_input_path: String = tmpdir + "/" + input_path
-		if USE_BUILTIN_FBX:
+		if pkgasset.parsed_meta.is_using_builtin_ufbx():
 			input_path = pkgasset.pathname
 			temp_input_path = input_path
 		var importer = pkgasset.parsed_meta.importer
@@ -1179,15 +1230,24 @@ class FbxHandler:
 		var is_binary: bool = _is_fbx_binary(fbx_file)
 		var fps: float
 		var texture_name_list: PackedStringArray = PackedStringArray()
+		var node_name_list: PackedStringArray
+		var mesh_name_list: PackedStringArray
+		var animation_name_list: PackedStringArray
 		if is_binary:
 			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
 			fps = _preprocess_fbx_anim_fps_binary(pkgasset, fbx_file)
+			node_name_list = _extract_fbx_objects_binary("Model", pkgasset, fbx_file)
+			mesh_name_list = _extract_fbx_objects_binary("Geometry", pkgasset, fbx_file)
+			animation_name_list = _extract_fbx_objects_binary("AnimStack", pkgasset, fbx_file)
 			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
 			var buffer_as_utf8: String = fbx_file.get_string_from_utf8()  # may contain unicode
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_utf8)
 			var buffer_as_ascii: String = fbx_file.get_string_from_ascii() # match 1-to-1 with bytes
 			fps = _preprocess_fbx_anim_fps_ascii(pkgasset, buffer_as_ascii)
+			node_name_list = _extract_fbx_objects_ascii("Model", pkgasset, buffer_as_utf8)
+			mesh_name_list = _extract_fbx_objects_ascii("Geometry", pkgasset, buffer_as_utf8)
+			animation_name_list = _extract_fbx_objects_ascii("AnimStack", pkgasset, buffer_as_utf8)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
 		var closest_bake_fps: float = 30
@@ -1214,8 +1274,10 @@ class FbxHandler:
 			retry_count += 1
 		outfile = null
 		var unique_texture_map: Dictionary = {}
-		var texture_dirname = full_tmpdir
-		var output_dirname = pkgasset.pathname.get_base_dir()
+		var texture_dirname: String = ""
+		if not pkgasset.parsed_meta.is_using_builtin_ufbx():
+			texture_dirname = full_tmpdir
+		var output_dirname: String = pkgasset.pathname.get_base_dir()
 		pkgasset.log_debug("Referenced texture list: " + str(texture_name_list))
 		for fn in texture_name_list:
 			var fn_filename: String = fn.get_file()
@@ -1226,7 +1288,7 @@ class FbxHandler:
 		pkgasset.log_debug("Referenced textures: " + str(unique_texture_map.keys()))
 		var tex_not_exists = {}
 		for fn in unique_texture_map.keys():
-			if not d.file_exists(texture_dirname + "/" + fn):
+			if not texture_dirname.is_empty() and not d.file_exists(texture_dirname + "/" + fn):
 				pkgasset.log_debug("Creating dummy texture: " + str(texture_dirname + "/" + fn))
 				var tmpf = FileAccess.open(texture_dirname + "/" + fn, FileAccess.WRITE_READ)
 				tmpf.close()
@@ -1252,13 +1314,24 @@ class FbxHandler:
 			for texname in tex_not_exists.keys():
 				if not tex_not_exists[texname].is_empty():
 					unique_texture_map[texname] = _make_relative_to(tex_not_exists[texname], output_dirname)
-		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, unique_texture_map)
+		var extracted_assets_dir: String = post_import_material_remap_script.get_extracted_assets_dir(pkgasset.pathname)
+		if not DirAccess.dir_exists_absolute(extracted_assets_dir):
+			DirAccess.make_dir_absolute(extracted_assets_dir)
+
+		var extra_data = {
+			"unique_texture_map": unique_texture_map,
+			"node_name_list": node_name_list,
+			"mesh_name_list": mesh_name_list,
+			"animation_name_list": animation_name_list,
+		}
+		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, extra_data)
 		#if len(output_path) == 0:
 		#	output_path = path
-		if not USE_BUILTIN_FBX:
+		if not pkgasset.parsed_meta.is_using_builtin_ufbx():
 			d.remove(temp_input_path)  # delete "input.fbx"
-		for fn in unique_texture_map.keys():
-			d.remove(texture_dirname + "/" + fn)
+		if not texture_dirname.is_empty():
+			for fn in unique_texture_map.keys():
+				d.remove(texture_dirname + "/" + fn)
 		pkgasset.log_debug("Updating file at " + output_path)
 		return output_path
 
@@ -1451,7 +1524,96 @@ class FbxHandler:
 	func encode_uri_components(path: String):
 		return path.replace("%", "%25").replace("+", "%2B")
 
-	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
+	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, extra_data: Dictionary = {}) -> String:
+		if pkgasset.parsed_meta.is_using_builtin_ufbx():
+			return preprocess_asset_ufbx(pkgasset, tmpdir, thread_subdir, path, data_buf, extra_data)
+		else:
+			return preprocess_asset_fbx2gltf(pkgasset, tmpdir, thread_subdir, path, data_buf, extra_data)
+
+
+	func preprocess_asset_ufbx(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, extra_data: Dictionary = {}) -> String:
+		# I think we should depend on relative paths for this, for example make dummy textures to get it to generate the materials, then move them back.
+		# We can do the FBXDocument step in preprocess, so we will know in advance if this works.
+		var unique_texture_map: Dictionary = extra_data["unique_texture_map"]
+		var used_animation_names: Dictionary
+		var orig_to_godot_sanitized_anim_takes: Dictionary
+
+		var godot_sanitized_to_orig_remap: Dictionary = {"bone_name": {}, "nodes": {}, "meshes": {}, "animations": {}}
+		# Anything after this point will be using sanitized names, and should go through godot_sanitized_to_orig_remap / bone_map_dict
+		# for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
+
+		var doc := FBXDocument.new()
+		var state := FBXState.new()
+		doc.append_data_from_file(tmpdir + "/" + path, state)
+		# Name unmangling:
+		var godot_to_fbx_node_name: Dictionary
+		var godot_to_meta_node_name: Dictionary
+		var nodes := state.get_nodes()
+		var meshes := state.get_meshes()
+		var materials := state.get_materials()
+		var animations := state.get_animations()
+		var used_names: Dictionary
+		for node_i in range(len(nodes)):
+			var node = nodes[node_i]
+			var godot_mangled_name: String = node.resource_name
+			if node_i == 0:
+				assert(godot_mangled_name == "Root")
+				continue
+			var orig_name: String = node.original_name
+
+			var next_num: int = used_names.get(orig_name, 1)
+			var try_name: String = orig_name
+			while used_names.has(try_name):
+				try_name = "%s %d" % [orig_name, next_num]
+				next_num += 1
+			used_names[orig_name] = next_num
+			used_names[try_name] = 1
+			var used_type: String = "bone_name" if node.skeleton >= 0 else "nodes"
+			godot_sanitized_to_orig_remap[used_type][godot_mangled_name] = try_name
+		used_names = {}
+		var unnamed_material_count: int = 0
+		for mesh_i in range(len(meshes)):
+			var mesh = meshes[mesh_i]
+			var godot_mangled_name: String = mesh.resource_name
+			var orig_name: String = mesh.original_name
+			var next_num: int = used_names.get(orig_name, 1)
+			var try_name: String = orig_name
+			while used_names.has(try_name):
+				try_name = "%s %d" % [orig_name, next_num]
+				next_num += 1
+			used_names[orig_name] = next_num
+			used_names[try_name] = 1
+			godot_sanitized_to_orig_remap["meshes"][godot_mangled_name] = try_name
+			var imp_mesh: ImporterMesh = mesh.mesh
+			if imp_mesh != null:
+				for surf_i in range(imp_mesh.get_surface_count()):
+					if imp_mesh.get_surface_material(surf_i) == null or imp_mesh.get_surface_material(surf_i).resource_name.is_empty():
+						unnamed_material_count += 1
+		used_names = {}
+		for anim_i in range(len(animations)):
+			var anim = animations[anim_i]
+			var godot_mangled_name: String = anim.resource_name
+			var orig_name: String = anim.original_name
+			var next_num: int = used_names.get(orig_name, 1)
+			used_animation_names[godot_mangled_name] = anim_i
+			var try_name: String = orig_name
+			while used_names.has(try_name):
+				try_name = "%s %d" % [orig_name, next_num]
+				next_num += 1
+			used_names[orig_name] = next_num
+			used_names[try_name] = 1
+			godot_sanitized_to_orig_remap["animations"][godot_mangled_name] = try_name
+			orig_to_godot_sanitized_anim_takes[try_name] = godot_mangled_name
+		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = godot_sanitized_to_orig_remap
+		pkgasset.parsed_meta.internal_data["used_animation_names"] = used_animation_names
+		pkgasset.parsed_meta.internal_data["orig_to_godot_sanitized_anim_takes"] = orig_to_godot_sanitized_anim_takes
+		pkgasset.parsed_meta.internal_data["unnamed_material_count"] = unnamed_material_count
+
+		# TODO: materials and images/textures
+		return pkgasset.pathname
+
+	func preprocess_asset_fbx2gltf(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, extra_data: Dictionary = {}) -> String:
+		var unique_texture_map: Dictionary = extra_data["unique_texture_map"]
 		var user_path_base: String = OS.get_user_data_dir()
 		pkgasset.log_debug("I am an FBX " + str(path))
 		var full_output_path: String = tmpdir + "/" + pkgasset.pathname
@@ -1463,11 +1625,6 @@ class FbxHandler:
 		var tmp_bin_output_path: String = tmpdir + "/" + thread_subdir + "/buffer.bin"
 		if SHOULD_CONVERT_TO_GLB:
 			output_path = full_output_path.get_basename() + ".glb"
-		var extracted_assets_dir: String = post_import_material_remap_script.get_extracted_assets_dir(pkgasset.pathname)
-		if not DirAccess.dir_exists_absolute(extracted_assets_dir):
-			DirAccess.make_dir_absolute(extracted_assets_dir)
-		if USE_BUILTIN_FBX:
-			return pkgasset.pathname
 		var stdout: Array = [].duplicate()
 		var d = DirAccess.open("res://")
 		var addon_path: String = editor_interface.get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")

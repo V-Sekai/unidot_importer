@@ -250,6 +250,11 @@ func is_humanoid() -> bool:
 		return false
 	return true
 
+func is_using_builtin_ufbx() -> bool:
+	if Engine.get_version_info().hex >= 0x040300:
+		return true
+	return false
+
 
 # Set to false to debug or avoid auto-playing animations
 func setting_animtree_active() -> bool:
