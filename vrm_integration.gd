@@ -395,7 +395,7 @@ func setup_post_scene(pkgasset: RefCounted, root_objects: Array, root_skelleys: 
 
 func initialize_skelleys(state: RefCounted, objs: Array, is_prefab: bool):
 	if vrm_collider_group_class == null or vrm_collider_class == null:
-		print("Failed to import vrm classes")
+		# print("Failed to import vrm classes")
 		return null
 
 	var some_obj: RefCounted = null

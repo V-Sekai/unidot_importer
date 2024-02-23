@@ -670,6 +670,7 @@ class BaseModelHandler:
 		if not subresources["nodes"].has("PATH:AnimationPlayer"):
 			subresources["nodes"]["PATH:AnimationPlayer"] = {}
 		if importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid():
+			cfile.set_value_compare("params", "animation/contains_single_skeleton", true)
 			if not subresources["nodes"].has("PATH:Skeleton3D"):
 				subresources["nodes"]["PATH:Skeleton3D"] = {}
 			var bone_map: BoneMap = importer.generate_bone_map_from_human()
@@ -677,7 +678,11 @@ class BaseModelHandler:
 			subresources["nodes"]["PATH:Skeleton3D"]["retarget/bone_map"] = bone_map
 			# FIXME: Disabled fix_silhouette because the pre-silhouette matrix is not being calculated yet
 			# This would break skins and unpacked prefabs.
-			subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
+			if pkgasset.parsed_meta.is_using_builtin_ufbx():
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/preserve_initial_pose"] = true
+			else:
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
 			#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
@@ -1541,26 +1546,26 @@ class FbxHandler:
 		var godot_sanitized_to_orig_remap: Dictionary = {"bone_name": {}, "nodes": {}, "meshes": {}, "animations": {}}
 		# Anything after this point will be using sanitized names, and should go through godot_sanitized_to_orig_remap / bone_map_dict
 		# for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
-
-		var doc := FBXDocument.new()
-		var state := FBXState.new()
+		var doc = ClassDB.instantiate(&"FBXDocument")
+		var state = ClassDB.instantiate(&"FBXState")
 		doc.append_data_from_file(tmpdir + "/" + path, state)
 		# Name unmangling:
 		var godot_to_fbx_node_name: Dictionary
 		var godot_to_meta_node_name: Dictionary
-		var nodes := state.get_nodes()
-		var meshes := state.get_meshes()
-		var materials := state.get_materials()
-		var animations := state.get_animations()
+		var nodes = state.get_nodes()
+		var meshes = state.get_meshes()
+		var materials = state.get_materials()
+		var animations = state.get_animations()
 		var used_names: Dictionary
 		for node_i in range(len(nodes)):
 			var node = nodes[node_i]
 			var godot_mangled_name: String = node.resource_name
-			if node_i == 0:
-				assert(godot_mangled_name == "Root")
-				continue
 			var orig_name: String = node.original_name
-
+			if node_i == 0:
+				if godot_mangled_name == "Root" and orig_name == "":
+					continue
+				else:
+					pkgasset.log_debug("Found a different node " + str(godot_mangled_name) + "/" + str(orig_name) + " instead of Root")
 			var next_num: int = used_names.get(orig_name, 1)
 			var try_name: String = orig_name
 			while used_names.has(try_name):
@@ -1570,6 +1575,10 @@ class FbxHandler:
 			used_names[try_name] = 1
 			var used_type: String = "bone_name" if node.skeleton >= 0 else "nodes"
 			godot_sanitized_to_orig_remap[used_type][godot_mangled_name] = try_name
+			if node.mesh >= 0:
+				var mesh = meshes[node.mesh]
+				var mesh_mangled_name: String = mesh.resource_name
+				godot_sanitized_to_orig_remap["meshes"][mesh_mangled_name] = try_name
 		used_names = {}
 		var unnamed_material_count: int = 0
 		for mesh_i in range(len(meshes)):
@@ -1583,7 +1592,8 @@ class FbxHandler:
 				next_num += 1
 			used_names[orig_name] = next_num
 			used_names[try_name] = 1
-			godot_sanitized_to_orig_remap["meshes"][godot_mangled_name] = try_name
+			if not godot_sanitized_to_orig_remap["meshes"].has(godot_mangled_name):
+				godot_sanitized_to_orig_remap["meshes"][godot_mangled_name] = try_name
 			var imp_mesh: ImporterMesh = mesh.mesh
 			if imp_mesh != null:
 				for surf_i in range(imp_mesh.get_surface_count()):
