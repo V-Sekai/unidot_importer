@@ -670,7 +670,7 @@ class BaseModelHandler:
 		if not subresources["nodes"].has("PATH:AnimationPlayer"):
 			subresources["nodes"]["PATH:AnimationPlayer"] = {}
 		if importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid():
-			cfile.set_value_compare("params", "animation/contains_single_skeleton", true)
+			cfile.set_value_compare("params", "nodes/import_as_skeleton_bones", true)
 			if not subresources["nodes"].has("PATH:Skeleton3D"):
 				subresources["nodes"]["PATH:Skeleton3D"] = {}
 			var bone_map: BoneMap = importer.generate_bone_map_from_human()
@@ -679,11 +679,16 @@ class BaseModelHandler:
 			# FIXME: Disabled fix_silhouette because the pre-silhouette matrix is not being calculated yet
 			# This would break skins and unpacked prefabs.
 			if pkgasset.parsed_meta.is_using_builtin_ufbx():
+				var silhouette_anim: Animation = pkgasset.parsed_meta.internal_data.get("silhouette_anim", null)
+				if silhouette_anim != null:
+					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/load_pose"] = 2
+					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/external_animation_library"] = silhouette_anim
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
-				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/preserve_initial_pose"] = true
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/filter"] = [&"LeftFoot", &"RightFoot", &"LeftToes", &"RightToes"]
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/reset_all_bone_poses_after_import"] = false
 			else:
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
-			#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
 		var anim_player_settings: Dictionary = subresources["nodes"]["PATH:AnimationPlayer"]
 		var optim_setting: Dictionary = importer.animation_optimizer_settings()
 		anim_player_settings["optimizer/enabled"] = optim_setting.get("enabled", false)
@@ -1535,6 +1540,13 @@ class FbxHandler:
 		else:
 			return preprocess_asset_fbx2gltf(pkgasset, tmpdir, thread_subdir, path, data_buf, extra_data)
 
+	func create_rest_pose_anim(nodes: Array, hip_node_idx: int) -> Animation:
+		var anim := Animation.new()
+		for node in nodes:
+			var trk: int = anim.add_track(Animation.TYPE_ROTATION_3D)
+			anim.track_set_path(trk, NodePath("Skeleton3D:" + node.name))
+			anim.rotation_track_insert_key(trk, 0.0, node.rotation)
+		return anim
 
 	func preprocess_asset_ufbx(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, extra_data: Dictionary = {}) -> String:
 		# I think we should depend on relative paths for this, for example make dummy textures to get it to generate the materials, then move them back.
@@ -1548,7 +1560,8 @@ class FbxHandler:
 		# for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
 		var doc = ClassDB.instantiate(&"FBXDocument")
 		var state = ClassDB.instantiate(&"FBXState")
-		doc.append_data_from_file(tmpdir + "/" + path, state)
+		state.import_as_skeleton_bones = true
+		doc.append_from_file(tmpdir + "/" + path, state)
 		# Name unmangling:
 		var godot_to_fbx_node_name: Dictionary
 		var godot_to_meta_node_name: Dictionary
@@ -1556,6 +1569,7 @@ class FbxHandler:
 		var meshes = state.get_meshes()
 		var materials = state.get_materials()
 		var animations = state.get_animations()
+
 		var used_names: Dictionary
 		for node_i in range(len(nodes)):
 			var node = nodes[node_i]
@@ -1614,6 +1628,179 @@ class FbxHandler:
 			used_names[try_name] = 1
 			godot_sanitized_to_orig_remap["animations"][godot_mangled_name] = try_name
 			orig_to_godot_sanitized_anim_takes[try_name] = godot_mangled_name
+
+		var importer = pkgasset.parsed_meta.importer
+		var humanoid_original_transforms: Dictionary = {} # name -> Transform3D
+		var original_rotations: Dictionary = {} # name -> Quaternion
+		var orig_hip_position: Vector3
+		var human_skin_nodes: Array = []
+		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid()
+		var bone_map_dict: Dictionary
+		var copy_avatar: bool = false
+		var silhouette_anim: Animation
+		if is_humanoid and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
+			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
+				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
+				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
+				if src_ava_meta == null:
+					pkgasset.log_fail("Unable to lookup meta copy avatar dependency", "lastHumanDescriptionAvatarSource", src_ava)
+				else:
+					bone_map_dict = src_ava_meta.importer.generate_bone_map_dict_from_human()
+					humanoid_original_transforms = src_ava_meta.internal_data.get("humanoid_original_transforms", {}).duplicate()
+					orig_hip_position = src_ava_meta.internal_data.get("hips_position", Vector3())
+					original_rotations = src_ava_meta.internal_data.get("original_rotations", {}).duplicate()
+					pkgasset.log_debug("Copying from avatar " + str(src_ava_meta.path) + " " + str(src_ava_meta.guid) + " orig transforms " + str(len(src_ava_meta.internal_data.get("humanoid_original_transforms", {}))))
+					copy_avatar = true
+
+			if not copy_avatar and len(importer.keys.get("humanDescription", {}).get("human", [])) < 10:
+				var skel: Skeleton3D = Skeleton3D.new()
+				for node in nodes:
+					var node_name = node.resource_name
+					skel.add_bone(node_name)
+				var i: int = 0
+				for node in nodes:
+					if node.parent != -1:
+						skel.set_bone_parent(i, node.parent)
+					i += 1
+				i = 0
+				for node in nodes:
+					var n:GLTFNode
+					var xform: Transform3D = node.xform
+					skel.set_bone_rest(i, xform)
+					skel.set_bone_pose_position(i, xform.origin)
+					skel.set_bone_pose_rotation(i, xform.basis.get_rotation_quaternion())
+					skel.set_bone_pose_scale(i, xform.basis.get_scale())
+					i += 1
+				pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, pkgasset.parsed_meta.is_force_humanoid())
+				# The above fails if Hips could not be found. If forcing humanoid, try anyway in case this is an outfit.
+				if pkgasset.parsed_meta.is_force_humanoid() and pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty():
+					pkgasset.parsed_meta.autodetected_bone_map_dict = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, true)
+					var counter: int = 0
+					if pkgasset.parsed_meta.autodetected_bone_map_dict.is_empty():
+						for root_idx in range(len(nodes)):
+							if nodes[root_idx].parent != -1:
+								continue
+							counter ++ 1
+							if counter == 100:
+								break
+							var try_bone_map = bone_map_editor_plugin.auto_mapping_process_dictionary(skel, pkgasset.log_debug, true, true, root_idx)
+							if len(try_bone_map) > len(pkgasset.parsed_meta.autodetected_bone_map_dict):
+								pkgasset.parsed_meta.autodetected_bone_map_dict = try_bone_map
+				skel.free()
+
+			if not copy_avatar:
+				pkgasset.log_debug(str(importer.keys.get("humanDescription", {}).get("human", [])))
+				pkgasset.log_debug("AAAA set to humanoid and has nodes")
+				bone_map_dict = importer.generate_bone_map_dict_from_human()
+				pkgasset.log_debug(str(bone_map_dict))
+
+			# Discover missing Root bone if any, and correct for name conflicts.
+			var node_idx: int = 0
+			var human_skin_set: Dictionary
+			for node in nodes:
+				var node_name = node.resource_name
+				if bone_map_dict.has(node_name):
+					var godot_human_name: String = bone_map_dict[node_name]
+					human_skin_nodes.push_back(node_idx)
+					human_skin_set[node_idx] = true
+				node_idx += 1
+
+			var root_bone_name: String = ""
+			for key in bone_map_dict:
+				if bone_map_dict[key] == "Root":
+					root_bone_name = key
+			var cur_human_node_idx: int = -1 if human_skin_nodes.is_empty() else human_skin_nodes[-1] # Doesn't matter which...just need to find a common ancestor.
+			pkgasset.log_debug("cur_human_node_idx=" + str(cur_human_node_idx) + " / " + str(nodes[cur_human_node_idx]))
+			# Add up to three levels up into the skeleton. Our goal is to make the toplevel Armature node be a skeleton, so that we are guaranteed a root bone.
+			while nodes[cur_human_node_idx].parent != -1:
+				var new_root_idx = nodes[cur_human_node_idx].parent
+				var node = nodes[new_root_idx]
+				pkgasset.log_debug("Adding node to skin " + str(new_root_idx) + " parent of " + str(cur_human_node_idx))
+				pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node.resource_name
+				if not bone_map_dict.has(node.resource_name):
+					root_bone_name = node.resource_name
+				if not human_skin_set.has(new_root_idx):
+					human_skin_nodes.push_back(new_root_idx)
+					human_skin_set[new_root_idx] = true
+				cur_human_node_idx = new_root_idx
+			if root_bone_name != "":
+				bone_map_dict[root_bone_name] = "Root"
+
+			var hip_parent_node_idx = -1
+			var hip_node_idx = -1
+
+			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
+			if copy_avatar:
+				for x_node_idx in range(len(nodes)):
+					var node: Dictionary = nodes[x_node_idx]
+					var node_name: String = node.get("name", "")
+					if original_rotations.has(node_name):
+						var quat: Quaternion = original_rotations[node_name]
+						#node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+					if bone_map_dict.get(node_name, "") == "Hips":
+						#node["translation"] = [orig_hip_position.x, orig_hip_position.y, orig_hip_position.z]
+						hip_parent_node_idx = node.parent
+						hip_node_idx = x_node_idx
+			else:
+				## bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
+				for node in nodes:
+					var node_name: String = node.resource_name
+					original_rotations[node_name] = node.rotation
+					if bone_map_dict.get(node_name, "") == "Hips":
+						pkgasset.parsed_meta.internal_data["hips_position"] = node.position
+
+			for node in nodes:
+				if bone_map_dict.get(node.resource_name, "") == "Hips":
+					hip_parent_node_idx = node.parent
+			while hip_parent_node_idx != -1:
+				hip_parent_node_idx = nodes[hip_parent_node_idx].parent
+
+			# used_names = {}
+			for godot_bone_name in bone_map_dict:
+				var mapped_bone_name = bone_map_dict[godot_bone_name]
+				if mapped_bone_name != godot_bone_name:
+					if godot_sanitized_to_orig_remap.has(mapped_bone_name):
+						var next_num: int = used_names.get(mapped_bone_name, 1)
+						var try_name: String = mapped_bone_name
+						while used_names.has(try_name):
+							try_name = "%s %d" % [mapped_bone_name, next_num]
+							next_num += 1
+						used_names[mapped_bone_name] = next_num
+						used_names[try_name] = 1
+						godot_sanitized_to_orig_remap["bone_name"][mapped_bone_name] = try_name
+
+			if silhouette_anim == null:
+				silhouette_anim = create_rest_pose_anim(nodes, hip_node_idx)
+
+			# Adding missing tracks just to the T-Pose animation after silhouette fix generates a T-Pose
+			#add_empty_animation(json, "_T-Pose_")
+			#add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
+			pkgasset.parsed_meta.internal_data["silhouette_anim"] = silhouette_anim
+
+			# Finally, record the original post-silhouette transforms for transform_fileid_to_rotation_delta
+			for node in nodes:
+				var node_name = node.resource_name
+				if bone_map_dict.has(node_name):
+					var godot_human_name: String = bone_map_dict[node_name]
+					if godot_human_name not in humanoid_original_transforms:
+						humanoid_original_transforms[godot_human_name] = node.xform
+				elif node_name not in humanoid_original_transforms:
+					humanoid_original_transforms[node_name] = node.xform
+
+			pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
+			pkgasset.parsed_meta.internal_data["original_rotations"] = original_rotations
+
+		var skinned_parents: Dictionary
+		for node in nodes:
+			if node.mesh != -1 and node.skin != -1:
+				var parent_name := ""
+				if node.parent != -1:
+					parent_name = nodes[node.parent].original_name
+				if not skinned_parents.has(parent_name):
+					skinned_parents[parent_name] = []
+				skinned_parents[parent_name].append(node.original_name)
+
+		pkgasset.parsed_meta.internal_data["skinned_parents"] = skinned_parents
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = godot_sanitized_to_orig_remap
 		pkgasset.parsed_meta.internal_data["used_animation_names"] = used_animation_names
 		pkgasset.parsed_meta.internal_data["orig_to_godot_sanitized_anim_takes"] = orig_to_godot_sanitized_anim_takes

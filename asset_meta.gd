@@ -252,8 +252,8 @@ func is_humanoid() -> bool:
 
 func is_using_builtin_ufbx() -> bool:
 	#if Engine.get_version_info().hex >= 0x040300:
-	if ClassDB.class_exists(&"FBXDocument") and ClassDB.class_exists(&"FBXState"):
-		return true
+	# if ClassDB.class_exists(&"FBXDocument") and ClassDB.class_exists(&"FBXState"):
+	# 	return true
 	return false
 
 
