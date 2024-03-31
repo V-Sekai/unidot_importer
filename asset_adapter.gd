@@ -683,9 +683,10 @@ class BaseModelHandler:
 				if silhouette_anim != null:
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/load_pose"] = 2
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/external_animation_library"] = silhouette_anim
-				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
-				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/filter"] = [&"LeftFoot", &"RightFoot", &"LeftToes", &"RightToes"]
-				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
+				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
+				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/filter"] = [&"LeftFoot", &"RightFoot", &"LeftToes", &"RightToes"]
+				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/reset_all_bone_poses_after_import"] = false
 			else:
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
@@ -1544,7 +1545,7 @@ class FbxHandler:
 		var anim := Animation.new()
 		for node in nodes:
 			var trk: int = anim.add_track(Animation.TYPE_ROTATION_3D)
-			anim.track_set_path(trk, NodePath("Skeleton3D:" + node.name))
+			anim.track_set_path(trk, NodePath("Skeleton3D:" + node.resource_name))
 			anim.rotation_track_insert_key(trk, 0.0, node.rotation)
 		return anim
 
