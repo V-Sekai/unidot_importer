@@ -925,11 +925,11 @@ class FbxHandler:
 				strlist.append(buffer_as_ascii.substr(nextpos + 1, lastquote - nextpos - 1))
 		return strlist
 
-	func _extract_fbx_objects_binary(obj_type: String, pkgasset: Object, fbx_file_binary: PackedByteArray) -> PackedStringArray:
+	func _extract_fbx_object_offsets_binary(obj_type: String, pkgasset: Object, fbx_file_binary: PackedByteArray) -> Dictionary:
 		var spb: StreamPeerBuffer = StreamPeerBuffer.new()
 		spb.data_array = fbx_file_binary
 		spb.big_endian = false
-		var strlist: PackedStringArray = PackedStringArray()
+		var str_offsets: Dictionary
 
 		# Binary FBX serializes ids such as Model::SomeNodeName as S__\x00\x00SomeNodeName\x00\x01Model
 		var modelname_needle_buf: PackedByteArray = (".\u0001" + obj_type).to_ascii_buffer()
@@ -941,7 +941,7 @@ class FbxHandler:
 			while fbx_file_binary[length_prefix_pos] != 0:
 				if length_prefix_pos < 4:
 					push_error("Failed to find beginning of Model name")
-					return strlist
+					return str_offsets
 				length_prefix_pos -= 1
 			var nextpos: int = find_in_buffer(fbx_file_binary, modelname_needle_buf, modelname_needle_pos + 7)
 			spb.seek(length_prefix_pos - 3)
@@ -951,22 +951,140 @@ class FbxHandler:
 			assert(strlen + 1 + length_prefix_pos == modelname_needle_pos + 2 + len(obj_type))
 			if strlen >= len(obj_type) + 2 and strlen < 1024:
 				var fn_utf8: PackedByteArray = spb.get_data(strlen - len(obj_type) - 2)[1]  # NOTE: Do we need to detect charset? FBX should be unicode
-				strlist.append(fn_utf8.get_string_from_utf8())
+				var mesh_name: String = fn_utf8.get_string_from_utf8()
+				if not str_offsets.has(mesh_name):
+					str_offsets[mesh_name] = []
+				str_offsets[mesh_name].append(Vector2i(spb.get_position(), nextpos))
 			modelname_needle_pos = nextpos
-		return strlist
+		return str_offsets
 
-	func _extract_fbx_objects_ascii(obj_type: String, pkgasset: Object, buffer_as_utf8: String) -> PackedStringArray:
-		var strlist: PackedStringArray = PackedStringArray()
-		var modelname_needle = '"' + obj_type + '::'
+	func _extract_fbx_object_offsets_ascii(obj_type: String, pkgasset: Object, buffer_as_utf8: String) -> Dictionary:
+		var str_offsets: Dictionary
+		var modelname_needle: String = '"' + obj_type + '::'
 		var modelname_needle_pos: int = buffer_as_utf8.find(modelname_needle)
+		print("ASCII " + modelname_needle + " " + str(modelname_needle_pos))
 		while modelname_needle_pos != -1:
 			var modelname_needle_end: int = buffer_as_utf8.find('"', modelname_needle_pos + len(obj_type) + 3)
+			print("ASCII QUOT " + str(modelname_needle_end))
 			if modelname_needle_end == -1:
+				print("ASCII EMD " + str(modelname_needle_end))
 				break
+			var model_needle_end: int = buffer_as_utf8.find(modelname_needle, modelname_needle_end)
+			if model_needle_end == -1:
+				model_needle_end = buffer_as_utf8.find("::", modelname_needle_end)
 			var str_utf8: String = buffer_as_utf8.substr(modelname_needle_pos + len(obj_type) + 3, modelname_needle_end - modelname_needle_pos - len(obj_type) - 3)
-			strlist.append(str_utf8) # str_ascii.to_ascii_buffer().get_string_from_utf8()
+			if not str_offsets.has(str_utf8):
+				str_offsets[str_utf8] = []
+			str_offsets[str_utf8].append(Vector2i(modelname_needle_end, model_needle_end))
 			modelname_needle_pos = buffer_as_utf8.find(modelname_needle, modelname_needle_end)
-		return strlist
+			print("ASCII DO " + str(modelname_needle_pos))
+		return str_offsets
+
+	func _extract_fbx_objects_binary(obj_type: String, pkgasset: Object, fbx_file_binary: PackedByteArray) -> PackedStringArray:
+		return PackedStringArray(_extract_fbx_object_offsets_binary(obj_type, pkgasset, fbx_file_binary).keys())
+
+	func _extract_fbx_objects_ascii(obj_type: String, pkgasset: Object, buffer_as_utf8: String) -> PackedStringArray:
+		return PackedStringArray(_extract_fbx_object_offsets_ascii(obj_type, pkgasset, buffer_as_utf8).keys())
+
+	func _extract_fbx_geometry_material_order_binary(pkgasset: Object, fbx_file_binary: PackedByteArray) -> Dictionary:
+		var spb: StreamPeerBuffer = StreamPeerBuffer.new()
+		spb.data_array = fbx_file_binary
+		spb.big_endian = false
+		var str_offsets: Dictionary = _extract_fbx_object_offsets_binary("Geometry", pkgasset, fbx_file_binary)
+		var material_order_by_mesh: Dictionary
+		var duplicate_map: Dictionary
+		for mesh_name in str_offsets:
+			for which_mesh in str_offsets[mesh_name]:
+				var start_mesh: int = which_mesh.x
+				var end_mesh: int = which_mesh.y
+				# print("Found binary mesh " + str(mesh_name) + ": " + str(start_mesh) + "/" + str(end_mesh))
+				var layer_element_material_pos: int = find_in_buffer(fbx_file_binary, ("\u0014LayerElementMaterial").to_ascii_buffer(), start_mesh, end_mesh)
+				if layer_element_material_pos == -1:
+					continue
+				var materials_key_pos: int = find_in_buffer(fbx_file_binary, ("\u0009Materialsi").to_ascii_buffer(), layer_element_material_pos, end_mesh)
+				if materials_key_pos == -1:
+					continue
+				spb.seek(materials_key_pos + 11)
+				var face_count: int = spb.get_u32()
+				var one_int: int = spb.get_u32()
+				var compressed_size: int = spb.get_u32()
+				# print("comp " + str(compressed_size) + " face count " + str(face_count) + " one " + str(one_int))
+				if face_count > 250000000: # one_int != 1 or (sometimes this is 0)
+					push_error("Incorrect compression tag for Materials " + str(one_int) + " face count " + str(face_count))
+					continue
+				if end_mesh != -1 and compressed_size > end_mesh - materials_key_pos - 11:
+					push_error("Invalid compressed size " + str(compressed_size))
+					continue
+				var compressed_data = spb.get_data(compressed_size)[1]
+				var face_indices: PackedInt32Array = compressed_data.decompress(face_count * 4, FileAccess.COMPRESSION_DEFLATE).to_int32_array()
+				if len(face_indices) != face_count:
+					push_warning("incorrect number of decompressed face indices")
+					continue
+				var material_order: PackedInt32Array
+				var found_face_indices: PackedInt32Array
+				for idx in face_indices:
+					if idx > face_count or idx < 0:
+						push_error("Incorrect material index " + str(idx))
+					if idx >= len(found_face_indices):
+						found_face_indices.resize(idx + 1)
+					if found_face_indices[idx] == 0:
+						material_order.append(idx)
+					found_face_indices[idx] = 1
+				if not material_order_by_mesh.has(mesh_name):
+					material_order_by_mesh[mesh_name] = []
+				material_order_by_mesh[mesh_name].append(material_order)
+		return material_order_by_mesh
+
+	func _extract_fbx_geometry_material_order_ascii(pkgasset: Object, buffer_as_utf8: String) -> Dictionary:
+		var str_offsets: Dictionary = _extract_fbx_object_offsets_ascii("Geometry", pkgasset, buffer_as_utf8)
+		var material_order_by_mesh: Dictionary
+		for mesh_name in str_offsets:
+			for which_mesh in str_offsets[mesh_name]:
+				var start_mesh: int = which_mesh.x
+				var end_mesh: int = which_mesh.y
+				var mat_pos: int = buffer_as_utf8.find("LayerElementMaterial:", start_mesh)
+				if mat_pos == -1 or mat_pos > end_mesh:
+					print("Cont 1 " + str(mat_pos) + " " + str(end_mesh))
+					continue
+				var materials_pos: int = buffer_as_utf8.find("Materials:", mat_pos + 21)
+				if materials_pos == -1 or materials_pos > end_mesh:
+					print("Cont 2 " + str(mat_pos) + " " + str(end_mesh) + " " + str(materials_pos))
+					continue
+				var close_brace_pos: int = buffer_as_utf8.find("}", materials_pos)
+				if close_brace_pos == -1 or close_brace_pos > end_mesh:
+					print("Cont 3 " + str(mat_pos) + " " + str(close_brace_pos) + " " + str(materials_pos))
+					continue
+				var open_brace_pos: int = buffer_as_utf8.find("{", materials_pos)
+				if open_brace_pos == -1 or open_brace_pos > close_brace_pos:
+					print("Cont 4 " + str(mat_pos) + " " + str(open_brace_pos) + " " + str(close_brace_pos))
+					continue
+				var star_pos: int = buffer_as_utf8.find("*", materials_pos)
+				if star_pos == -1 or star_pos > open_brace_pos:
+					print("Cont 5 " + str(mat_pos) + " " + str(star_pos) + " " + str(open_brace_pos))
+					continue
+				var face_count: int = buffer_as_utf8.substr(star_pos + 1, open_brace_pos - star_pos - 1).strip_edges().to_int()
+				var array_start = buffer_as_utf8.find(":", open_brace_pos)
+				if array_start == -1 or array_start > close_brace_pos:
+					print("Cont 6 " + str(mat_pos) + " " + str(array_start) + " " + str(close_brace_pos))
+					continue
+				var face_index_strs: PackedStringArray = buffer_as_utf8.substr(array_start + 1, close_brace_pos - array_start - 1).split(",")
+				var material_order: PackedInt32Array
+				var found_face_indices: PackedInt32Array
+				for idx_str in face_index_strs:
+					var idx: int = idx_str.strip_edges().to_int()
+					if idx > face_count or idx < 0:
+						push_error("Incorrect material index " + str(idx))
+					if idx >= len(found_face_indices):
+						found_face_indices.resize(idx + 1)
+					if found_face_indices[idx] == 0:
+						material_order.append(idx)
+					found_face_indices[idx] = 1
+				if not material_order_by_mesh.has(mesh_name):
+					material_order_by_mesh[mesh_name] = []
+				print(material_order)
+				material_order_by_mesh[mesh_name].append(material_order)
+		return material_order_by_mesh
+
 
 	func _preprocess_fbx_scale_binary(pkgasset: Object, fbx_file_binary: PackedByteArray, useFileScale: bool, globalScale: float) -> PackedByteArray:
 		if useFileScale and is_equal_approx(globalScale, 1.0):
@@ -1244,12 +1362,14 @@ class FbxHandler:
 		var node_name_list: PackedStringArray
 		var mesh_name_list: PackedStringArray
 		var animation_name_list: PackedStringArray
+		var material_order_by_mesh: Dictionary
 		if is_binary:
 			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
 			fps = _preprocess_fbx_anim_fps_binary(pkgasset, fbx_file)
 			node_name_list = _extract_fbx_objects_binary("Model", pkgasset, fbx_file)
 			mesh_name_list = _extract_fbx_objects_binary("Geometry", pkgasset, fbx_file)
 			animation_name_list = _extract_fbx_objects_binary("AnimStack", pkgasset, fbx_file)
+			material_order_by_mesh = _extract_fbx_geometry_material_order_binary(pkgasset, fbx_file)
 			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
 			var buffer_as_utf8: String = fbx_file.get_string_from_utf8()  # may contain unicode
@@ -1259,6 +1379,7 @@ class FbxHandler:
 			node_name_list = _extract_fbx_objects_ascii("Model", pkgasset, buffer_as_utf8)
 			mesh_name_list = _extract_fbx_objects_ascii("Geometry", pkgasset, buffer_as_utf8)
 			animation_name_list = _extract_fbx_objects_ascii("AnimStack", pkgasset, buffer_as_utf8)
+			material_order_by_mesh = _extract_fbx_geometry_material_order_ascii(pkgasset, buffer_as_utf8)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
 		var closest_bake_fps: float = 30
@@ -1334,6 +1455,7 @@ class FbxHandler:
 			"node_name_list": node_name_list,
 			"mesh_name_list": mesh_name_list,
 			"animation_name_list": animation_name_list,
+			"material_order_by_mesh": material_order_by_mesh,
 		}
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, extra_data)
 		#if len(output_path) == 0:
@@ -1553,6 +1675,7 @@ class FbxHandler:
 		# I think we should depend on relative paths for this, for example make dummy textures to get it to generate the materials, then move them back.
 		# We can do the FBXDocument step in preprocess, so we will know in advance if this works.
 		var unique_texture_map: Dictionary = extra_data["unique_texture_map"]
+		var material_order_by_mesh: Dictionary = extra_data["material_order_by_mesh"]
 		var used_animation_names: Dictionary
 		var orig_to_godot_sanitized_anim_takes: Dictionary
 
@@ -1573,7 +1696,7 @@ class FbxHandler:
 
 		var used_names: Dictionary
 		for node_i in range(len(nodes)):
-			var node = nodes[node_i]
+			var node: GLTFNode = nodes[node_i]
 			var godot_mangled_name: String = node.resource_name
 			var orig_name: String = node.original_name
 			if node_i == 0:
@@ -1594,10 +1717,12 @@ class FbxHandler:
 				var mesh = meshes[node.mesh]
 				var mesh_mangled_name: String = mesh.resource_name
 				godot_sanitized_to_orig_remap["meshes"][mesh_mangled_name] = try_name
+		var material_idx_by_mesh = {}
 		used_names = {}
 		var unnamed_material_count: int = 0
+		var internal_material_order_by_mesh_rev: Dictionary
 		for mesh_i in range(len(meshes)):
-			var mesh = meshes[mesh_i]
+			var mesh: GLTFMesh = meshes[mesh_i]
 			var godot_mangled_name: String = mesh.resource_name
 			var orig_name: String = mesh.original_name
 			var next_num: int = used_names.get(orig_name, 1)
@@ -1614,6 +1739,37 @@ class FbxHandler:
 				for surf_i in range(imp_mesh.get_surface_count()):
 					if imp_mesh.get_surface_material(surf_i) == null or imp_mesh.get_surface_material(surf_i).resource_name.is_empty():
 						unnamed_material_count += 1
+			# Handle material sort order
+			var material_key_idx: int = 0
+			if material_idx_by_mesh.has(orig_name):
+				material_key_idx = material_idx_by_mesh[orig_name]
+				material_idx_by_mesh[orig_name] += 1
+			else:
+				material_idx_by_mesh[orig_name] = 1
+			var material_used: PackedInt32Array = PackedInt32Array()
+			var material_order: PackedInt32Array = PackedInt32Array()
+			if mesh.mesh != null:
+				material_used.resize(mesh.mesh.get_surface_count())
+			if material_order_by_mesh.has(orig_name):
+				var material_order_temp: PackedInt32Array = PackedInt32Array()
+				if len(material_order_by_mesh[orig_name]) > material_key_idx:
+					material_order_temp = material_order_by_mesh[orig_name][material_key_idx]
+				else:
+					material_order_temp = material_order_by_mesh[orig_name][-1]
+				for mat in material_order_temp:
+					if mat >= 0 and mat < len(material_used):
+						if material_used[mat] == 0:
+							material_used[mat] = -1
+							material_order.append(mat)
+			for mat in range(len(material_used)):
+				if not material_used[mat]:
+					material_order.append(mat)
+			for mat in range(len(material_order)):
+				material_used[material_order[mat]] = mat
+			material_used = material_order
+			internal_material_order_by_mesh_rev[godot_mangled_name] = material_used
+		pkgasset.parsed_meta.internal_data["material_order_by_mesh_rev"] = internal_material_order_by_mesh_rev
+
 		used_names = {}
 		for anim_i in range(len(animations)):
 			var anim = animations[anim_i]

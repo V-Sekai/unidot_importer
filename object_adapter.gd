@@ -305,7 +305,7 @@ class UnidotObject:
 			last_material = node.get_active_material(old_surface_count - 1)
 
 		var last_extra_material: Resource = last_material
-		var current_materials: Array = [].duplicate()
+		var current_materials_raw: Array = [].duplicate()
 
 		var prefix: String = material_prefix + str(old_surface_count - 1) + ":"
 		var new_prefix: String = prefix
@@ -315,8 +315,17 @@ class UnidotObject:
 			var mat: Resource = node.get_active_material(material_idx)
 			if mat != null and str(mat.resource_name).begins_with(prefix):
 				break
-			current_materials.push_back(mat)
+			current_materials_raw.push_back(mat)
 			material_idx += 1
+
+		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
+		var current_materials: Array
+		current_materials.resize(len(mat_slots))
+		for i in range(len(mat_slots)):
+			current_materials[i] = mat_slots[i]
+		for i in range(len(mat_slots), len(current_materials_raw)):
+			current_materials.append(current_materials_raw[i])
+		log_debug("Current mat slots " + str(mat_slots) + " materials before: " + str(current_materials))
 
 		while last_extra_material != null and (str(last_extra_material.resource_name).begins_with(prefix) or str(last_extra_material.resource_name).begins_with(new_prefix)):
 			if str(last_extra_material.resource_name).begins_with(new_prefix):
@@ -335,6 +344,11 @@ class UnidotObject:
 		var new_materials_size = props.get("_materials_size", material_idx)
 
 		if props.has("_mesh"):
+			var mesh_ref: Array = props["_mesh_ref"]
+			var mesh_meta: Resource = meta.lookup_meta(mesh_ref)
+			if mesh_meta != null:
+				meta.fileid_to_material_order_rev[fileID] = mesh_meta.fileid_to_material_order_rev.get(mesh_ref[1], PackedInt32Array())
+				log_debug("GET " + str(fileID) + ": " + str(mesh_ref[1]) + " from " + str(mesh_meta.fileid_to_material_order_rev.get(mesh_ref[1])))
 			node.mesh = props.get("_mesh")
 			node.material_override = null
 
@@ -356,9 +370,15 @@ class UnidotObject:
 				# GI_MODE_DISABLED seems buggy and ignores light probes.
 				node.gi_mode = GeometryInstance3D.GI_MODE_DYNAMIC
 
+
+		mat_slots = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
 		current_materials.resize(new_materials_size)
 		for i in range(new_materials_size):
-			current_materials[i] = props.get("_materials/" + str(i), current_materials[i])
+			var idx = mat_slots[i] if i < len(mat_slots) else i
+			if idx < new_materials_size:
+				current_materials[idx] = props.get("_materials/" + str(i), current_materials[i])
+
+		log_debug("After mat slots " + str(mat_slots) + " materials after: " + str(current_materials))
 
 		var new_surface_count: int = 0 if node.mesh == null else node.mesh.get_surface_count()
 		if new_surface_count != 0 and node.mesh != null:
@@ -5513,7 +5533,11 @@ class UnidotMeshRenderer:
 		assign_object_meta(new_node)
 		if meta.get_database().enable_unidot_keys:
 			new_node.editor_description = str(self)
-		new_node.mesh = meta.get_godot_resource(self.get_mesh())
+		var mesh_ref: Array = self.get_mesh()
+		var mesh_meta: Resource = meta.lookup_meta(mesh_ref)
+		if mesh_meta != null:
+			new_node.mesh = meta.get_godot_resource(mesh_ref)
+			meta.fileid_to_material_order_rev[fileID] = mesh_meta.fileid_to_material_order_rev.get(mesh_ref[1], PackedInt32Array())
 
 		if is_stripped or gameObject.is_stripped:
 			log_fail("Oh no i am stripped MeshRenderer create_godot_node_orig")
@@ -5521,8 +5545,9 @@ class UnidotMeshRenderer:
 		if mf != null:
 			state.add_fileID(new_node, mf)
 		var idx: int = 0
+		var mat_slots: PackedInt32Array = meta.fileid_to_material_order_rev.get(fileID, meta.prefab_fileid_to_material_order_rev.get(fileID, PackedInt32Array()))
 		for m in keys.get("m_Materials", []):
-			new_node.set_surface_override_material(idx, meta.get_godot_resource(m))
+			new_node.set_surface_override_material(mat_slots[idx] if idx < len(mat_slots) else idx, meta.get_godot_resource(m))
 			idx += 1
 		return new_node
 
@@ -5656,6 +5681,7 @@ class UnidotSkinnedMeshRenderer:
 		var outdict = super.convert_properties(node, uprops)
 		if uprops.has("m_Mesh"):
 			var mesh_ref: Array = get_ref(uprops, "m_Mesh")
+			outdict["_mesh_ref"] = mesh_ref
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
 			outdict["_mesh"] = new_mesh  # property track?
 			var skin_ref: Array = mesh_ref

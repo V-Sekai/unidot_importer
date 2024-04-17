@@ -67,6 +67,7 @@ var prefab_fileid_to_skeleton_bone = {}  # int -> string
 var prefab_fileid_to_utype = {}  # int -> int
 var prefab_type_to_fileids = {}  # int -> int
 var prefab_fileid_to_gameobject_fileid: Dictionary = {}  # int -> int
+var prefab_fileid_to_material_order_rev: Dictionary = {}
 var fileid_to_component_fileids: Dictionary = {}  # int -> int
 # TODO: remove @export
 @export var prefab_gameobject_name_to_fileid_and_children: Dictionary = {}  # {null: 400000, "SomeName": {null: 1234, "SomeName2": ...}
@@ -83,6 +84,7 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var fileid_to_skeleton_bone: Dictionary = {}  # int -> string: scene_node_state.add_fileID_to_skeleton_bone
 @export var fileid_to_utype: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
 @export var fileid_to_gameobject_fileid: Dictionary = {}  # int -> int: parse_binary_asset/parse_asset
+@export var fileid_to_material_order_rev: Dictionary = {}  # Mesh OR MeshRenderer fileID int -> PackedInt32Array
 @export var type_to_fileids: Dictionary = {}  # string -> Array[int]: parse_binary_asset/parse_asset
 @export var godot_resources: Dictionary = {}  # int -> Resource: insert_resource/override_resource
 @export var main_object_id: int = 0  # e.g. 2100000 for .mat; 100000 for .fbx or GameObject; 100100000 for .prefab
@@ -423,6 +425,10 @@ func remap_prefab_fileids(prefab_fileid: int, target_prefab_meta: Resource):
 		self.prefab_transform_fileid_to_scale_signs[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.transform_fileid_to_scale_signs.get(target_fileid)
 	for target_fileid in target_prefab_meta.prefab_transform_fileid_to_scale_signs:
 		self.prefab_transform_fileid_to_scale_signs[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.prefab_transform_fileid_to_scale_signs.get(target_fileid)
+	for target_fileid in target_prefab_meta.fileid_to_material_order_rev:
+		self.prefab_fileid_to_material_order_rev[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.fileid_to_material_order_rev.get(target_fileid)
+	for target_fileid in target_prefab_meta.prefab_fileid_to_material_order_rev:
+		self.prefab_fileid_to_material_order_rev[xor_or_stripped(target_fileid, prefab_fileid)] = target_prefab_meta.prefab_fileid_to_material_order_rev.get(target_fileid)
 
 
 func calculate_prefab_nodepaths_recursive():
