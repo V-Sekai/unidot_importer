@@ -1721,6 +1721,8 @@ class FbxHandler:
 				var mesh = meshes[node.mesh]
 				var mesh_mangled_name: String = mesh.resource_name
 				godot_sanitized_to_orig_remap["meshes"][mesh_mangled_name] = try_name
+				if node.skeleton >= 0:
+					godot_sanitized_to_orig_remap["nodes"][godot_mangled_name.validate_node_name()] = try_name
 		var material_idx_by_mesh = {}
 		used_names = {}
 		var unnamed_material_count: int = 0
@@ -1956,10 +1958,15 @@ class FbxHandler:
 			if node.mesh != -1 and node.skin != -1:
 				var parent_name := ""
 				if node.parent != -1:
-					parent_name = nodes[node.parent].original_name
+					var par_node = nodes[node.parent]
+					parent_name = godot_sanitized_to_orig_remap.get("bone_name", {}).get(
+						par_node.resource_name, godot_sanitized_to_orig_remap.get("nodes", {}).get(
+							par_node.resource_name, par_node.original_name))
 				if not skinned_parents.has(parent_name):
 					skinned_parents[parent_name] = []
-				skinned_parents[parent_name].append(node.original_name)
+				skinned_parents[parent_name].append(godot_sanitized_to_orig_remap.get("bone_name", {}).get(
+					node.resource_name, godot_sanitized_to_orig_remap.get("nodes", {}).get(
+						node.resource_name, node.original_name)))
 
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = skinned_parents
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = godot_sanitized_to_orig_remap

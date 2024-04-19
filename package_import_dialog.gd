@@ -948,6 +948,8 @@ func show_importer(ep: EditorPlugin) -> void:
 
 
 func check_fbx2gltf():
+	if ClassDB.class_exists(&"FBXDocument") and ClassDB.class_exists(&"FBXState"):
+		return # No need to check for FBX2glTF on engines with native fbx.
 	var d = DirAccess.open("res://")
 	var addon_path: String = new_editor_plugin.get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
 	if not addon_path.get_file().is_empty():
@@ -1893,7 +1895,7 @@ func _asset_tree_window_confirmed():
 		asset_database.log_limit_per_guid = 20000
 	else:
 		asset_database.log_limit_per_guid = 100000
-	status_bar.text = "Preprocessing and converting FBX2glTF..."
+	status_bar.text = "Preprocessing FBX and reading assets ..."
 	_preprocessing_second_pass = second_pass
 	if _currently_preprocessing_assets == 0:
 		_preprocess_second_pass()

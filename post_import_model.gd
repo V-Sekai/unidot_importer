@@ -158,16 +158,20 @@ class ParseState:
 			# metaobj.log_debug(0, "Lookup bone name " + str(p_obj_name) + " -> " + str(obj_name))
 		return self.godot_sanitized_to_orig_remap.get(obj_gltf_type, {}).get(obj_name, obj_name)
 
+	func get_orig_bone_or_node(p_obj_name: String) -> String:
+		return self.godot_sanitized_to_orig_remap.get("nodes", {}).get(p_obj_name,
+			self.godot_sanitized_to_orig_remap.get("bone_name", {}).get(p_obj_name, p_obj_name))
+
 	func build_skinned_name_to_node_map(node: Node, p_name_to_node_dict: Dictionary) -> Dictionary:
 		var name_to_node_dict: Dictionary = p_name_to_node_dict
-		var node_name = get_orig_name("nodes", node.name)
+		var node_name = get_orig_bone_or_node(node.name)
 		for child in node.get_children():
 			name_to_node_dict = build_skinned_name_to_node_map(child, name_to_node_dict)
-		# metaobj.log_debug(0, "node.name " + str(node_name) + ": " + str(name_to_node_dict))
+		metaobj.log_debug(0, "node.name " + str(node_name) + ": " + str(name_to_node_dict))
 		if node is MeshInstance3D:
 			if node.skin != null:
 				name_to_node_dict[node_name] = node
-				# metaobj.log_debug(0, "adding " + str(node_name) + ": " + str(name_to_node_dict))
+				metaobj.log_debug(0, "adding " + str(node_name) + ": " + str(name_to_node_dict))
 		return name_to_node_dict
 
 	func get_resource_path(sanitized_name: String, extension: String) -> String:
@@ -387,7 +391,7 @@ class ParseState:
 		skinned_parent_to_node.erase(key)
 		for child in skinned_children:
 			metaobj.log_debug(0, "Skinned parent " + str(node.name) + ": " + str(child.name))
-			var orig_child_name: String = get_orig_name("nodes", child.name)
+			var orig_child_name: String = get_orig_bone_or_node(child.name)
 			var new_id: int = 0
 			if len(p_path) == 1:
 				# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
@@ -529,7 +533,7 @@ class ParseState:
 			skinned_parent_to_node.erase(key)
 			for child in skinned_children:
 				metaobj.log_debug(0, "Skinned parent from non-bone " + str(node.name) + ": " + str(child.name))
-				var orig_child_name: String = get_orig_name("nodes", child.name)
+				var orig_child_name: String = get_orig_bone_or_node(child.name)
 				var new_id: int = 0
 				if len(p_path) == 1:
 					# If not preserve_hierarchy and we determined we can fold root node, that means skinned parents is empty.
