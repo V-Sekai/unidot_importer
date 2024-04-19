@@ -1006,17 +1006,21 @@ class FbxHandler:
 					continue
 				spb.seek(materials_key_pos + 11)
 				var face_count: int = spb.get_u32()
-				var one_int: int = spb.get_u32()
+				var encoding: int = spb.get_u32() # 0 = raw; 1 = deflate
 				var compressed_size: int = spb.get_u32()
 				# print("comp " + str(compressed_size) + " face count " + str(face_count) + " one " + str(one_int))
 				if face_count > 250000000: # one_int != 1 or (sometimes this is 0)
-					push_error("Incorrect compression tag for Materials " + str(one_int) + " face count " + str(face_count))
+					push_error("Incorrect compression tag for Materials " + str(encoding) + " face count " + str(face_count))
 					continue
 				if end_mesh != -1 and compressed_size > end_mesh - materials_key_pos - 11:
 					push_error("Invalid compressed size " + str(compressed_size))
 					continue
 				var compressed_data = spb.get_data(compressed_size)[1]
-				var face_indices: PackedInt32Array = compressed_data.decompress(face_count * 4, FileAccess.COMPRESSION_DEFLATE).to_int32_array()
+				var face_indices: PackedInt32Array
+				if encoding == 1:
+					face_indices = compressed_data.decompress(face_count * 4, FileAccess.COMPRESSION_DEFLATE).to_int32_array()
+				else:
+					face_indices = compressed_data.to_int32_array()
 				if len(face_indices) != face_count:
 					push_warning("incorrect number of decompressed face indices")
 					continue
@@ -1366,9 +1370,9 @@ class FbxHandler:
 		if is_binary:
 			texture_name_list = _extract_fbx_textures_binary(pkgasset, fbx_file)
 			fps = _preprocess_fbx_anim_fps_binary(pkgasset, fbx_file)
-			node_name_list = _extract_fbx_objects_binary("Model", pkgasset, fbx_file)
-			mesh_name_list = _extract_fbx_objects_binary("Geometry", pkgasset, fbx_file)
-			animation_name_list = _extract_fbx_objects_binary("AnimStack", pkgasset, fbx_file)
+			#node_name_list = _extract_fbx_objects_binary("Model", pkgasset, fbx_file)
+			#mesh_name_list = _extract_fbx_objects_binary("Geometry", pkgasset, fbx_file)
+			#animation_name_list = _extract_fbx_objects_binary("AnimStack", pkgasset, fbx_file)
 			material_order_by_mesh = _extract_fbx_geometry_material_order_binary(pkgasset, fbx_file)
 			fbx_file = _preprocess_fbx_scale_binary(pkgasset, fbx_file, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		else:
@@ -1376,9 +1380,9 @@ class FbxHandler:
 			texture_name_list = _extract_fbx_textures_ascii(pkgasset, buffer_as_utf8)
 			var buffer_as_ascii: String = fbx_file.get_string_from_ascii() # match 1-to-1 with bytes
 			fps = _preprocess_fbx_anim_fps_ascii(pkgasset, buffer_as_ascii)
-			node_name_list = _extract_fbx_objects_ascii("Model", pkgasset, buffer_as_utf8)
-			mesh_name_list = _extract_fbx_objects_ascii("Geometry", pkgasset, buffer_as_utf8)
-			animation_name_list = _extract_fbx_objects_ascii("AnimStack", pkgasset, buffer_as_utf8)
+			#node_name_list = _extract_fbx_objects_ascii("Model", pkgasset, buffer_as_utf8)
+			#mesh_name_list = _extract_fbx_objects_ascii("Geometry", pkgasset, buffer_as_utf8)
+			#animation_name_list = _extract_fbx_objects_ascii("AnimStack", pkgasset, buffer_as_utf8)
 			material_order_by_mesh = _extract_fbx_geometry_material_order_ascii(pkgasset, buffer_as_utf8)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
@@ -1452,9 +1456,9 @@ class FbxHandler:
 
 		var extra_data = {
 			"unique_texture_map": unique_texture_map,
-			"node_name_list": node_name_list,
-			"mesh_name_list": mesh_name_list,
-			"animation_name_list": animation_name_list,
+			#"node_name_list": node_name_list,
+			#"mesh_name_list": mesh_name_list,
+			#"animation_name_list": animation_name_list,
 			"material_order_by_mesh": material_order_by_mesh,
 		}
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, extra_data)
