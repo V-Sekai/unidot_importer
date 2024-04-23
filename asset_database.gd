@@ -26,6 +26,7 @@ var log_message_holder = asset_meta_class.LogMessageHolder.new()
 @export var enable_verbose_logs: bool = false
 @export var set_animation_trees_active: bool = true
 @export var vrm_spring_bones: bool = true
+@export var convert_fbx_to_gltf: bool = false
 var vrm_integration_plugin
 var log_limit_per_guid: int = 100000
 

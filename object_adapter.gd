@@ -4362,7 +4362,9 @@ class UnidotPrefabInstance:
 				instanced_scene.scene_file_path = ""
 				set_owner_rec(instanced_scene, state.owner)
 		var anim_player: AnimationPlayer = instanced_scene.get_node_or_null("AnimationPlayer") as AnimationPlayer
-		if anim_player != null and anim_player.has_animation(&"RESET"):
+		# Scenes with only a RESET but not a unidot-created _T-Pose_ are following the Godot convention of rest-pose as RESET.
+		# In Godot engine versions which support rest-as-RESET, the model will already be posed correctly and we do not want this.
+		if anim_player != null and anim_player.has_animation(&"RESET") and anim_player.has_animation(&"_T-Pose_"):
 			var root_node: Node = anim_player.get_node(anim_player.root_node)
 			var reset_anim: Animation = anim_player.get_animation(&"RESET")
 			if reset_anim != null:

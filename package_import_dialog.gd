@@ -87,6 +87,7 @@ var debug_disable_silhouette_fix_checkbox: CheckBox
 var force_humanoid_checkbox: CheckBox
 var enable_verbose_log_checkbox: CheckBox
 var enable_vrm_spring_bones_checkbox: CheckBox
+var convert_fbx_to_gltf_checkbox: CheckBox
 
 var batch_import_list_widget: ItemList
 var batch_import_add_button: Button
@@ -121,6 +122,8 @@ var asset_models: Array = [].duplicate()
 var asset_yaml_post_model: Array = [].duplicate()
 var asset_prefabs: Array = [].duplicate()
 var asset_scenes: Array = [].duplicate()
+
+var builtin_ufbx_supported: bool = ClassDB.class_exists(&"FBXDocument") and ClassDB.class_exists(&"FBXState")
 
 var result_log_lineedit: TextEdit 
 
@@ -789,6 +792,12 @@ func _selected_package(p_path: String) -> void:
 	enable_vrm_spring_bones_checkbox.toggled.connect(self._enable_vrm_spring_bones_changed)
 	force_humanoid_checkbox = _add_checkbox_option("Import ALL scenes as humanoid retargeted skeletons", true if asset_database.force_humanoid else false)
 	force_humanoid_checkbox.toggled.connect(self._force_humanoid_changed)
+	if builtin_ufbx_supported:
+		convert_fbx_to_gltf_checkbox = _add_advanced_checkbox_option("Convert FBX models to glTF", true if asset_database.convert_fbx_to_gltf else false)
+		convert_fbx_to_gltf_checkbox.toggled.connect(self._convert_fbx_to_gltf_changed)
+	else:
+		convert_fbx_to_gltf_checkbox = _add_checkbox_option("Convert FBX models to glTF\n(Update to Godot 4.3 to disable)", true)
+		convert_fbx_to_gltf_checkbox.disabled = true
 
 	var vspace := Control.new()
 	vspace.custom_minimum_size = Vector2(0, 16)
@@ -948,7 +957,7 @@ func show_importer(ep: EditorPlugin) -> void:
 
 
 func check_fbx2gltf():
-	if ClassDB.class_exists(&"FBXDocument") and ClassDB.class_exists(&"FBXState"):
+	if builtin_ufbx_supported:
 		return # No need to check for FBX2glTF on engines with native fbx.
 	var d = DirAccess.open("res://")
 	var addon_path: String = new_editor_plugin.get_editor_interface().get_editor_settings().get_setting("filesystem/import/fbx/fbx2gltf_path")
@@ -1023,6 +1032,9 @@ func _enable_verbose_log_changed(val: bool):
 
 func _enable_vrm_spring_bones_changed(val: bool):
 	asset_database.vrm_spring_bones = val
+
+func _convert_fbx_to_gltf_changed(val: bool):
+	asset_database.convert_fbx_to_gltf = val
 
 func _show_advanced_options_toggled(val: bool):
 	advanced_options_hbox.visible = val

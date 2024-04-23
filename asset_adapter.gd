@@ -615,7 +615,8 @@ class BaseModelHandler:
 		# The importer seems to operate in terms of frames but no indication of time here....
 		cfile.set_value_compare("params", "animation/import", importer.animation_import)
 		# Humanoid animations in particular are sensititve to immutable tracks being shared across rigs.
-		cfile.set_value_compare("params", "animation/remove_immutable_tracks", false)
+		cfile.set_value_compare("params", "animation/remove_immutable_tracks", (importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid()))
+		cfile.set_value_compare("params", "animation/import_rest_as_RESET", true)
 
 		# FIXME: Godot has a major bug if light baking is used:
 		# it leaves a file ".glb.unwrap_cache" open and causes future imports to fail.
@@ -684,9 +685,9 @@ class BaseModelHandler:
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/load_pose"] = 2
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/external_animation_library"] = silhouette_anim
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
-				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
-				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/filter"] = [&"LeftFoot", &"RightFoot", &"LeftToes", &"RightToes"]
-				#subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = true
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/filter"] = [&"LeftFoot", &"RightFoot", &"LeftToes", &"RightToes"]
+				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/threshold"] = SILHOUETTE_FIX_THRESHOLD
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/reset_all_bone_poses_after_import"] = false
 			else:
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
@@ -1673,6 +1674,16 @@ class FbxHandler:
 			var trk: int = anim.add_track(Animation.TYPE_ROTATION_3D)
 			anim.track_set_path(trk, NodePath("Skeleton3D:" + node.resource_name))
 			anim.rotation_track_insert_key(trk, 0.0, node.rotation)
+			var par_idx: int = node.parent
+			var hip_descendent: bool = false
+			while par_idx != -1:
+				if par_idx == hip_node_idx:
+					hip_descendent = true
+				par_idx = nodes[par_idx].parent
+			if not hip_descendent:
+				trk = anim.add_track(Animation.TYPE_POSITION_3D)
+				anim.track_set_path(trk, NodePath("Skeleton3D:" + node.resource_name))
+				anim.position_track_insert_key(trk, 0.0, node.position)
 		return anim
 
 	func preprocess_asset_ufbx(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, extra_data: Dictionary = {}) -> String:
@@ -1697,14 +1708,16 @@ class FbxHandler:
 		var meshes = state.get_meshes()
 		var materials = state.get_materials()
 		var animations = state.get_animations()
+		pkgasset.log_debug("Preprocessing ufbx nodes " + str(len(nodes)))
 
 		var used_names: Dictionary
 		for node_i in range(len(nodes)):
 			var node: GLTFNode = nodes[node_i]
 			var godot_mangled_name: String = node.resource_name
 			var orig_name: String = node.original_name
+			pkgasset.log_debug("Found node " + str(node.parent) + "/" + str(node_i) + " " + str(godot_mangled_name) + " " + str(orig_name))
 			if node_i == 0:
-				if godot_mangled_name == "Root" and orig_name == "":
+				if orig_name == "":
 					continue
 				else:
 					pkgasset.log_debug("Found a different node " + str(godot_mangled_name) + "/" + str(orig_name) + " instead of Root")
@@ -1745,7 +1758,7 @@ class FbxHandler:
 				for surf_i in range(imp_mesh.get_surface_count()):
 					if imp_mesh.get_surface_material(surf_i) == null or imp_mesh.get_surface_material(surf_i).resource_name.is_empty():
 						unnamed_material_count += 1
-			# Handle material sort order
+			# Handle material sort orderp
 			var material_key_idx: int = 0
 			if material_idx_by_mesh.has(orig_name):
 				material_key_idx = material_idx_by_mesh[orig_name]
@@ -1878,39 +1891,23 @@ class FbxHandler:
 			while nodes[cur_human_node_idx].parent != -1:
 				var new_root_idx = nodes[cur_human_node_idx].parent
 				var node = nodes[new_root_idx]
+				if node.original_name.is_empty() or node.skeleton < 0:
+					break
 				pkgasset.log_debug("Adding node to skin " + str(new_root_idx) + " parent of " + str(cur_human_node_idx))
 				pkgasset.parsed_meta.internal_data["humanoid_root_bone"] = node.resource_name
+				pkgasset.log_debug("Attempt root bone name: " + str(node.resource_name) + " in map: " + str(bone_map_dict.has(node.resource_name)))
 				if not bone_map_dict.has(node.resource_name):
 					root_bone_name = node.resource_name
 				if not human_skin_set.has(new_root_idx):
 					human_skin_nodes.push_back(new_root_idx)
 					human_skin_set[new_root_idx] = true
 				cur_human_node_idx = new_root_idx
+			pkgasset.log_debug("Root bone name: " + str(root_bone_name))
 			if root_bone_name != "":
 				bone_map_dict[root_bone_name] = "Root"
 
 			var hip_parent_node_idx = -1
 			var hip_node_idx = -1
-
-			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
-			if copy_avatar:
-				for x_node_idx in range(len(nodes)):
-					var node: Dictionary = nodes[x_node_idx]
-					var node_name: String = node.get("name", "")
-					if original_rotations.has(node_name):
-						var quat: Quaternion = original_rotations[node_name]
-						#node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
-					if bone_map_dict.get(node_name, "") == "Hips":
-						#node["translation"] = [orig_hip_position.x, orig_hip_position.y, orig_hip_position.z]
-						hip_parent_node_idx = node.parent
-						hip_node_idx = x_node_idx
-			else:
-				## bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
-				for node in nodes:
-					var node_name: String = node.resource_name
-					original_rotations[node_name] = node.rotation
-					if bone_map_dict.get(node_name, "") == "Hips":
-						pkgasset.parsed_meta.internal_data["hips_position"] = node.position
 
 			for node in nodes:
 				if bone_map_dict.get(node.resource_name, "") == "Hips":
@@ -1932,14 +1929,6 @@ class FbxHandler:
 						used_names[try_name] = 1
 						godot_sanitized_to_orig_remap["bone_name"][mapped_bone_name] = try_name
 
-			if silhouette_anim == null:
-				silhouette_anim = create_rest_pose_anim(nodes, hip_node_idx)
-
-			# Adding missing tracks just to the T-Pose animation after silhouette fix generates a T-Pose
-			#add_empty_animation(json, "_T-Pose_")
-			#add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
-			pkgasset.parsed_meta.internal_data["silhouette_anim"] = silhouette_anim
-
 			# Finally, record the original post-silhouette transforms for transform_fileid_to_rotation_delta
 			for node in nodes:
 				var node_name = node.resource_name
@@ -1951,7 +1940,62 @@ class FbxHandler:
 					humanoid_original_transforms[node_name] = node.xform
 
 			pkgasset.parsed_meta.internal_data["humanoid_original_transforms"] = humanoid_original_transforms
+
+
+			# Now we correct the silhouette, either by copying from another model, or applying silhouette fixer.
+			if copy_avatar:
+				for x_node_idx in range(len(nodes)):
+					var node: GLTFNode = nodes[x_node_idx]
+					var node_name: String = node.resource_name
+					if original_rotations.has(node_name):
+						var quat: Quaternion = original_rotations[node_name]
+						#node["rotation"] = [quat.x, quat.y, quat.z, quat.w]
+					if bone_map_dict.get(node_name, "") == "Hips":
+						#node["translation"] = [orig_hip_position.x, orig_hip_position.y, orig_hip_position.z]
+						hip_parent_node_idx = node.parent
+						hip_node_idx = x_node_idx
+			else:
+				## bone_map_editor_plugin.silhouette_fix_gltf(json, importer.generate_bone_map_from_human(), SILHOUETTE_FIX_THRESHOLD)
+				for node in nodes:
+					var node_name: String = node.resource_name
+					original_rotations[node_name] = node.rotation
+				#for node in nodes:
+					#var tmp: Variant = node.get_additional_data("GODOT_rest_transform")
+					#if typeof(tmp) == TYPE_TRANSFORM3D:
+						#node.xform = tmp
+						#node.position = node.xform.origin
+						#node.rotation = node.xform.basis.get_rotation_quaternion()
+						#node.scale = node.xform.basis.get_scale()
+				for node in nodes:
+					var node_name: String = node.resource_name
+					if bone_map_dict.get(node_name, "") == "Hips":
+						var pos: Vector3 = node.position
+						var par_id: int = node.parent
+						var global_xform: Transform3D
+						while par_id != -1:
+							if nodes[par_id].skeleton < 0:
+								break
+							var n: GLTFNode = nodes[par_id]
+							pos = n.xform * pos
+							n.xform = Transform3D(n.xform.basis, Vector3.ZERO)
+							n.position = Vector3.ZERO
+							global_xform = n.xform * global_xform
+							par_id = n.parent
+						pos = Vector3(0.0, pos.y, 0.0)
+						pos = global_xform.affine_inverse() * pos
+						node.position = pos
+						node.xform = Transform3D(node.xform.basis, pos)
+						pkgasset.parsed_meta.internal_data["hips_position"] = pos
+
 			pkgasset.parsed_meta.internal_data["original_rotations"] = original_rotations
+
+			if silhouette_anim == null:
+				silhouette_anim = create_rest_pose_anim(nodes, hip_node_idx)
+
+			# Adding missing tracks just to the T-Pose animation after silhouette fix generates a T-Pose
+			#add_empty_animation(json, "_T-Pose_")
+			#add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
+			pkgasset.parsed_meta.internal_data["silhouette_anim"] = silhouette_anim
 
 		var skinned_parents: Dictionary
 		for node in nodes:

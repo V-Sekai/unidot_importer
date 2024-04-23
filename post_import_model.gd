@@ -312,16 +312,16 @@ class ParseState:
 		#	We want to solve for X = GodotCorrectionT.inv
 		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
 		if humanoid_original_transforms.has(bone_name):
-			p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(bone_name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.get_bone_rest(p_skel_bone).origin)
+			p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(bone_name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.get_bone_pose(p_skel_bone).origin)
 			metaobj.log_debug(0, "Humanoid Bone " + str(bone_name) + ": " + str(humanoid_original_transforms.get(bone_name).basis.get_rotation_quaternion()))
 			if bone_name == "Hips":
-				humanoid_skeleton_hip_position = node.get_bone_rest(p_skel_bone).origin
+				humanoid_skeleton_hip_position = node.get_bone_pose(p_skel_bone).origin
 				humanoid_skeleton_hip_position.y = node.motion_scale
 		else:
-			p_pre_retarget_global_rest *= node.get_bone_rest(p_skel_bone)
-			# metaobj.log_debug(0, "Non-humanoid Bone " + str(bone_name) + ": " + str(node.get_bone_rest(p_skel_bone).basis.get_rotation_quaternion()))
-		p_global_rest *= node.get_bone_rest(p_skel_bone)
-		# metaobj.log_debug(0, "global rest " + str(bone_name) + ": " + str(node.get_bone_rest(p_skel_bone).basis.get_rotation_quaternion()))
+			p_pre_retarget_global_rest *= node.get_bone_pose(p_skel_bone)
+			# metaobj.log_debug(0, "Non-humanoid Bone " + str(bone_name) + ": " + str(node.get_bone_pose(p_skel_bone).basis.get_rotation_quaternion()))
+		p_global_rest *= node.get_bone_pose(p_skel_bone)
+		# metaobj.log_debug(0, "global rest " + str(bone_name) + ": " + str(node.get_bone_pose(p_skel_bone).basis.get_rotation_quaternion()))
 
 		if not p_global_rest.is_equal_approx(p_pre_retarget_global_rest):
 			# metaobj.log_debug(0, "bone " + bone_name + " rest " + str(p_global_rest) + " pre ret " + str(p_pre_retarget_global_rest))
