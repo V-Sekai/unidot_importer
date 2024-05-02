@@ -109,9 +109,12 @@ class AssetHandler:
 			pkgasset.data_md5 = calc_md5(data_buf)
 			if pkgasset.existing_data_md5 != pkgasset.data_md5:
 				var outfile: FileAccess = FileAccess.open(tmpdir + "/" + path, FileAccess.WRITE_READ)
-				outfile.store_buffer(data_buf)
-				outfile.flush()
-				outfile.close()
+				if outfile == null:
+					pkgasset.log_fail("Unable to open file " + str(tmpdir + "/"+  path) + " for writing!")
+				else:
+					outfile.store_buffer(data_buf)
+					outfile.flush()
+					outfile.close()
 				outfile = null
 			output_path = pkgasset.pathname
 		if len(output_path) == 0:
@@ -168,7 +171,7 @@ class ImageHandler:
 		if not is_png and path.get_extension().to_lower() == "png":
 			pkgasset.log_debug("I am a JPG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".jpg"
-		elif is_png and path.get_extension().to_lower() != "png":
+		elif (is_png or is_tiff or is_psd) and path.get_extension().to_lower() != "png":
 			pkgasset.log_debug("I am a PNG pretending to be a " + str(path.get_extension()) + " " + str(path))
 			full_output_path = full_output_path.get_basename() + ".png"
 		pkgasset.log_debug("PREPROCESS_IMAGE " + str(is_tiff or is_psd) + "/" + str(is_png) + " path " + str(path) + " to " + str(full_output_path))
@@ -185,13 +188,25 @@ class ImageHandler:
 			var addon_path: String = "convert" # ImageMagick installed system-wide.
 			if OS.get_name() == "Windows":
 				addon_path = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
-				if addon_path.begins_with("res://"):
-					if not d.file_exists(addon_path):
-						pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
-						return ""
-					if OS.get_name() == "Windows":
-						addon_path = "convert.exe"
-			var ret = OS.execute(addon_path, [temp_output_path.get_basename() + ext, temp_output_path], stdout)
+				if d.file_exists(addon_path):
+					addon_path = ProjectSettings.globalize_path(addon_path)
+				else:
+					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
+					addon_path = "convert.exe"
+			# [0] forces multi-layer files to only output the first layer. Otherwise filenames may be -0, -1, -2...
+			var convert_src: String = temp_output_path.get_basename() + ext + "[0]"
+			var convert_dst: String = temp_output_path
+			var convert_args: Array = [convert_src, convert_dst]
+			var ret = OS.execute(addon_path, convert_args, stdout)
+			for i in range(5):
+				OS.delay_msec(500)
+				OS.delay_msec(500)
+				# Hack, but I don't know what to do about this for now. The .close() is async or something.
+				if ret == 1 or "".join(stdout).strip_edges().find("@ error") != -1:
+					pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
+					ret = OS.execute(addon_path, convert_args, stdout)
+			pkgasset.log_debug("convert " + str(addon_path) + " " + str(convert_args) + " => result " + str(ret))
+			pkgasset.log_debug(str(stdout))
 			d.remove(temp_output_path.get_basename() + ext)
 			var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
 			pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
@@ -1261,12 +1276,12 @@ class FbxHandler:
 		var filename: String = pkgasset.pathname
 		var time_mode_pos: int = buffer_as_ascii.find('"TimeMode"')
 		if time_mode_pos == -1:
-			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find TimeMode in ASCII FBX.")
 			return 30
 		var newline_pos: int = buffer_as_ascii.find("\n", time_mode_pos)
 		var comma_pos: int = buffer_as_ascii.rfind(",", newline_pos)
 		if newline_pos == -1 or comma_pos == -1:
-			pkgasset.log_fail(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find value for TimeMode in ASCII FBX.")
 			return 30
 
 		var fps: float = 1
@@ -1280,12 +1295,12 @@ class FbxHandler:
 
 		var framerate_pos: int = buffer_as_ascii.find('"CustomFrameRate"')
 		if framerate_pos == -1:
-			pkgasset.log_fail(filename + ": Failed to find UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find CustomFrameRate in ASCII FBX.")
 			return 30
 		newline_pos = buffer_as_ascii.find("\n", framerate_pos)
 		comma_pos = buffer_as_ascii.rfind(",", newline_pos)
 		if newline_pos == -1 or comma_pos == -1:
-			pkgasset.log_fail(filename + ": Failed to find value for UnitScaleFactor in ASCII FBX.")
+			pkgasset.log_fail(filename + ": Failed to find value for CustomFrameRate in ASCII FBX.")
 			return 30
 
 		var custom_fps_str: String = buffer_as_ascii.substr(comma_pos + 1, newline_pos - comma_pos - 1).strip_edges()
