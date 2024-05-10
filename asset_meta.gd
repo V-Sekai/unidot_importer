@@ -106,6 +106,9 @@ var fileid_to_component_fileids: Dictionary = {}  # int -> int
 @export var imported_mesh_paths: Dictionary # mesh_name (with and without "Root Scene_") -> file_path
 @export var imported_material_paths: Dictionary # material_name -> file_path
 
+var taken_over_import_references: Dictionary = {} # String -> Resource
+@export var unique_texture_map: Dictionary
+
 class ParsedAsset:
 	extends RefCounted
 	var local_id_alias: Dictionary = {}  # type*100000 + file_index*2 -> real fileId

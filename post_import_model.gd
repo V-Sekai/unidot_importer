@@ -708,6 +708,17 @@ class ParseState:
 							metaobj.log_debug(fileId, "    albedo = " + str(mat.albedo_texture.resource_name) + " / " + str(mat.albedo_texture.resource_path))
 						if mat.normal_texture != null:
 							metaobj.log_debug(fileId, "    normal = " + str(mat.normal_texture.resource_name) + " / " + str(mat.normal_texture.resource_path))
+						for prop in mat.get_property_list():
+							var prop_name: String = prop["name"]
+							if (prop["usage"] & PROPERTY_USAGE_STORAGE) != 0 and prop["hint_string"].contains("Texture"):
+								var tex: Texture2D = mat.get(prop_name) as Texture2D
+								# metaobj.log_debug(fileId, "Tex " + str(tex) + " for prop " + str(prop_name))
+								if tex != null:
+									# metaobj.log_debug(fileId, "tmp tex " + str(tex.resource_path) + " meta list " + str(tex.get_meta_list()) + " " + str(tex.get_meta(&"src_tex")))
+									var src_tex: Texture2D = tex.get_meta(&"src_tex") as Texture2D
+									if src_tex != null:
+										metaobj.log_debug(fileId, "    " + str(prop_name) + " = " + str(tex.resource_path) + " => " + str(src_tex.resource_path))
+										mat.set(prop_name, src_tex)
 						unidot_utils.save_resource(mat, respath)
 						mat = load(respath)
 						metaobj.log_debug(fileId, "Save-and-load material object " + str(mat_name) + " " + str(mat.resource_name) + "@" + str(mat.resource_path))

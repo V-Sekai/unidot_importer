@@ -77,6 +77,14 @@ class AssetHandler:
 		func was_modified() -> bool:
 			return modified
 
+	static func file_exists_hack(dres: DirAccess, fn: String):
+		if not dres.file_exists(fn):
+			return false
+		var fa = FileAccess.open(fn, FileAccess.READ)
+		if fa == null:
+			return false
+		return fa.get_length() != 0
+
 	func calc_existing_md5(fname: String) -> PackedByteArray:
 		var dres: DirAccess = DirAccess.open("res://")
 		if not dres.file_exists(fname):
@@ -141,6 +149,9 @@ class AssetHandler:
 
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		return ""
+
+	func about_to_import(pkgasset: Object):
+		pass
 
 	func finished_import(pkgasset: Object, res: Resource):
 		if res == null:
@@ -721,7 +732,28 @@ class BaseModelHandler:
 		cfile.save("res://" + pkgasset.pathname + ".import")
 		return cfile.was_modified()
 
+	func about_to_import(pkgasset: Object):
+		var dres := DirAccess.open("res://")
+		for tex_name in pkgasset.parsed_meta.unique_texture_map:
+			var tex_uri = pkgasset.parsed_meta.unique_texture_map[tex_name]
+			var tex_pathname: String = "res://".path_join(pkgasset.pathname.get_base_dir().path_join(tex_name))
+			if not file_exists_hack(dres, tex_pathname):
+				var src_tex: Texture2D = ResourceLoader.load("res://".path_join(pkgasset.pathname.get_base_dir().path_join(tex_uri))) as Texture2D
+				if src_tex != null:
+					var tmp_tex: Texture2D = src_tex.duplicate()
+					tmp_tex.set_meta(&"src_tex", src_tex)
+					tmp_tex.resource_name = tex_name
+					if not tex_pathname.begins_with("res://"):
+						tex_pathname = "res://" + tex_pathname
+					pkgasset.log_debug("Would reference non-existent texture " + str(tex_pathname) + " from " + str(tex_name) + " rather than " + str(tex_uri))
+					tmp_tex.take_over_path(tex_pathname)
+					pkgasset.parsed_meta.taken_over_import_references[tex_name] = tmp_tex
+			else:
+				pkgasset.log_debug("Would reference existing texture " + str(tex_pathname) + " from " + str(tex_name) + " rather than " + str(tex_uri))
+
 	func finished_import(pkgasset: Object, res: Resource):
+		pkgasset.log_debug("taken_over_import_references: " + str(pkgasset.parsed_meta.taken_over_import_references))
+		pkgasset.parsed_meta.taken_over_import_references.clear()
 		super.finished_import(pkgasset, res)
 		if res != null:
 			pass
@@ -789,10 +821,10 @@ class BaseModelHandler:
 		cfile.save(import_file_path)
 
 	func write_godot_asset(pkgasset: Object, temp_path: String) -> bool:
+		var dres = DirAccess.open("res://")
 		# super.write_godot_asset(pkgasset, temp_path)
 		# Duplicate code since super causes a weird nonsensical error cannot call "importer()" function...
 		if pkgasset.existing_data_md5 != pkgasset.data_md5:
-			var dres = DirAccess.open("res://")
 			pkgasset.log_debug("Renaming " + temp_path + " to " + pkgasset.pathname)
 			dres.rename(temp_path, pkgasset.pathname)
 			if temp_path.ends_with(".gltf"):
@@ -1449,7 +1481,7 @@ class FbxHandler:
 			var tex_exists: bool = false
 			for candidate_fn in candidate_texture_dict:
 				#pkgasset.log_debug("candidate " + str(candidate_fn) + " INPKG=" + str(pkgasset.packagefile.path_to_pkgasset.has(candidate_fn)) + " FILEEXIST=" + str(d.file_exists(candidate_fn)))
-				if pkgasset.packagefile.path_to_pkgasset.has(candidate_fn) or d.file_exists(candidate_fn):
+				if pkgasset.packagefile.path_to_pkgasset.has(candidate_fn) or file_exists_hack(d, candidate_fn):
 					unique_texture_map[fn] = candidate_texture_dict[candidate_fn]
 					tex_exists = true
 					break
@@ -1477,6 +1509,7 @@ class FbxHandler:
 			#"animation_name_list": animation_name_list,
 			"material_order_by_mesh": material_order_by_mesh,
 		}
+		pkgasset.parsed_meta.unique_texture_map = unique_texture_map
 		var output_path: String = self.preprocess_asset(pkgasset, tmpdir, thread_subdir, input_path, fbx_file, extra_data)
 		#if len(output_path) == 0:
 		#	output_path = path
@@ -1712,6 +1745,7 @@ class FbxHandler:
 		var godot_sanitized_to_orig_remap: Dictionary = {"bone_name": {}, "nodes": {}, "meshes": {}, "animations": {}}
 		# Anything after this point will be using sanitized names, and should go through godot_sanitized_to_orig_remap / bone_map_dict
 		# for key in ["scenes", "nodes", "meshes", "skins", "images", "materials", "animations"]:
+
 		var doc = ClassDB.instantiate(&"FBXDocument")
 		var state = ClassDB.instantiate(&"FBXState")
 		state.import_as_skeleton_bones = true
@@ -2611,6 +2645,12 @@ func preprocess_asset_stage2(pkgasset: Object, tmpdir: String, guid_to_pkgasset:
 				pkgasset.parsed_meta.log_debug(0, "Asset " + str(obj.keys.get("m_Name", "")) + " did not have a roughness texture")
 
 
+func about_to_import(pkgasset: Object):
+	var path = pkgasset.orig_pathname
+	var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
+	asset_handler.about_to_import(pkgasset)
+
+
 func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Dictionary) -> Array[String]:
 	var dependencies: Array[String]
 	for extra_tex_filename in pkgasset.parsed_meta.internal_data.get("extra_textures", []):
@@ -2630,8 +2670,6 @@ func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Di
 			continue
 		extra_tex_data.erase("temp_path")
 		extra_tex_data.erase("source_meta_guid")
-		var path = pkgasset.orig_pathname
-		var asset_handler: AssetHandler = file_handlers.get(path.get_extension().to_lower(), file_handlers.get("default"))
 
 		var cfile_source := ConfigFile.new()
 		var cfile := ConfigFile.new() # AssetHandler.ConfigFileCompare.new(pkgasset)
