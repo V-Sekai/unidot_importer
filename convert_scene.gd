@@ -158,7 +158,9 @@ func pack_scene(pkgasset, is_prefab) -> PackedScene:
 			env.fog_light_energy = max_c
 			if asset.keys.get("m_FogMode", 3) == 1:  # Linear
 				const TARGET_FOG_DENSITY = 0.05
-				env.fog_density = -log(TARGET_FOG_DENSITY) / asset.keys.get("m_LinearFogEnd", 0.0)
+				# It's not possible to emulate linear fog exactly with the level of control we currently have.
+				# Multiply by 0.1 because the fog seemed too aggressive.
+				env.fog_density = 0.1 * -log(TARGET_FOG_DENSITY) / asset.keys.get("m_LinearFogEnd", 0.0)
 			else:
 				env.fog_density = asset.keys.get("m_FogDensity", 0.0)
 			var sun: Array = asset.keys.get("m_Sun", [null, 0, null, null])
