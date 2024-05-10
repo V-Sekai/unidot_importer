@@ -322,7 +322,7 @@ class UnidotObject:
 		var current_materials: Array
 		current_materials.resize(len(mat_slots))
 		for i in range(len(mat_slots)):
-			current_materials[i] = mat_slots[i]
+			current_materials[i] = current_materials_raw[mat_slots[i]]
 		for i in range(len(mat_slots), len(current_materials_raw)):
 			current_materials.append(current_materials_raw[i])
 		log_debug("Current mat slots " + str(mat_slots) + " materials before: " + str(current_materials))
@@ -5453,6 +5453,7 @@ class UnidotMeshFilter:
 			var new_mesh: Mesh = meta.get_godot_resource(mesh_ref)
 			log_debug("MeshFilter " + str(self) + " ref " + str(mesh_ref) + " new mesh " + str(new_mesh) + " old mesh " + str(node.mesh))
 			outdict["_mesh"] = new_mesh  # property track?
+			outdict["_mesh_ref"] = mesh_ref  # property track?
 		return outdict
 
 	func get_filter_mesh() -> Array:  # UnidotRef
@@ -5675,7 +5676,7 @@ class UnidotSkinnedMeshRenderer:
 					var skin_rotation_delta: Transform3D = skin_humanoid_rotation_delta.get(skin.get_bind_name(idx), Transform3D.IDENTITY)
 					var rotation_delta: Transform3D = meta.transform_fileid_to_rotation_delta.get(bone_fileID, meta.prefab_transform_fileid_to_rotation_delta.get(bone_fileID))
 					if !rotation_delta.is_equal_approx(skin_rotation_delta):
-						log_debug("skin " + str(idx) + " : This fileID is a humanoid bone rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale " + str(rotation_delta.basis.get_scale()))
+						log_debug("skin " + str(idx) + " : This fileID is a humanoid bone rotation offset=" + str(rotation_delta.basis.get_rotation_quaternion()) + " scale " + str(rotation_delta.basis.get_scale()) + " pos " + str(rotation_delta.origin))
 						skin.set_bind_pose(idx, rotation_delta * skin_rotation_delta.affine_inverse() * skin.get_bind_pose(idx))
 		return skin
 
