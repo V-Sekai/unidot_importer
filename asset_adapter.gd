@@ -707,7 +707,7 @@ class BaseModelHandler:
 			# This would break skins and unpacked prefabs.
 			if pkgasset.parsed_meta.is_using_builtin_ufbx():
 				var silhouette_anim: Animation = pkgasset.parsed_meta.internal_data.get("silhouette_anim", null)
-				if silhouette_anim != null:
+				if silhouette_anim != null and pkgasset.parsed_meta.internal_data.get("copy_avatar_src", []):
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/load_pose"] = 2
 					subresources["nodes"]["PATH:Skeleton3D"]["rest_pose/external_animation_library"] = silhouette_anim
 				subresources["nodes"]["PATH:Skeleton3D"]["retarget/rest_fixer/fix_silhouette/enable"] = false
@@ -1760,6 +1760,7 @@ class FbxHandler:
 		pkgasset.log_debug("Preprocessing ufbx nodes " + str(len(nodes)))
 
 		var used_names: Dictionary
+		var used_godot_skel_names: Dictionary
 		for node_i in range(len(nodes)):
 			var node: GLTFNode = nodes[node_i]
 			var godot_mangled_name: String = node.resource_name
@@ -1784,8 +1785,12 @@ class FbxHandler:
 				var mesh_mangled_name: String = mesh.resource_name
 				godot_sanitized_to_orig_remap["meshes"][mesh_mangled_name] = try_name
 				if node.skeleton >= 0:
+					# For meshes that are also bones that are also nodes (since the current godot importer makes bones for meshes)
 					godot_sanitized_to_orig_remap["nodes"][godot_mangled_name.validate_node_name()] = try_name
+			if node.skeleton >= 0:
+				used_godot_skel_names[node.resource_name] = 2
 		var material_idx_by_mesh = {}
+		var used_node_names = {}
 		used_names = {}
 		var unnamed_material_count: int = 0
 		var internal_material_order_by_mesh_rev: Dictionary
@@ -1862,10 +1867,11 @@ class FbxHandler:
 		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid()
 		var bone_map_dict: Dictionary
 		var copy_avatar: bool = false
+		var src_ava: Array = []
 		var silhouette_anim: Animation
 		if is_humanoid and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
 			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
-				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
+				src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
 				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
 				if src_ava_meta == null:
 					pkgasset.log_fail("Unable to lookup meta copy avatar dependency", "lastHumanDescriptionAvatarSource", src_ava)
@@ -1964,19 +1970,23 @@ class FbxHandler:
 			while hip_parent_node_idx != -1:
 				hip_parent_node_idx = nodes[hip_parent_node_idx].parent
 
-			# used_names = {}
-			for godot_bone_name in bone_map_dict:
-				var mapped_bone_name = bone_map_dict[godot_bone_name]
-				if mapped_bone_name != godot_bone_name:
-					if godot_sanitized_to_orig_remap.has(mapped_bone_name):
-						var next_num: int = used_names.get(mapped_bone_name, 1)
-						var try_name: String = mapped_bone_name
-						while used_names.has(try_name):
-							try_name = "%s %d" % [mapped_bone_name, next_num]
+			var prof_bone_names = {}
+			var prof = SkeletonProfileHumanoid.new()
+			for prof_i in range(prof.bone_size):
+				prof_bone_names[prof.get_bone_name(prof_i)] = 2
+			used_names = used_godot_skel_names
+			for godot_bone_name in godot_sanitized_to_orig_remap["bone_name"].keys().duplicate():
+				if not bone_map_dict.has(godot_bone_name):
+					#if mapped_bone_name != godot_bone_name:
+					if prof_bone_names.has(godot_bone_name):
+						var next_num: int = used_names.get(godot_bone_name, 2)
+						var try_name: String = godot_bone_name
+						while used_names.has(try_name) or prof_bone_names.has(try_name):
+							try_name = "%s%d" % [godot_bone_name, next_num] # Godot naming convention
 							next_num += 1
-						used_names[mapped_bone_name] = next_num
-						used_names[try_name] = 1
-						godot_sanitized_to_orig_remap["bone_name"][mapped_bone_name] = try_name
+						used_names[godot_bone_name] = next_num
+						used_names[try_name] = 2
+						godot_sanitized_to_orig_remap["bone_name"][try_name] = godot_sanitized_to_orig_remap["bone_name"][godot_bone_name]
 
 			# Finally, record the original post-silhouette transforms for transform_fileid_to_rotation_delta
 			for node in nodes:
@@ -2045,6 +2055,8 @@ class FbxHandler:
 			#add_empty_animation(json, "_T-Pose_")
 			#add_missing_humanoid_tracks_to_animations(pkgasset, json, bindata, bone_map_dict)
 			pkgasset.parsed_meta.internal_data["silhouette_anim"] = silhouette_anim
+			if copy_avatar:
+				pkgasset.parsed_meta.internal_data["copy_avatar_src"] = src_ava
 
 		var skinned_parents: Dictionary
 		for node in nodes:
@@ -2195,9 +2207,10 @@ class FbxHandler:
 		var is_humanoid: bool = importer.keys.get("animationType", 2) == 3 or pkgasset.parsed_meta.is_force_humanoid()
 		var bone_map_dict: Dictionary
 		var copy_avatar: bool = false
+		var src_ava: Array
 		if is_humanoid and json.has("nodes") and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
 			if importer.keys.get("avatarSetup", 1) == 2 or importer.keys.get("copyAvatar", 0) == 1:
-				var src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
+				src_ava = importer.keys.get("lastHumanDescriptionAvatarSource", [null, 0, "", 0])
 				var src_ava_meta = pkgasset.meta_dependencies.get(src_ava[2], null)
 				if src_ava_meta == null:
 					pkgasset.log_fail("Unable to lookup meta copy avatar dependency", "lastHumanDescriptionAvatarSource", src_ava)
@@ -2335,6 +2348,8 @@ class FbxHandler:
 				json["skins"] = []
 			json["skins"].append({"joints": human_skin_nodes})
 
+		if copy_avatar:
+			pkgasset.parsed_meta.internal_data["copy_avatar_src"] = src_ava
 		# skinned_parents use the original gltf names before the remap.
 		pkgasset.parsed_meta.internal_data["skinned_parents"] = assign_skinned_parents({}.duplicate(), json["nodes"], "", json["scenes"][json.get("scene", 0)]["nodes"])
 		pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"] = {"bone_name": {}}
