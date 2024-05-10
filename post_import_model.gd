@@ -35,6 +35,7 @@ class ParseState:
 	var object_adapter: Object
 	var scene: Node
 	var toplevel_node: Node
+	var root_bone_idx: int = -1
 	var metaobj: Resource
 	var source_file_path: String
 	var extracted_assets_basename: String
@@ -217,7 +218,7 @@ class ParseState:
 		if child_node is Skeleton3D:
 			if len(child_node.get_parentless_bones()) > 1:
 				return false
-			var root_bone_idx: int = child_node.get_parentless_bones()[0]
+			root_bone_idx = child_node.get_parentless_bones()[0]
 			root_rotation_delta = root_rotation_delta * child_node.transform * child_node.get_bone_pose(root_bone_idx)
 			toplevel_node = child_node
 			return true
@@ -307,13 +308,16 @@ class ParseState:
 		var fileId_transform: int = all_name_map[fileId_go][4]
 		var bone_name: String = node.get_bone_name(p_skel_bone)
 
+		if p_skel_bone == root_bone_idx:
+			p_pre_retarget_global_rest *= (node.transform * node.get_bone_pose(root_bone_idx)).affine_inverse()
+
 		#	ParOrigT * ChildOrigT = GodotHumanT * X * ChildOrigT
 		#	GodotHumanT = ParOrigT * GodotCorrectionT
 		#	We want to solve for X = GodotCorrectionT.inv
 		#	GodotCorrectionT = ParOrigT.inv * GodotHumanT
 		if humanoid_original_transforms.has(bone_name):
 			p_pre_retarget_global_rest *= Transform3D(humanoid_original_transforms.get(bone_name).basis, p_pre_retarget_global_rest.basis.inverse() * p_global_rest.basis * node.get_bone_pose(p_skel_bone).origin)
-			metaobj.log_debug(0, "Humanoid Bone " + str(bone_name) + ": " + str(humanoid_original_transforms.get(bone_name).basis.get_rotation_quaternion()))
+			metaobj.log_debug(0, "Humanoid Bone " + str(bone_name) + ": " + str(humanoid_original_transforms.get(bone_name).basis.get_rotation_quaternion()) + " origin: " + str(humanoid_original_transforms.get(bone_name).origin))
 			if bone_name == "Hips":
 				humanoid_skeleton_hip_position = node.get_bone_pose(p_skel_bone).origin
 				humanoid_skeleton_hip_position.y = node.motion_scale
@@ -713,7 +717,7 @@ class ParseState:
 							if (prop["usage"] & PROPERTY_USAGE_STORAGE) != 0 and prop["hint_string"].contains("Texture"):
 								var tex: Texture2D = mat.get(prop_name) as Texture2D
 								# metaobj.log_debug(fileId, "Tex " + str(tex) + " for prop " + str(prop_name))
-								if tex != null:
+								if tex != null and tex.has_meta(&"src_tex"):
 									# metaobj.log_debug(fileId, "tmp tex " + str(tex.resource_path) + " meta list " + str(tex.get_meta_list()) + " " + str(tex.get_meta(&"src_tex")))
 									var src_tex: Texture2D = tex.get_meta(&"src_tex") as Texture2D
 									if src_tex != null:
