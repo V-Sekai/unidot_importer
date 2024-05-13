@@ -1407,7 +1407,7 @@ func do_import_step():
 			var dres = DirAccess.open("res://")
 			for file_path in tmp_material_texture_files:
 				var fa := FileAccess.open(file_path, FileAccess.READ)
-				if fa.get_length() != 0:
+				if fa == null or fa.get_length() != 0:
 					asset_database.log_debug([null, 0, "", 0], "Dummy texture " + str(file_path) + " is not very dummy")
 					continue
 				fa.close()
