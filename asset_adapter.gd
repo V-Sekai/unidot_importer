@@ -1786,7 +1786,7 @@ class FbxHandler:
 				godot_sanitized_to_orig_remap["meshes"][mesh_mangled_name] = try_name
 				if node.skeleton >= 0:
 					# For meshes that are also bones that are also nodes (since the current godot importer makes bones for meshes)
-					godot_sanitized_to_orig_remap["nodes"][godot_mangled_name.validate_node_name()] = try_name
+					godot_sanitized_to_orig_remap["nodes"][godot_mangled_name] = try_name
 			if node.skeleton >= 0:
 				used_godot_skel_names[node.resource_name] = 2
 		var material_idx_by_mesh = {}
@@ -2226,7 +2226,7 @@ class FbxHandler:
 				var skel: Skeleton3D = Skeleton3D.new()
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")
-					skel.add_bone(node_name)
+					skel.add_bone(sanitize_bone_name(node_name))
 				var i: int = 0
 				for node in json["nodes"]:
 					var node_name = node.get("name", "")
@@ -2269,8 +2269,7 @@ class FbxHandler:
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
 				# pkgasset.log_debug("AAAA node name " + str(node_name))
-				if bone_map_dict.has(node_name):
-					var godot_human_name: String = bone_map_dict[node_name]
+				if bone_map_dict.has(sanitize_bone_name(node_name)):
 					human_skin_nodes.push_back(node_idx)
 					human_skin_set[node_idx] = true
 				node_idx += 1
@@ -2338,8 +2337,8 @@ class FbxHandler:
 			# Finally, record the original post-silhouette transforms for transform_fileid_to_rotation_delta
 			for node in json["nodes"]:
 				var node_name = node.get("name", "")
-				if bone_map_dict.has(node_name):
-					var godot_human_name: String = bone_map_dict[node_name]
+				if bone_map_dict.has(sanitize_bone_name(node_name)):
+					var godot_human_name: String = bone_map_dict[sanitize_bone_name(node_name)]
 					if godot_human_name not in humanoid_original_transforms:
 						humanoid_original_transforms[godot_human_name] = gltf_to_transform3d(node)
 
@@ -2418,8 +2417,8 @@ class FbxHandler:
 		if is_humanoid and json.has("nodes") and (importer.keys.get("avatarSetup", 1) >= 1 or pkgasset.parsed_meta.is_force_humanoid()):
 			for node in json["nodes"]:
 				var node_name: String = node.get("name", "")
-				if bone_map_dict.has(node_name):
-					node_name = bone_map_dict[node_name]
+				if bone_map_dict.has(sanitize_bone_name(node_name)):
+					node_name = bone_map_dict[sanitize_bone_name(node_name)]
 				if not humanoid_original_transforms.has(node_name):
 					humanoid_original_transforms[node_name] = gltf_to_transform3d(node)
 		# humanoid_original_transforms uses post-sanitized node names.

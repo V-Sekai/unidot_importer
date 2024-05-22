@@ -6822,7 +6822,7 @@ class UnidotModelImporter:
 		var bone_map_dict: Dictionary = generate_bone_map_dict_from_human()
 		for skeleton_bone_name in bone_map_dict:
 			var profile_bone_name = bone_map_dict[skeleton_bone_name]
-			bone_map.set_skeleton_bone_name(profile_bone_name, skeleton_bone_name)
+			bone_map.set_skeleton_bone_name(profile_bone_name, skeleton_bone_name.replace("/", "_").replace(":", "_"))
 		return bone_map
 
 
