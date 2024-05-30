@@ -4,14 +4,14 @@
 @tool
 extends RefCounted
 
-const package_file: GDScript = preload("./package_file.gd")
-const tarfile: GDScript = preload("./tarfile.gd")
-const import_worker_class: GDScript = preload("./import_worker.gd")
-const meta_worker_class: GDScript = preload("./meta_worker.gd")
-const asset_adapter_class: GDScript = preload("./asset_adapter.gd")
-const asset_database_class: GDScript = preload("./asset_database.gd")
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
-const asset_meta_class: GDScript = preload("./asset_meta.gd")
+const package_file := preload("./package_file.gd")
+const tarfile := preload("./tarfile.gd")
+const import_worker_class := preload("./import_worker.gd")
+const meta_worker_class := preload("./meta_worker.gd")
+const asset_adapter_class := preload("./asset_adapter.gd")
+const asset_database_class := preload("./asset_database.gd")
+const object_adapter_class := preload("./object_adapter.gd")
+const asset_meta_class := preload("./asset_meta.gd")
 
 # Set THREAD_COUNT to 0 to run single-threaded.
 const THREAD_COUNT = 10

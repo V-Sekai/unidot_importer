@@ -18,7 +18,7 @@
 @tool
 extends RefCounted
 
-const object_adapter_class: GDScript = preload("../object_adapter.gd")
+const object_adapter_class := preload("../object_adapter.gd")
 
 var object_adapter = object_adapter_class.new()
 

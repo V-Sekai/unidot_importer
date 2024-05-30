@@ -4,9 +4,9 @@
 @tool
 extends Resource
 
-const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
-const vrm_integration_class: GDScript = preload("./vrm_integration.gd")
+const asset_meta_class := preload("./asset_meta.gd")
+const object_adapter_class := preload("./object_adapter.gd")
+const vrm_integration_class := preload("./vrm_integration.gd")
 
 const ASSET_DATABASE_PATH: String = "res://unidot_asset_database.res"
 

@@ -4,8 +4,8 @@
 @tool
 extends "./thread_worker.gd"
 
-const tarfile: GDScript = preload("./tarfile.gd")
-const package_file: GDScript = preload("./package_file.gd")
+const tarfile := preload("./tarfile.gd")
+const package_file := preload("./package_file.gd")
 
 var stage2: bool = false
 var guid_to_pkgasset: Dictionary

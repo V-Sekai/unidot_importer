@@ -6,7 +6,7 @@ extends EditorPlugin
 
 const tarfile = preload("./tarfile.gd")
 
-const package_import_dialog_class: GDScript = preload("./package_import_dialog.gd")
+const package_import_dialog_class := preload("./package_import_dialog.gd")
 
 var package_import_dialog: RefCounted = null
 var last_selected_dir: String = ""

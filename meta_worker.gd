@@ -4,10 +4,10 @@
 @tool
 extends "./thread_worker.gd"
 
-const binary_parser: GDScript = preload("./deresuteme/decode.gd")
-const yaml_parser: GDScript = preload("./yaml_parser.gd")
-const tarfile: GDScript = preload("./tarfile.gd")
-const package_file: GDScript = preload("./package_file.gd")
+const binary_parser := preload("./deresuteme/decode.gd")
+const yaml_parser := preload("./yaml_parser.gd")
+const tarfile := preload("./tarfile.gd")
+const package_file := preload("./package_file.gd")
 
 
 class ThreadWork:

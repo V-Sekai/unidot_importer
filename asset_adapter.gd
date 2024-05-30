@@ -4,11 +4,11 @@
 @tool
 extends Resource
 
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
+const object_adapter_class := preload("./object_adapter.gd")
 const post_import_material_remap_script: GDScript = preload("./post_import_model.gd")
-const convert_scene: GDScript = preload("./convert_scene.gd")
-const raw_parsed_asset: GDScript = preload("./raw_parsed_asset.gd")
-const bone_map_editor_plugin: GDScript = preload("./bone_map_editor_plugin.gd")
+const convert_scene := preload("./convert_scene.gd")
+const raw_parsed_asset := preload("./raw_parsed_asset.gd")
+const bone_map_editor_plugin := preload("./bone_map_editor_plugin.gd")
 const unidot_utils_class = preload("./unidot_utils.gd")
 
 var unidot_utils = unidot_utils_class.new()
@@ -418,7 +418,7 @@ class AudioHandler:
 
 class YamlHandler:
 	extends AssetHandler
-	const tarfile: GDScript = preload("./tarfile.gd")
+	const tarfile := preload("./tarfile.gd")
 
 	func parse_yaml_or_binary(pkgasset: Object, temp_path: String) -> void:
 		var outfile: FileAccess = FileAccess.open(temp_path, FileAccess.WRITE_READ)

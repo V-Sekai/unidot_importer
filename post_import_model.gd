@@ -4,9 +4,9 @@
 @tool
 extends EditorScenePostImport
 
-const asset_database_class: GDScript = preload("./asset_database.gd")
-const asset_meta_class: GDScript = preload("./asset_meta.gd")
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
+const asset_database_class := preload("./asset_database.gd")
+const asset_meta_class := preload("./asset_meta.gd")
+const object_adapter_class := preload("./object_adapter.gd")
 const unidot_utils_class = preload("./unidot_utils.gd")
 
 # Use this as an example script for writing your own custom post-import scripts. The function requires you pass a table

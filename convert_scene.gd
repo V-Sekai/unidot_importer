@@ -4,8 +4,8 @@
 @tool
 extends Resource
 
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
-const scene_node_state_class: GDScript = preload("./scene_node_state.gd")
+const object_adapter_class := preload("./object_adapter.gd")
+const scene_node_state_class := preload("./scene_node_state.gd")
 
 
 func customComparison(a, b):

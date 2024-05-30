@@ -4,10 +4,10 @@
 @tool
 extends Resource
 
-const yaml_parser_class: GDScript = preload("./yaml_parser.gd")
-const object_adapter_class: GDScript = preload("./object_adapter.gd")
-const bin_parser_class: GDScript = preload("./deresuteme/decode.gd")
-const unidot_utils_class: GDScript = preload("./unidot_utils.gd")
+const yaml_parser_class := preload("./yaml_parser.gd")
+const object_adapter_class := preload("./object_adapter.gd")
+const bin_parser_class := preload("./deresuteme/decode.gd")
+const unidot_utils_class := preload("./unidot_utils.gd")
 var unidot_utils := unidot_utils_class.new()
 
 

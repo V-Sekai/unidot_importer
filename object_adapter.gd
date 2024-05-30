@@ -17,9 +17,9 @@ const FORMAT_SINT16: int = 9
 const FORMAT_UINT32: int = 10
 const FORMAT_SINT32: int = 11
 
-const aligned_byte_buffer: GDScript = preload("./aligned_byte_buffer.gd")
-const monoscript: GDScript = preload("./monoscript.gd")
-const anim_tree_runtime: GDScript = preload("./runtime/anim_tree.gd")
+const aligned_byte_buffer := preload("./aligned_byte_buffer.gd")
+const monoscript := preload("./monoscript.gd")
+const anim_tree_runtime := preload("./runtime/anim_tree.gd")
 const human_trait = preload("./humanoid/human_trait.gd")
 const humanoid_transform_util = preload("./humanoid/transform_util.gd")
 const unidot_utils_class = preload("./unidot_utils.gd")

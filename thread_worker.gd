@@ -4,8 +4,8 @@
 @tool
 extends RefCounted
 
-const queue_lib: GDScript = preload("./queue_lib.gd")
-const asset_adapter_class: GDScript = preload("./asset_adapter.gd")
+const queue_lib := preload("./queue_lib.gd")
+const asset_adapter_class := preload("./asset_adapter.gd")
 
 var asset_adapter = asset_adapter_class.new()
 

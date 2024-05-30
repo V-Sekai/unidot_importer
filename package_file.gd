@@ -29,7 +29,7 @@ class ExtractedTarFile:
 		return f
 
 
-const tarfile: GDScript = preload("./tarfile.gd")
+const tarfile := preload("./tarfile.gd")
 
 
 class PkgAsset:
