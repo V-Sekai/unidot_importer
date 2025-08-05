@@ -42,3 +42,25 @@ func save_resource(created_res: Resource, new_pathname: String):
 	# Needed to update the UID database so references can be made more reliably.
 	if not existed:
 		editor_filesystem.update_file(new_pathname)
+
+func get_addon_path() -> String:
+	return self.get_script().resource_path.get_base_dir()
+
+func app_exists_in_system_path(app_name: String) -> bool:
+	var output: Array = []
+	var exit_code: int = 0
+
+	if OS.get_name() == "Windows":
+		exit_code = OS.execute("where", [app_name], output)
+	else:
+		exit_code = OS.execute("which", [app_name], output)
+
+	return exit_code == 0
+
+func app_exists_in_addon_path(app_name: String) -> bool:
+	if OS.get_name() == "Windows":
+		app_name += ".exe"
+
+	#print(post_import_material_remap_script.resource_path.get_base_dir())
+	var addon_path: String = get_addon_path().path_join(app_name)
+	return FileAccess.file_exists(addon_path)

@@ -170,6 +170,18 @@ class DefaultHandler:
 class ImageHandler:
 	extends AssetHandler
 
+	func get_imagemagick_path() -> String:
+		if unidot_utils.app_exists_in_system_path("magick"):
+			return "magick"
+		if unidot_utils.app_exists_in_addon_path("magick"):
+			return unidot_utils.get_addon_path().path_join("magick")
+		if unidot_utils.app_exists_in_system_path("convert"):
+			return "convert"
+		if unidot_utils.app_exists_in_addon_path("convert"):
+			return unidot_utils.get_addon_path().path_join("convert")
+
+		return ""
+
 	func preprocess_asset(pkgasset: Object, tmpdir: String, thread_subdir: String, path: String, data_buf: PackedByteArray, unique_texture_map: Dictionary = {}) -> String:
 		if len(data_buf) < 4:
 			pkgasset.log_fail("Empty data buf")
@@ -196,36 +208,32 @@ class ImageHandler:
 			outfile = null
 			var stdout: Array = [].duplicate()
 			var d = DirAccess.open("res://")
-			var addon_path: String = "convert" # ImageMagick installed system-wide.
-			if OS.get_name() == "Windows":
-				addon_path = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
-				if d.file_exists(addon_path):
-					addon_path = ProjectSettings.globalize_path(addon_path)
-				else:
-					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
-					addon_path = "convert.exe"
-			# [0] forces multi-layer files to only output the first layer. Otherwise filenames may be -0, -1, -2...
-			var convert_src: String = temp_output_path.get_basename() + ext + "[0]"
-			var convert_dst: String = temp_output_path
-			var convert_args: Array = [convert_src, convert_dst]
-			var ret = OS.execute(addon_path, convert_args, stdout)
-			for i in range(5):
-				OS.delay_msec(500)
-				OS.delay_msec(500)
-				# Hack, but I don't know what to do about this for now. The .close() is async or something.
-				if ret == 1 or "".join(stdout).strip_edges().find("@ error") != -1:
-					pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
-					ret = OS.execute(addon_path, convert_args, stdout)
-			pkgasset.log_debug("convert " + str(addon_path) + " " + str(convert_args) + " => result " + str(ret))
-			pkgasset.log_debug(str(stdout))
-			d.remove(temp_output_path.get_basename() + ext)
-			var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
-			pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
-			res_file.close()
-			res_file = null
-			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
-			if pkgasset.existing_data_md5 == pkgasset.data_md5:
-				d.remove(temp_output_path)
+			var addon_path: String = get_imagemagick_path()
+			if addon_path == "":
+				pkgasset.log_warn("Not converting tiff to png because ImageMagick is not present.")
+			else:
+				# [0] forces multi-layer files to only output the first layer. Otherwise filenames may be -0, -1, -2...
+				var convert_src: String = temp_output_path.get_basename() + ext + "[0]"
+				var convert_dst: String = temp_output_path
+				var convert_args: Array = [convert_src, convert_dst]
+				var ret = OS.execute(addon_path, convert_args, stdout)
+				for i in range(5):
+					OS.delay_msec(500)
+					OS.delay_msec(500)
+					# Hack, but I don't know what to do about this for now. The .close() is async or something.
+					if ret == 1 or "".join(stdout).strip_edges().find("@ error") != -1:
+						pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
+						ret = OS.execute(addon_path, convert_args, stdout)
+				pkgasset.log_debug(addon_path + " " + str(convert_args) + " => result " + str(ret))
+				pkgasset.log_debug(str(stdout))
+				d.remove(temp_output_path.get_basename() + ext)
+				var res_file: FileAccess = FileAccess.open(temp_output_path, FileAccess.READ)
+				pkgasset.data_md5 = calc_md5(res_file.get_buffer(res_file.get_length()))
+				res_file.close()
+				res_file = null
+				pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
+				if pkgasset.existing_data_md5 == pkgasset.data_md5:
+					d.remove(temp_output_path)
 		else:
 			pkgasset.existing_data_md5 = calc_existing_md5(full_output_path)
 			pkgasset.data_md5 = calc_md5(data_buf)
@@ -2358,7 +2366,7 @@ class FbxHandler:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
 			if not json.has(key):
 				continue
-				
+
 			var used_names: Dictionary = {}.duplicate()
 			if key == "nodes":
 				used_names["Root Scene"] = true
@@ -2710,7 +2718,7 @@ func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Di
 		var f := FileAccess.open("res://" + extra_tex_filename + ".import", FileAccess.WRITE_READ)
 		f.store_string(hackhack)
 		f.close()
-		
+
 		var dres = DirAccess.open("res://")
 		pkgasset.log_debug("Renaming " + temp_path + " to " + extra_tex_filename)
 		dres.rename(temp_path, extra_tex_filename)
