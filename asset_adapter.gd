@@ -214,7 +214,7 @@ class ImageHandler:
 				OS.delay_msec(500)
 				# Hack, but I don't know what to do about this for now. The .close() is async or something.
 				if ret == 1 or "".join(stdout).strip_edges().find("@ error") != -1:
-					pkgasset.log_warn("Attempt to rerun FBX2glTF to mitigate windows file close race " + str(i) + ".")
+					pkgasset.log_warn("Attempt to rerun ImageMagick to mitigate windows file close race " + str(i) + ".")
 					ret = OS.execute(addon_path, convert_args, stdout)
 			pkgasset.log_debug("convert " + str(addon_path) + " " + str(convert_args) + " => result " + str(ret))
 			pkgasset.log_debug(str(stdout))
@@ -2358,7 +2358,7 @@ class FbxHandler:
 			pkgasset.parsed_meta.internal_data["godot_sanitized_to_orig_remap"][key] = {}
 			if not json.has(key):
 				continue
-				
+
 			var used_names: Dictionary = {}.duplicate()
 			if key == "nodes":
 				used_names["Root Scene"] = true
@@ -2710,7 +2710,7 @@ func write_additional_import_dependencies(pkgasset: Object, guid_to_pkgasset: Di
 		var f := FileAccess.open("res://" + extra_tex_filename + ".import", FileAccess.WRITE_READ)
 		f.store_string(hackhack)
 		f.close()
-		
+
 		var dres = DirAccess.open("res://")
 		pkgasset.log_debug("Renaming " + temp_path + " to " + extra_tex_filename)
 		dres.rename(temp_path, extra_tex_filename)
