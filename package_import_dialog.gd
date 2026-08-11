@@ -586,7 +586,8 @@ func _meta_completed(tw: Object):
 	ti.set_icon(1, icon)
 	ti.set_tooltip_text(1, tooltip_cls)
 
-	var color = Color(0.3 + 0.4 * fmod(importer_type.unicode_at(0) * 173.0 / 255.0, 1.0), 0.3 + 0.4 * fmod(importer_type.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(importer_type.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
+	var _color_hash_key: String = importer_type + "   "  # pad so unicode_at(0..2) can't go out of bounds when importer_type is empty (e.g. parsed_meta was null)
+	var color = Color(0.3 + 0.4 * fmod(_color_hash_key.unicode_at(0) * 173.0 / 255.0, 1.0), 0.3 + 0.4 * fmod(_color_hash_key.unicode_at(1) * 139.0 / 255.0, 1.0), 0.7 * fmod(_color_hash_key.unicode_at(2) * 157.0 / 255.0, 1.0), 1.0)
 	ti.set_custom_color(1, color)
 
 	var obj_type: String = tw.asset_main_object_type

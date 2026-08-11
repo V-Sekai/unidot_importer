@@ -247,7 +247,7 @@ func xprint(s: String):
 	pass
 
 
-func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unidot_object: Callable) -> Resource:  # object_adapter.UnidotObject
+func parse_line(line: Variant, meta: Object, is_meta: bool, xinstantiate_unidot_object: Callable) -> Object:  # object_adapter.UnidotObject: most unidot objects (e.g. UnidotPrefabImporter) are RefCounted, not Resource
 	var instantiate_unidot_object = xinstantiate_unidot_object
 	line_number = line_number + 1
 	if line_number % 10000 == 0:
