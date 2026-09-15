@@ -1442,12 +1442,12 @@ class FbxHandler:
 			material_order_by_mesh = _extract_fbx_geometry_material_order_ascii(pkgasset, buffer_as_utf8)
 			fbx_file = _preprocess_fbx_scale_ascii(pkgasset, fbx_file, buffer_as_ascii, importer.keys.get("meshes", {}).get("useFileScale", 0) == 1, importer.keys.get("meshes", {}).get("globalScale", 1))
 		var d := DirAccess.open("res://")
-		var closest_bake_fps: float = 30
+		var closest_bake_fps: int = 30
 		if fps <= 25:
 			closest_bake_fps = 24
 		if fps >= 40:
 			closest_bake_fps = 60
-		var fps_ratio: float = closest_bake_fps / fps
+		var fps_ratio: float = float(closest_bake_fps) / fps
 		pkgasset.parsed_meta.internal_data["anim_orig_fbx_fps"] = fps
 		pkgasset.parsed_meta.internal_data["anim_bake_fps"] = closest_bake_fps
 		pkgasset.parsed_meta.internal_data["anim_frames_fps_ratio"] = fps_ratio
