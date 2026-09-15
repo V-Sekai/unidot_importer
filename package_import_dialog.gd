@@ -543,7 +543,11 @@ func _meta_completed(tw: Object):
 				# No need to force selection
 				continue
 			if guid_meta == null and not pkg.guid_to_pkgasset.has(guid):
-				push_error("Asset " + pkgasset.parsed_meta.path + " depends on missing GUID " + guid + " fileID " + human_readable_fileid_heuristic(dep_guids[guid]))
+				var file_info = human_readable_fileid_heuristic(dep_guids[guid])
+				print_debug("Asset " + pkgasset.parsed_meta.path + " depends on missing GUID " + guid + " fileID " + file_info)
+#				# NOTE: if it's a MonoScript it's likely to be a helper or something... maybe silence errors?
+#				if not file_info.ends_with("MonoScript"):
+#					print_debug("Asset " + pkgasset.parsed_meta.path + " depends on missing GUID " + guid + " fileID " + file_info)
 			if not guid_to_dependency_guids.has(pkgasset.guid):
 				guid_to_dependency_guids[pkgasset.guid] = {}
 			guid_to_dependency_guids[pkgasset.guid][guid] = dep_guids[guid]

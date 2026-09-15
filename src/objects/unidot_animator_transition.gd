@@ -1,0 +1,3 @@
+class_name UnidotAnimatorTransition extends UnidotAnimatorTransitionBase
+
+pass

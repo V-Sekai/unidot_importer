@@ -1,0 +1,2 @@
+class_name UnidotCustomRenderTexture extends UnidotRenderTexture
+pass

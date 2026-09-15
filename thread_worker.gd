@@ -32,7 +32,7 @@ func _init():
 
 func start_thread():
 	thread_count += 1
-	print("Starting thread")
+	print_debug("Starting thread")
 	var thread: Thread = Thread.new()
 	# Third argument is optional userdata, it can be any variable.
 	thread.start(self._thread_function.bind("THR" + str(thread_count)))
@@ -86,11 +86,11 @@ func _run_single_item(tw: Object, thread_subdir: String):
 # be here and it will be null.
 func _thread_function(thread_subdir: String):
 	# Print the userdata ("Wafflecopter")
-	print("I'm a thread! Userdata is: ", thread_subdir)
+	print_debug("I'm a thread! Userdata is: ", thread_subdir)
 	while true:
 		var tw = thread_queue.pop()
 		#print(tw)
 		if tw == ShutdownSentinel:
-			print("I was told to shutdown")
+			print_debug("I was told to shutdown")
 			break
 		_run_single_item(tw, thread_subdir)
