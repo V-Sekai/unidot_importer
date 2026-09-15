@@ -198,12 +198,21 @@ class ImageHandler:
 			var d = DirAccess.open("res://")
 			var addon_path: String = "convert" # ImageMagick installed system-wide.
 			if OS.get_name() == "Windows":
-				addon_path = post_import_material_remap_script.resource_path.get_base_dir().path_join("convert.exe")
-				if d.file_exists(addon_path):
-					addon_path = ProjectSettings.globalize_path(addon_path)
-				else:
-					pkgasset.log_warn("Not converting tiff to png because convert.exe is not present.")
-					addon_path = "convert.exe"
+				# ImageMagick 7 ships a single magick.exe and no longer installs the
+				# legacy convert.exe, so accept either - in the addon directory first,
+				# then on PATH. Without one of them .tif/.psd sources are silently
+				# dropped; in the Synty packs those are the vehicle spec/pearl maps.
+				var addon_dir: String = post_import_material_remap_script.resource_path.get_base_dir()
+				addon_path = ""
+				for exe in ["convert.exe", "magick.exe"]:
+					if d.file_exists(addon_dir.path_join(exe)):
+						addon_path = ProjectSettings.globalize_path(addon_dir.path_join(exe))
+						break
+				if addon_path.is_empty():
+					addon_path = "magick.exe"
+					if OS.execute(addon_path, ["-version"], [].duplicate()) != 0:
+						addon_path = "convert.exe"
+						pkgasset.log_warn("Neither magick.exe nor convert.exe was found; tiff/psd will not convert.")
 			# [0] forces multi-layer files to only output the first layer. Otherwise filenames may be -0, -1, -2...
 			var convert_src: String = temp_output_path.get_basename() + ext + "[0]"
 			var convert_dst: String = temp_output_path
