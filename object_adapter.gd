@@ -826,7 +826,12 @@ class UnidotMaterial:
 		# But it seems to workaround a problem with some materials for now.
 		ret.depth_draw_mode = true  ##### BaseMaterial3D.DEPTH_DRAW_ALWAYS
 		ret.albedo_color = get_color(colorProperties, "_Color", Color.WHITE)
-		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap"]
+		# The trailing "_Map" names are Unity ShaderGraph conventions and are what
+		# Synty's own shader uses. They must be listed explicitly: the fallback
+		# below deliberately skips every property ending in "Map", so without
+		# this every Synty material converts to an untextured white one.
+		var albedo_textures_to_try = ["_MainTex", "_Tex", "_Albedo", "_Diffuse", "_BaseColor", "_BaseColorMap",
+			"_Albedo_Map", "_BaseColor_Map", "_Base_Map", "_Diffuse_Map"]
 		for name in texProperties:
 			if albedo_textures_to_try.has(name):
 				continue
@@ -856,6 +861,8 @@ class UnidotMaterial:
 		# TODO: ORM not yet implemented.
 		if true: # kws.get("_NORMALMAP", false):
 			ret.normal_texture = get_texture(texProperties, "_BumpMap")
+			if ret.normal_texture == null:
+				ret.normal_texture = get_texture(texProperties, "_Normal_Map")
 			ret.normal_scale = get_float(floatProperties, "_BumpScale", 1.0)
 			if ret.normal_texture != null:
 				ret.normal_enabled = true
@@ -868,6 +875,8 @@ class UnidotMaterial:
 				ret.emission = Color(emis_vec.x / emis_mag, emis_vec.y / emis_mag, emis_vec.z / emis_mag).linear_to_srgb()
 				ret.emission_energy = emis_mag
 				ret.emission_texture = get_texture(texProperties, "_EmissionMap")
+				if ret.emission_texture == null:
+					ret.emission_texture = get_texture(texProperties, "_Emission_Map")
 				if ret.emission_texture != null:
 					ret.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 		if true: # kws.get("_PARALLAXMAP", false):
@@ -902,6 +911,11 @@ class UnidotMaterial:
 			var metallic_gloss_texture_ref: Array = get_texture_ref(texProperties, "_MetallicGlossMap")
 			if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
 				metallic_gloss_texture_ref = get_texture_ref(texProperties, "_MetallicSmoothness")
+			if metallic_gloss_texture_ref.is_empty() or metallic_gloss_texture_ref[1] == 0:
+				for shadergraph_name in ["_Metallic_Smoothness_Map", "_MetallicGloss_Map", "_Metallic_Map"]:
+					metallic_gloss_texture_ref = get_texture_ref(texProperties, shadergraph_name)
+					if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
+						break
 			if not metallic_gloss_texture_ref.is_empty() and metallic_gloss_texture_ref[1] != 0:
 				metallic_gloss_texture_ref[1] = -metallic_gloss_texture_ref[1]
 				if not is_equal_approx(get_float(floatProperties, "_GlossMapScale", 1.0), 0.0):
