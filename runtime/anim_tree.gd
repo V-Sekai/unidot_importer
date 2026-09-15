@@ -199,7 +199,7 @@ func _set(prop: StringName, value):
 				var node: AnimationNode = _find_animation_node(np)
 				if node == null:
 					blend_to_meta_parameter[prop] = &""
-					return
+					return false
 				var last_path: StringName = np.get_name(np.get_name_count() - 1)
 				var meta: Variant = node.get_meta(last_path)
 				if typeof(meta) == TYPE_STRING_NAME:
